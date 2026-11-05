@@ -5,7 +5,7 @@
   </AppLayout>
 
   <!-- 独立形态:自带导航条(logo/站名 + 登录/回后台) -->
-  <div v-else class="model-plaza-page min-h-screen bg-neo-canvas text-neo-ink">
+  <div v-else class="model-plaza-page min-h-screen bg-ui-canvas text-ui-ink">
     <PlazaNavBar />
     <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <ModelPlazaContent :response="data" :loading="loading" :error="loadFailed" />

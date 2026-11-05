@@ -241,14 +241,14 @@ const submitJump = () => {
 </script>
 
 <style scoped>
-.neo-pagination { border-top: 2px solid var(--neo-border); background: var(--neo-surface); border-radius: 0 0 10px 10px; gap: 12px; }
-.neo-pagination-pages { border: 2px solid var(--neo-border); border-radius: 8px; box-shadow: 2px 2px 0 var(--neo-shadow-color); }
-.neo-pagination-button { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; min-height: 34px; padding: 6px 10px; border: 1px solid var(--neo-divider); border-radius: 6px; background: var(--neo-surface); color: var(--neo-ink); font-size: 13px; font-weight: 750; }
-.neo-pagination-pages .neo-pagination-button { border: 0; border-right: 1px solid var(--neo-divider); border-radius: 0; }
+.neo-pagination { border-top: 1px solid var(--ui-border); background: var(--ui-surface); border-radius: 0 0 10px 10px; gap: 12px; }
+.neo-pagination-pages { border: 1px solid var(--ui-border); border-radius: 8px; box-shadow: var(--ui-shadow-sm); }
+.neo-pagination-button { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; min-height: 34px; padding: 6px 10px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface); color: var(--ui-ink); font-size: 13px; font-weight: 600; }
+.neo-pagination-pages .neo-pagination-button { border: 0; border-right: 1px solid var(--ui-border); border-radius: 0; }
 .neo-pagination-pages .neo-pagination-button:first-child { border-radius: 6px 0 0 6px; }
 .neo-pagination-pages .neo-pagination-button:last-child { border-right: 0; border-radius: 0 6px 6px 0; }
-.neo-pagination-button:hover:not(:disabled) { background: var(--neo-surface-soft); }
-.neo-pagination-button.neo-pagination-current { background: var(--neo-accent); color: var(--neo-accent-ink); }
+.neo-pagination-button:hover:not(:disabled) { background: var(--ui-surface-raised); }
+.neo-pagination-button.neo-pagination-current { background: var(--ui-accent); color: var(--ui-accent-ink); }
 .neo-pagination-button:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 1279px) {
   .neo-pagination > div { flex-wrap: wrap; gap: 12px; }

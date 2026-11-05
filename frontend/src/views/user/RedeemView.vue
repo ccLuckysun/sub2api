@@ -3,17 +3,17 @@
     <div class="mx-auto max-w-2xl space-y-6">
       <!-- Current Balance Card -->
       <div class="card overflow-hidden">
-        <div class="bg-neo-accent px-6 py-8 text-center">
+        <div class="bg-ui-surface px-6 py-8 text-center">
           <div
-            class="mb-4 inline-flex h-16 w-16 items-center justify-center console-stat-icon rounded-lg bg-white"
+            class="mb-4 inline-flex h-16 w-16 items-center justify-center console-stat-icon rounded-lg bg-ui-canvas"
           >
-            <Icon name="creditCard" size="xl" class="text-gray-950" />
+            <Icon name="creditCard" size="xl" class="text-ui-ink" />
           </div>
-          <p class="text-sm font-semibold text-gray-950">{{ t('redeem.currentBalance') }}</p>
-          <p class="mt-2 text-4xl font-extrabold text-gray-950">
+          <p class="text-sm font-semibold text-ui-ink">{{ t('redeem.currentBalance') }}</p>
+          <p class="mt-2 text-4xl font-semibold text-ui-ink">
             ${{ user?.balance?.toFixed(2) || '0.00' }}
           </p>
-          <p class="mt-2 text-sm text-gray-950">
+          <p class="mt-2 text-sm text-ui-ink">
             {{ t('redeem.concurrency') }}: {{ user?.concurrency || 0 }} {{ t('redeem.requests') }}
           </p>
         </div>

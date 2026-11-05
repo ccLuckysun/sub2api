@@ -302,6 +302,7 @@ describe('DataTable', () => {
     await wrapper.setProps({ selectedKeys: selectedAll as number[] })
     const rowCheckboxes = wrapper.findAll<HTMLInputElement>('[data-test="select-row"]')
     expect(rowCheckboxes.every((checkbox) => checkbox.element.checked)).toBe(true)
+    expect(wrapper.findAll('tbody tr.table-row-selected')).toHaveLength(2)
 
     await rowCheckboxes[0].setValue(false)
 
@@ -338,7 +339,7 @@ describe('DataTable', () => {
     viewport.remove()
   })
 
-  it('keeps mobile selected rows visually distinct after applying D surfaces', async () => {
+  it('keeps mobile selected rows visually distinct on the black-hole surfaces', async () => {
     stubMobileMatchMedia()
     const wrapper = mount(DataTable, {
       props: {

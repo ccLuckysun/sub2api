@@ -15,7 +15,7 @@ export default {
       remaining: '{seconds} 秒后自动关闭',
       options: {
         system: '跟随系统', light: '浅色', dark: '深色',
-        yellow: '经典黄', pink: '莓果粉', blue: '晴空蓝',
+        yellow: '香槟', pink: '淡紫', blue: '冰蓝',
         rich: '丰富', moderate: '适中', off: '关闭',
         standard: '标准', compact: '紧凑'
       }

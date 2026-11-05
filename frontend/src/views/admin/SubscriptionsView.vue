@@ -14,7 +14,7 @@
               <Icon
                 name="search"
                 size="md"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-ui-muted"
               />
               <input
                 v-model="filterUserKeyword"
@@ -28,7 +28,7 @@
                 v-if="selectedFilterUser"
                 @click="clearFilterUser"
                 type="button"
-                class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-ui-muted hover:text-gray-600 dark:hover:text-gray-300"
                 :title="t('common.clear')"
               >
                 <Icon name="x" size="sm" :stroke-width="2" />
@@ -41,13 +41,13 @@
               >
                 <div
                   v-if="filterUserLoading"
-                  class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+                  class="px-4 py-3 text-sm text-ui-muted"
                 >
                   {{ t('common.loading') }}
                 </div>
                 <div
                   v-else-if="filterUserResults.length === 0 && filterUserKeyword"
-                  class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+                  class="px-4 py-3 text-sm text-ui-muted"
                 >
                   {{ t('common.noOptionsFound') }}
                 </div>
@@ -58,8 +58,8 @@
                   @click="selectFilterUser(user)"
                   class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
                 >
-                  <span class="font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
-                  <span class="ml-2 text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
+                  <span class="font-medium text-ui-ink">{{ user.email }}</span>
+                  <span class="ml-2 text-ui-muted">#{{ user.id }}</span>
                 </button>
               </div>
             </div>
@@ -120,20 +120,20 @@
               >
                 <div class="p-2">
                   <!-- User column mode selection -->
-                  <div class="mb-2 border-b border-gray-200 pb-2 dark:border-dark-700">
-                    <div class="px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <div class="mb-2 border-b border-ui pb-2 dark:border-ui">
+                    <div class="px-3 py-1 text-xs font-medium text-ui-muted">
                       {{ t('admin.subscriptions.columns.user') }}
                     </div>
                     <button
                       @click="setUserColumnMode('email')"
-                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-ui-ink hover:bg-gray-100 dark:text-ui-ink dark:hover:bg-dark-700"
                     >
                       <span>{{ t('admin.users.columns.email') }}</span>
                       <Icon v-if="userColumnMode === 'email'" name="check" size="sm" class="text-primary-500" />
                     </button>
                     <button
                       @click="setUserColumnMode('username')"
-                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-ui-ink hover:bg-gray-100 dark:text-ui-ink dark:hover:bg-dark-700"
                     >
                       <span>{{ t('admin.users.columns.username') }}</span>
                       <Icon v-if="userColumnMode === 'username'" name="check" size="sm" class="text-primary-500" />
@@ -144,7 +144,7 @@
                     v-for="col in toggleableColumns"
                     :key="col.key"
                     @click="toggleColumn(col.key)"
-                    class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
+                    class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-ui-ink hover:bg-gray-100 dark:text-ui-ink dark:hover:bg-dark-700"
                   >
                     <span>{{ col.label }}</span>
                     <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
@@ -189,7 +189,7 @@
               {{ t('admin.subscriptions.bulk.clearSelection') }}
             </button>
           </div>
-          <p class="text-xs text-gray-600 dark:text-gray-400">{{ t('admin.subscriptions.bulk.selectionHint') }}</p>
+          <p class="text-xs text-ui-muted">{{ t('admin.subscriptions.bulk.selectionHint') }}</p>
         </div>
       </template>
 
@@ -223,7 +223,7 @@
               </div>
               <RouterLink
                 :to="{ path: '/admin/usage', query: { user_id: row.user_id } }"
-                class="rounded font-medium text-gray-900 hover:text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-white dark:hover:text-primary-400 dark:focus-visible:ring-offset-dark-800"
+                class="rounded font-medium text-ui-ink hover:text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-ui-ink dark:hover:text-primary-400 dark:focus-visible:ring-offset-dark-800"
               >
                 {{ userColumnMode === 'email'
                   ? (row.user?.email || t('admin.redeem.userPrefix', { id: row.user_id }))
@@ -242,7 +242,7 @@
               :rate-multiplier="row.group.rate_multiplier"
               :show-rate="false"
             />
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <span v-else class="text-sm text-ui-muted dark:text-dark-500">-</span>
           </template>
 
           <template #cell-usage="{ row }">
@@ -262,7 +262,7 @@
                   </div>
                   <span class="usage-amount">
                     ${{ row.daily_usage_usd?.toFixed(2) || '0.00' }}
-                    <span class="text-gray-400">/</span>
+                    <span class="text-ui-muted">/</span>
                     ${{ row.group?.daily_limit_usd?.toFixed(2) }}
                   </span>
                 </div>
@@ -299,7 +299,7 @@
                   </div>
                   <span class="usage-amount">
                     ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }}
-                    <span class="text-gray-400">/</span>
+                    <span class="text-ui-muted">/</span>
                     ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
                   </span>
                 </div>
@@ -336,7 +336,7 @@
                   </div>
                   <span class="usage-amount">
                     ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }}
-                    <span class="text-gray-400">/</span>
+                    <span class="text-ui-muted">/</span>
                     ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
                   </span>
                 </div>
@@ -382,7 +382,7 @@
                 :class="
                   isExpiringSoon(value)
                     ? 'text-orange-600 dark:text-orange-400'
-                    : 'text-gray-700 dark:text-gray-300'
+                    : 'text-ui-ink'
                 "
               >
                 {{ formatDateTimeToMinute(value) }}
@@ -391,12 +391,12 @@
                 v-for="remainingExpiry in [formatRemainingExpiry(value)]"
                 :key="remainingExpiry ?? 'expired'"
               >
-                <div v-if="remainingExpiry" class="text-xs text-gray-500">
+                <div v-if="remainingExpiry" class="text-xs text-ui-muted">
                   {{ remainingExpiry }}
                 </div>
               </template>
             </div>
-            <span v-else class="text-sm text-gray-500">{{
+            <span v-else class="text-sm text-ui-muted">{{
               t('admin.subscriptions.noExpiration')
             }}</span>
           </template>
@@ -421,7 +421,7 @@
               <button
                 v-if="row.status === 'active' || row.status === 'expired'"
                 @click="handleExtend(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ui-muted transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
                 <Icon name="calendar" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.adjust') }}</span>
@@ -430,7 +430,7 @@
                 v-if="row.status === 'active'"
                 @click="handleResetQuota(row)"
                 :disabled="resettingQuota && resettingSubscription?.id === row.id"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ui-muted transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Icon name="refresh" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.resetQuota') }}</span>
@@ -438,7 +438,7 @@
               <button
                 v-if="row.status === 'active'"
                 @click="handleRevoke(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ui-muted transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
                 <Icon name="ban" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.revoke') }}</span>
@@ -446,7 +446,7 @@
               <button
                 v-if="row.status === 'revoked'"
                 @click="handleRestore(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ui-muted transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
               >
                 <Icon name="refresh" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.restore') }}</span>
@@ -501,7 +501,7 @@
         @submit.prevent="handleAssignSubscription"
         class="space-y-5"
       >
-        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+        <label class="flex items-center gap-2 text-sm text-ui-ink">
           <input v-model="batchAssignEnabled" type="checkbox" :disabled="submitting" @change="resetAssignUsers" />
           {{ t('admin.subscriptions.batchAssign.enable') }}
         </label>
@@ -522,7 +522,7 @@
               v-if="selectedUser"
               @click="clearUserSelection"
               type="button"
-              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-ui-muted hover:text-gray-600 dark:hover:text-gray-300"
             >
               <Icon name="x" size="sm" :stroke-width="2" />
             </button>
@@ -533,13 +533,13 @@
             >
               <div
                 v-if="userSearchLoading"
-                class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+                class="px-4 py-3 text-sm text-ui-muted"
               >
                 {{ t('common.loading') }}
               </div>
               <div
                 v-else-if="userSearchResults.length === 0 && userSearchKeyword"
-                class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+                class="px-4 py-3 text-sm text-ui-muted"
               >
                 {{ t('common.noOptionsFound') }}
               </div>
@@ -551,18 +551,18 @@
                 @click="selectUser(user)"
                 class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-dark-700"
               >
-                <span class="font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
-                <span class="ml-2 text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
+                <span class="font-medium text-ui-ink">{{ user.email }}</span>
+                <span class="ml-2 text-ui-muted">#{{ user.id }}</span>
               </button>
             </div>
           </div>
           <div v-if="batchAssignEnabled && assignUsers.length > 0" class="mt-2 space-y-2" data-test="assign-users">
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-ui-muted">
               {{ t('admin.subscriptions.batchAssign.selected', { count: assignUsers.length }) }}
             </p>
             <ul class="max-h-40 space-y-1 overflow-y-auto">
               <li v-for="user in assignUsers" :key="user.id" class="flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-1 text-sm dark:bg-dark-700">
-                <span class="truncate">{{ user.email }} <span class="text-gray-500">#{{ user.id }}</span></span>
+                <span class="truncate">{{ user.email }} <span class="text-ui-muted">#{{ user.id }}</span></span>
                 <button
                   type="button"
                   :disabled="submitting"
@@ -591,7 +591,7 @@
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
               />
-              <span v-else class="text-gray-400">{{ t('admin.subscriptions.selectGroup') }}</span>
+              <span v-else class="text-ui-muted">{{ t('admin.subscriptions.selectGroup') }}</span>
             </template>
             <template #option="{ option, selected }">
               <GroupOptionItem
@@ -670,15 +670,15 @@
         class="space-y-5"
       >
         <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
-          <p class="text-sm text-gray-600 dark:text-gray-400">
+          <p class="text-sm text-ui-muted">
             {{ t('admin.subscriptions.adjustingFor') }}
-            <span class="font-medium text-gray-900 dark:text-white">{{
+            <span class="font-medium text-ui-ink">{{
               extendingSubscription.user?.email
             }}</span>
           </p>
-          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          <p class="mt-1 text-sm text-ui-muted">
             {{ t('admin.subscriptions.currentExpiration') }}:
-            <span class="font-medium text-gray-900 dark:text-white">
+            <span class="font-medium text-ui-ink">
               {{
                 extendingSubscription.expires_at
                   ? formatDateTimeToMinute(extendingSubscription.expires_at)
@@ -686,9 +686,9 @@
               }}
             </span>
           </p>
-          <p v-if="extendingSubscription.expires_at" class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          <p v-if="extendingSubscription.expires_at" class="mt-1 text-sm text-ui-muted">
             {{ t('admin.subscriptions.remainingDays') }}:
-            <span class="font-medium text-gray-900 dark:text-white">
+            <span class="font-medium text-ui-ink">
               {{ getDaysRemaining(extendingSubscription.expires_at) ?? 0 }}
             </span>
           </p>
@@ -762,21 +762,21 @@
       <transition name="modal">
         <div v-if="showGuideModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @mousedown.self="showGuideModal = false">
           <div class="fixed inset-0 bg-black/50" @click="showGuideModal = false"></div>
-          <div class="relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl dark:bg-dark-800">
-            <button type="button" class="absolute right-4 top-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" @click="showGuideModal = false">
+          <div class="relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-ui-surface p-6 shadow-2xl dark:bg-ui-surface">
+            <button type="button" class="absolute right-4 top-4 text-ui-muted hover:text-gray-600 dark:hover:text-gray-200" @click="showGuideModal = false">
               <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
 
-            <h2 class="mb-4 text-lg font-bold text-gray-900 dark:text-white">{{ t('admin.subscriptions.guide.title') }}</h2>
-            <p class="mb-5 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.subscriptions.guide.subtitle') }}</p>
+            <h2 class="mb-4 text-lg font-semibold text-ui-ink">{{ t('admin.subscriptions.guide.title') }}</h2>
+            <p class="mb-5 text-sm text-ui-muted">{{ t('admin.subscriptions.guide.subtitle') }}</p>
 
             <!-- Step 1 -->
             <div class="mb-5">
-              <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">1</span>
+              <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">1</span>
                 {{ t('admin.subscriptions.guide.step1.title') }}
               </h3>
-              <ol class="ml-8 list-decimal space-y-1 text-sm text-gray-600 dark:text-gray-300">
+              <ol class="ml-8 list-decimal space-y-1 text-sm text-ui-muted dark:text-ui-ink">
                 <li>{{ t('admin.subscriptions.guide.step1.line1') }}</li>
                 <li>{{ t('admin.subscriptions.guide.step1.line2') }}</li>
                 <li>{{ t('admin.subscriptions.guide.step1.line3') }}</li>
@@ -795,11 +795,11 @@
 
             <!-- Step 2 -->
             <div class="mb-5">
-              <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">2</span>
+              <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">2</span>
                 {{ t('admin.subscriptions.guide.step2.title') }}
               </h3>
-              <ol class="ml-8 list-decimal space-y-1 text-sm text-gray-600 dark:text-gray-300">
+              <ol class="ml-8 list-decimal space-y-1 text-sm text-ui-muted dark:text-ui-ink">
                 <li>{{ t('admin.subscriptions.guide.step2.line1') }}</li>
                 <li>{{ t('admin.subscriptions.guide.step2.line2') }}</li>
                 <li>{{ t('admin.subscriptions.guide.step2.line3') }}</li>
@@ -808,16 +808,16 @@
 
             <!-- Step 3 -->
             <div class="mb-5">
-              <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">3</span>
+              <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">3</span>
                 {{ t('admin.subscriptions.guide.step3.title') }}
               </h3>
-              <div class="ml-8 overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600">
+              <div class="ml-8 overflow-hidden rounded-lg border border-ui">
                 <table class="w-full text-sm">
                   <tbody>
-                    <tr v-for="(row, i) in guideActionRows" :key="i" class="border-b border-gray-100 dark:border-dark-700 last:border-0">
-                      <td class="whitespace-nowrap bg-gray-50 px-3 py-2 font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-300">{{ row.action }}</td>
-                      <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ row.desc }}</td>
+                    <tr v-for="(row, i) in guideActionRows" :key="i" class="border-b border-ui last:border-0">
+                      <td class="whitespace-nowrap bg-gray-50 px-3 py-2 font-medium text-ui-ink dark:bg-dark-700 dark:text-ui-ink">{{ row.action }}</td>
+                      <td class="px-3 py-2 text-ui-muted">{{ row.desc }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1631,11 +1631,13 @@ onUnmounted(() => {
 }
 
 .usage-label {
-  @apply w-10 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400;
+  @apply w-10 flex-shrink-0 text-xs font-medium;
+  color: var(--ui-muted);
 }
 
 .usage-amount {
-  @apply whitespace-nowrap text-xs tabular-nums text-gray-600 dark:text-gray-300;
+  @apply whitespace-nowrap text-xs tabular-nums;
+  color: var(--ui-muted);
 }
 
 .reset-info {

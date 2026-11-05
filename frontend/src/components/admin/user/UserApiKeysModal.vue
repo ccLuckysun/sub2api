@@ -5,19 +5,19 @@
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
           <span class="text-lg font-medium text-primary-700 dark:text-primary-300">{{ user.email.charAt(0).toUpperCase() }}</span>
         </div>
-        <div><p class="font-medium text-gray-900 dark:text-white">{{ user.email }}</p><p class="text-sm text-gray-500 dark:text-dark-400">{{ user.username }}</p></div>
+        <div><p class="font-medium text-ui-ink">{{ user.email }}</p><p class="text-sm text-ui-muted dark:text-dark-400">{{ user.username }}</p></div>
       </div>
       <div v-if="loading" class="flex justify-center py-8"><svg class="h-8 w-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
-      <div v-else-if="apiKeys.length === 0" class="py-8 text-center"><p class="text-sm text-gray-500">{{ t('admin.users.noApiKeys') }}</p></div>
+      <div v-else-if="apiKeys.length === 0" class="py-8 text-center"><p class="text-sm text-ui-muted">{{ t('admin.users.noApiKeys') }}</p></div>
       <div v-else ref="scrollContainerRef" class="max-h-96 space-y-3 overflow-y-auto" @scroll="closeGroupSelector">
-        <div v-for="key in apiKeys" :key="key.id" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-600 dark:bg-dark-800">
+        <div v-for="key in apiKeys" :key="key.id" class="rounded-xl border border-ui bg-ui-surface p-4 dark:border-ui dark:bg-ui-surface">
           <div class="flex items-start justify-between">
             <div class="min-w-0 flex-1">
-              <div class="mb-1 flex items-center gap-2"><span class="font-medium text-gray-900 dark:text-white">{{ key.name }}</span><span :class="['badge text-xs', key.status === 'active' ? 'badge-success' : 'badge-danger']">{{ key.status }}</span></div>
-              <p class="truncate font-mono text-sm text-gray-500">{{ key.key.substring(0, 20) }}...{{ key.key.substring(key.key.length - 8) }}</p>
+              <div class="mb-1 flex items-center gap-2"><span class="font-medium text-ui-ink">{{ key.name }}</span><span :class="['badge text-xs', key.status === 'active' ? 'badge-success' : 'badge-danger']">{{ key.status }}</span></div>
+              <p class="truncate font-mono text-sm text-ui-muted">{{ key.key.substring(0, 20) }}...{{ key.key.substring(key.key.length - 8) }}</p>
             </div>
           </div>
-          <div class="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
+          <div class="mt-3 flex flex-wrap gap-4 text-xs text-ui-muted">
             <div class="flex items-center gap-1">
               <span>{{ t('admin.users.group') }}:</span>
               <button
@@ -37,9 +37,9 @@
                   :peak-end="key.group.peak_end"
                   :peak-rate-multiplier="key.group.peak_rate_multiplier"
                 />
-                <span v-else class="text-gray-400 italic">{{ t('admin.users.none') }}</span>
+                <span v-else class="text-ui-muted italic">{{ t('admin.users.none') }}</span>
                 <svg v-if="updatingKeyIds.has(key.id)" class="h-3 w-3 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                <svg v-else class="h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" /></svg>
+                <svg v-else class="h-3 w-3 text-ui-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" /></svg>
               </button>
             </div>
             <div class="flex items-center gap-1"><span>{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span></div>
@@ -54,7 +54,7 @@
     <div
       v-if="groupSelectorKeyId !== null && dropdownPosition"
       ref="dropdownRef"
-      class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-64 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+      class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-64 overflow-hidden rounded-xl bg-ui-surface shadow-lg ring-1 ring-black/5 duration-200 dark:bg-ui-surface dark:ring-white/10"
       :style="{ top: dropdownPosition.top + 'px', left: dropdownPosition.left + 'px' }"
     >
       <div class="max-h-64 overflow-y-auto p-1.5">
@@ -68,7 +68,7 @@
               : 'hover:bg-gray-100 dark:hover:bg-dark-700'
           ]"
         >
-          <span class="text-gray-500 italic">{{ t('admin.users.none') }}</span>
+          <span class="text-ui-muted italic">{{ t('admin.users.none') }}</span>
           <svg
             v-if="!selectedKeyForGroup?.group_id"
             class="ml-auto h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"

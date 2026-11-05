@@ -1,32 +1,32 @@
-/* Page-local auth styling. Imported only by public authentication routes. */
+/* Domain-scoped auth surfaces. Appearance remains owned by useAppearance. */
 .public-auth {
-  color: var(--neo-ink);
+  color: var(--ui-ink);
   overflow-wrap: anywhere;
 }
 .public-auth:not(.auth-layout) {
-  background: var(--neo-canvas);
+  background: var(--ui-canvas);
 }
 .public-auth .auth-page-content > .text-center:first-child {
   text-align: left;
-  border-bottom: 2px solid var(--neo-border);
+  border-bottom: 1px solid var(--ui-border);
   padding-bottom: 22px;
 }
 .public-auth .auth-page-content > .text-center:first-child h2 {
   font-size: 27px;
   line-height: 1.3;
-  font-weight: 900;
-  letter-spacing: -.04em;
+  font-weight: 600;
+  letter-spacing: -.03em;
 }
 .public-auth .auth-page-content > .text-center:first-child p {
   line-height: 1.8;
-  color: var(--neo-muted);
+  color: var(--ui-muted);
 }
 .public-auth .auth-page-content .border-gray-200,
 .public-auth > .card .border-gray-200 {
-  border: 2px solid var(--neo-border);
+  border-color: var(--ui-border);
 }
 .public-auth .auth-page-content .bg-gray-50 {
-  background: var(--neo-surface-soft);
+  background: var(--ui-surface-raised);
 }
 .public-auth .auth-page-content form,
 .public-auth .auth-page-content fieldset,
@@ -37,8 +37,8 @@
   color: inherit;
 }
 .public-auth .card h1 {
-  font-weight: 900;
-  letter-spacing: -.035em;
+  font-weight: 600;
+  letter-spacing: -.025em;
 }
 .public-auth .card {
   min-width: 0;

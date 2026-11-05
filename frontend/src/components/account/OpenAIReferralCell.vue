@@ -31,19 +31,19 @@
       @close="closeDialog"
     >
       <form :id="formID" class="space-y-4" @submit.prevent="sendInvite">
-        <p class="text-sm text-gray-600 dark:text-gray-300">
+        <p class="text-sm text-ui-muted dark:text-ui-ink">
           {{ t('admin.accounts.openaiReferral.fromAccount') }} <strong>{{ account.name }}</strong>
         </p>
         <div class="flex items-center justify-between rounded-lg bg-violet-50 p-3 text-sm dark:bg-violet-900/20">
           <div>
             <p class="font-medium text-violet-800 dark:text-violet-300">{{ programLabel }}</p>
-            <p class="mt-1 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.openaiReferral.available') }} {{ countDisplay }}</p>
+            <p class="mt-1 text-ui-muted dark:text-ui-ink">{{ t('admin.accounts.openaiReferral.available') }} {{ countDisplay }}</p>
           </div>
           <button type="button" class="btn btn-secondary btn-sm" :disabled="loading || sending" @click="refresh()">
             {{ loading ? t('common.loading') : t('common.refresh') }}
           </button>
         </div>
-        <div v-if="eligibility?.title || eligibility?.description || eligibility?.rules?.length" class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+        <div v-if="eligibility?.title || eligibility?.description || eligibility?.rules?.length" class="space-y-2 text-sm text-ui-muted dark:text-ui-ink">
           <p v-if="eligibility.title" class="font-medium">{{ eligibility.title }}</p>
           <p v-if="eligibility.description">{{ eligibility.description }}</p>
           <ul v-if="eligibility.rules?.length" class="list-disc space-y-1 pl-5">
@@ -68,7 +68,7 @@
             data-testid="referral-email"
           />
         </div>
-        <label v-if="needsConsent" class="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+        <label v-if="needsConsent" class="flex items-start gap-2 text-sm text-ui-muted dark:text-ui-ink">
           <input v-model="confirmed" type="checkbox" class="mt-1" :disabled="sending" data-testid="referral-consent" />
           {{ t('admin.accounts.openaiReferral.consent') }}
         </label>

@@ -32,19 +32,19 @@ const testId = (tier: OpenAIImageSizeTier) => `${props.testIdPrefix ?? 'openai-i
       <label
         v-for="tier in OPENAI_IMAGE_SIZE_TIERS"
         :key="tier"
-        class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+        class="flex items-center gap-2 rounded-lg border border-ui px-3 py-2 text-sm dark:border-ui"
         :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'"
         :title="isLastSelected(tier) ? t('admin.accounts.openai.imageSizeTiersAtLeastOne') : undefined"
       >
         <input
           type="checkbox"
-          class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+          class="rounded border-ui text-primary-600 focus:ring-primary-500 dark:border-dark-500"
           :data-testid="testId(tier)"
           :checked="model.includes(tier)"
           :disabled="disabled"
           @change="toggleTier(tier, $event)"
         />
-        <span class="text-gray-700 dark:text-gray-200">{{ tier }}</span>
+        <span class="text-ui-ink">{{ tier }}</span>
       </label>
     </div>
     <p class="input-hint">{{ t('admin.accounts.openai.imageSizeTiersDesc') }}</p>

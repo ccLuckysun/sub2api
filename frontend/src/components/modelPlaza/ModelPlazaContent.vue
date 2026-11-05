@@ -155,9 +155,9 @@ const filteredGroups = computed(() => {
 
 <style scoped>
 .model-plaza-content { min-width: 0; overflow-wrap: anywhere; }
-.model-plaza-content > div:first-child h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 950; letter-spacing: -.055em; }
+.model-plaza-content > div:first-child h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 600; letter-spacing: -.035em; }
 .model-plaza-content > div:first-child:not(.plaza-description) { padding-top: 10px; padding-bottom: 12px; }
-.plaza-description { background: var(--neo-surface); border: 2px solid var(--neo-border); border-radius: 12px; box-shadow: var(--neo-shadow); }
+.plaza-description { background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow-sm); }
 .plaza-description {
   line-height: 1.7;
   overflow-wrap: anywhere;

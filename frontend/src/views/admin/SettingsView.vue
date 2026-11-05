@@ -46,14 +46,11 @@
 
         <section v-show="activeTab === 'appearance'" class="card" data-testid="appearance-settings">
           <div class="card-header">
-            <h2 class="text-lg font-bold">{{ t('admin.settings.appearance.title') }}</h2>
-            <p class="mt-2 text-sm text-gray-600 dark:text-dark-300">{{ t('admin.settings.appearance.description') }}</p>
+            <h2 class="text-lg font-medium">{{ t('admin.settings.appearance.title') }}</h2>
           </div>
           <div class="card-body">
             <AppearanceFields v-model="form.appearance" admin />
-            <div class="mt-6 rounded-xl border-2 p-4 text-sm">
-              {{ t('admin.settings.appearance.saveHint') }}
-            </div>
+            <p class="input-hint mt-6">{{ t('admin.settings.appearance.saveHint') }}</p>
           </div>
         </section>
 
@@ -13307,10 +13304,10 @@ watch(
 .settings-tabs-shell {
   @apply sticky z-20 -mx-1 p-2;
   top: 4.75rem;
-  border: 2px solid var(--neo-border);
-  border-radius: var(--neo-radius);
-  background: var(--neo-surface);
-  box-shadow: var(--neo-shadow);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow);
 }
 
 .settings-tabs-scroll {
@@ -13329,7 +13326,7 @@ watch(
 
 .settings-tab {
   @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium outline-none transition-colors duration-200 ease-out;
-  color: var(--neo-muted);
+  color: var(--ui-muted);
 }
 
 @media (min-width: 768px) {
@@ -13349,7 +13346,7 @@ watch(
 .settings-tab::before {
   @apply absolute inset-0 -z-10 rounded-xl opacity-0 transition-opacity duration-200;
   content: "";
-  background: var(--neo-surface-soft);
+  background: var(--ui-surface-raised);
 }
 
 .settings-tab:hover::before,
@@ -13362,11 +13359,11 @@ watch(
 }
 
 .settings-tab-active {
-  border: 2px solid var(--neo-border);
-  background: var(--neo-accent);
-  color: var(--neo-accent-ink);
-  font-weight: 800;
-  box-shadow: 2px 2px 0 var(--neo-shadow-color);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-accent);
+  color: var(--ui-accent-ink);
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--ui-border);
 }
 
 .settings-tab-active::before {
@@ -13379,16 +13376,16 @@ watch(
 
 .settings-tab-icon {
   @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-200;
-  color: var(--neo-muted);
+  color: var(--ui-muted);
 }
 
 .settings-tab:hover .settings-tab-icon,
 .settings-tab:focus-visible .settings-tab-icon {
-  color: var(--neo-ink);
+  color: var(--ui-ink);
 }
 
 .settings-tab-active .settings-tab-icon {
-  color: var(--neo-accent-ink);
+  color: var(--ui-accent-ink);
   background: transparent;
 }
 

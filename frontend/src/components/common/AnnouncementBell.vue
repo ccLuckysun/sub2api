@@ -37,7 +37,7 @@
                     <div class="flex h-8 w-8 items-center justify-center rounded-lg neo-announcement-sticker">
                       <Icon name="bell" size="sm" />
                     </div>
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-dark-100">
                       {{ t('announcements.title') }}
                     </h2>
                   </div>
@@ -112,7 +112,7 @@
                   <!-- Content -->
                   <div class="flex min-w-0 flex-1 items-center justify-between gap-4">
                     <div class="min-w-0 flex-1">
-                      <h3 class="truncate text-sm font-medium text-gray-900 dark:text-white">
+                      <h3 class="truncate text-sm font-medium text-gray-900 dark:text-dark-100">
                         {{ item.title }}
                       </h3>
                       <div class="mt-1 flex items-center gap-2">
@@ -165,7 +165,7 @@
                     </svg>
                   </div>
                 </div>
-                <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('announcements.empty') }}</p>
+                <p class="text-sm font-medium text-gray-900 dark:text-dark-100">{{ t('announcements.empty') }}</p>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('announcements.emptyDescription') }}</p>
               </div>
             </div>
@@ -216,7 +216,7 @@
                   </div>
 
                   <!-- Title -->
-                  <h2 class="mb-3 text-2xl font-bold leading-tight text-gray-900 dark:text-white">
+                  <h2 class="mb-3 text-2xl font-semibold leading-tight text-gray-900 dark:text-dark-100">
                     {{ selectedAnnouncement.title }}
                   </h2>
 
@@ -417,14 +417,14 @@ watch(
 </script>
 
 <style scoped>
-.neo-announcement-panel { background: var(--neo-surface); border: 2px solid var(--neo-border); border-radius: 14px; box-shadow: 5px 5px 0 var(--neo-shadow-color); }
-.neo-announcement-header { background: var(--neo-surface-soft); border-bottom: 2px solid var(--neo-border); }
-.neo-announcement-sticker { background: var(--neo-blue); color: #111; border: 2px solid var(--neo-border); box-shadow: 2px 2px 0 var(--neo-shadow-color); }
-.neo-announcement-footer { background: var(--neo-surface-soft); border-top: 1px solid var(--neo-divider); }
+.neo-announcement-panel { background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 14px; box-shadow: var(--ui-shadow-sm); }
+.neo-announcement-header { background: var(--ui-surface-raised); border-bottom: 1px solid var(--ui-border); }
+.neo-announcement-sticker { background: var(--ui-surface); color: var(--ui-ink); border: 1px solid var(--ui-border); box-shadow: none; }
+.neo-announcement-footer { background: var(--ui-surface-raised); border-top: 1px solid var(--ui-border); }
 .neo-announcement-footer > div { flex-wrap: wrap; gap: 12px; }
 .modal-fade-enter-active, .popup-fade-enter-active { transition: opacity 220ms ease; }
 .modal-fade-leave-active, .popup-fade-leave-active { transition: opacity 160ms ease; }
-.modal-fade-enter-active > div, .popup-fade-enter-active > div { transition: transform 220ms var(--neo-ease); }
+.modal-fade-enter-active > div, .popup-fade-enter-active > div { transition: transform 220ms var(--ui-ease); }
 .modal-fade-enter-from, .modal-fade-leave-to, .popup-fade-enter-from, .popup-fade-leave-to { opacity: 0; }
 .modal-fade-enter-from > div, .popup-fade-enter-from > div { transform: translateY(6px); }
 </style>

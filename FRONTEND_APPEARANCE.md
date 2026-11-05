@@ -1,19 +1,36 @@
-# 前端外观：D 新粗野主义
+# 前端外观与黑洞首页
 
-本次改版保留既有业务 API、权限和页面路由，以统一的设计令牌改造公开页面、控制台布局和公共组件。独立风格样稿中的虚构账号/指标不会被放入正式页面。
+## 设计体系
 
-## 设计与扩展
+全站使用中性明暗表面、清晰文字、细描边与轻微高光。首页是固定深色的 WebGL 黑洞艺术场景；认证和控制台不运行黑洞，不覆盖用户的全局明暗偏好。
 
-- `frontend/src/styles/neo-theme.css`：语义令牌、明暗与黄/粉/蓝三种强调色、动效和密度。
-- `frontend/src/style.css`：按钮、输入、卡片、表格、菜单、弹窗、通知和导航的共用设计。
-- `frontend/tailwind.config.js`：既有 `primary-*`、灰阶和阴影桥接；强调色通过 RGB 变量保留 Tailwind 透明度修饰。
-- 新页面使用 `--neo-canvas`、`--neo-surface`、`--neo-ink`、`--neo-muted`、`--neo-border`、`--neo-accent`、`--neo-accent-ink`、`--neo-shadow` 等令牌，优先复用现有公共组件，不再局部硬编码薄荷绿、玻璃底或另一套主题。
-- 粗边与硬阴影只强调容器和操作，表格单元格不逐个加阴影；虚拟表格的行高不随紧凑密度改变。
-- 品牌颜色不替代成功、告警、错误的语义颜色。中文正文保持正常字重，标题和关键操作加重。
+- `frontend/src/styles/theme.css`：`--ui-*` 语义令牌、明暗、强调色、动效与密度；旧 `--neo-*` 仅作兼容别名。
+- `frontend/src/style.css`：共用按钮、输入、表格、菜单、弹窗、通知和导航。
+- `frontend/tailwind.config.js`：中性灰阶及带透明度修饰的运行时主色通道。
+- 新页面使用 `--ui-canvas`、`--ui-surface`、`--ui-surface-raised`、`--ui-ink`、`--ui-muted`、`--ui-border`、`--ui-control-border`、`--ui-accent`、`--ui-accent-ink`、`--ui-ring`、`--ui-shadow` 等令牌。
+- 控件边界与装饰分隔使用不同令牌，避免为了细腻外观而失去可辨识边界。默认状态颜色、供应商颜色、图表分类与费用公式不跟随品牌强调色改写。
+- 不在正式界面显示制作来源、样稿说明、研究编号或装饰性英文小标题。
 
-## 管理员设置
+## 首页分支
 
-系统设置新增“外观”页。`GET/PUT /api/v1/admin/settings` 以及公开设置/HTML 注入中使用同一个 `appearance` 字段：
+`HomeView.vue` 按既有优先级选择：自定义 HTML/URL > 简洁首页 > 黑洞完整版。自定义内容不被替换；简洁首页是轻量静态版。完整版保留站点名称、Logo、副标题、文档、语言、模型广场功能开关和真实登录/控制台目标。
+
+默认 Logo 和 favicon 为本地黑洞标志；配置自定义 Logo 时优先使用，清除后恢复默认。跨域 iframe 内部内容不受宿主样式控制。
+
+## 黑洞组件
+
+- `components/home/BlackHoleScene.vue`：装饰 Canvas 与本地静态后备图。
+- `components/home/blackhole/`：独立编写的着色器、GPU 资源管理和生命周期控制器；没有第三方参考站脚本、远程资源或模型调用。
+- props：`motion: rich | moderate | off`、`paused: boolean`。
+- exposed：`setDeepening(active)`、`replay()`。键盘、按钮与真实入口由首页管理，渲染组件不注册全局 Space 处理。
+- rich：完整渲染、视差、引力增强；moderate：降低像素和积分预算，取消视差/引力增强；off 或系统减弱动效：本地静态图、无持续 RAF。
+- 初次可见才创建 GPU；离屏/隐藏标签停止绘制；卸载释放 RAF、监听器、观察器和 GPU 对象。持续慢帧有带滞回的质量分级。
+- WebGL 不支持、编译/链接/绘制异常或上下文丢失时保留本地后备图；页面内容和入口不依赖渲染成功。
+- 此效果是艺术近似，不是科学级广义相对论模拟。铜金/奶白是场景光色，不随 UI 强调色改染。
+
+## 外观配置兼容
+
+管理/公开设置保留原 `appearance` JSON，不新增后端表、迁移或枚举：
 
 ```json
 {
@@ -25,33 +42,22 @@
 }
 ```
 
-- theme：system / light / dark。
-- accent：yellow / pink / blue。
-- motion：rich / moderate / off。
-- density：standard / compact。
-- allow_user_override：是否允许本浏览器个人偏好覆盖站点默认。
+- `theme`：system/light/dark。
+- `accent`：存储值 yellow/pink/blue 不变，显示名改为香槟/淡紫/冰蓝，存量设置和个人偏好继续有效。
+- `motion`：rich/moderate/off；系统 reduced-motion 优先。
+- `density`：standard/compact，虚拟表格行高不随密度改变。
+- `allow_user_override`：管理员锁定时个人值被保留但忽略，恢复允许后重新使用。
 
-数据保存在现有 settings KV 的 appearance 键，不新增表和数据库迁移。不提交该字段时保留原配置；提交部分对象时缺失成员采用上述默认值；显式 null、错误类型、非法枚举和未知成员被拒绝。存量配置缺失或损坏时安全回退默认值。变更沿用管理权限、审计及缓存/HTML 失效回调。
+`useAppearance.ts` 统一管理根 dark 类与 data 属性，兼容旧 theme 存储，处理系统偏好与跨标签变更。首页局部暂停只能减少运动，不能绕过关闭动效或管理员限制。完整版首页固定深色不等于修改全局主题。
 
-## 浏览器偏好
+保留站点品牌、自定义菜单、功能开关、权限、表格分页和业务 API。支付内嵌 UI 仅通过支付方官方 appearance 接口更新，不重建输入，不注入跨域 DOM。
 
-`frontend/src/composables/useAppearance.ts` 是统一入口；页面不能自行写 dark 类或读写旧 theme 键。
+## 验证与覆盖
 
-- 启动前读取公开注入/上次站点配置和本机偏好，避免挂载后由各页反复设置主题。
-- 根节点由运行时管理 dark 类、data-accent、data-motion 和 data-density。
-- 个人偏好仅在当前浏览器生效，不能覆盖 allow_user_override；兼容旧 theme=light/dark。
-- 管理员禁用覆盖时保留但忽略个人值，重新允许时恢复；恢复默认会清除个人值。
-- 系统 prefers-reduced-motion 优先于站点与个人动画设置。系统明暗变更、其他标签页修改偏好和存储不可用均有处理。
-- 系统设置保存后先等待已有公开设置请求结束，再发起新请求，避免加载保存前的旧结果。
+新增黑洞控制器/GPU 清理与失败、首页分支/真实入口/键盘、品牌清除、主题对比度等回归已接入 Makefile 前端 CI。低频页的源码审查与真实浏览器/供应商验证分别记录，不能相互替代。
 
-既有站点名称、Logo、副标题、文档链接、功能开关、自定义菜单、分页、自定义首页与简洁首页继续生效。自定义 HTML/URL 首页优先于内置首页；跨域 iframe 内部不受宿主 CSS 控制。支付内嵌 UI 仅通过支付方正式 appearance API 适配，不注入跨域 DOM。
+本轮最终 CI：45 文件、737 项关键测试通过；生产构建通过。全量 Vitest：393 文件通过、1 文件失败，3192 项通过、1 项失败。失败为基线已有 `ccswitchImport` 默认模型断言（测试期望 gpt-5.5，源码 gpt-5.6-sol），本轮未改相关模型逻辑。
 
-## 动效约束
+真实浏览器检查包含首页 WebGL、静态/上下文丢失后备、关闭/适中动效、纯净模式焦点、路由离开销毁、主要控制台及375px布局。被功能开关禁用的页面不为测试强行启用；未进行真实付款、收费模型、第三方OAuth/邮件/安装或破坏性数据操作。
 
-丰富模式以按压、展开和示例交互为主，后台表格不持续晃动、不假装实时数据。系统减弱动态效果或关闭动效时内容和操作必须完整；加载文字与进度语义仍保留。页面中若有仅用于说明的 API 请求交互，必须明确标记示例，且不发送网络请求或消耗额度。
-
-## 验证边界
-
-验收需区分：源码/单元测试、浏览器公开页、浏览器登录后操作、真实第三方支付/上游请求。前两项不能代替后两项。此改版不授权真实付款、调用收费模型、删除业务数据或代替使用者接受协议。运行中的后端必须使用新构建，才能持久化和公开新的 appearance 字段。
-
-实施与验证的实际结果见本次交付说明；本文件不是测试通过证明。
+详细本机覆盖和截图见 `docs-local/blackhole-acceptance.md`、`blackhole-admin-coverage.md`、`blackhole-public-user-coverage.md`。本机目录不属于共享配置，不提交凭据或运行设施。

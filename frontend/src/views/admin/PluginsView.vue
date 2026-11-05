@@ -2,17 +2,17 @@
   <AppLayout>
     <div class="space-y-6">
       <section
-        class="flex flex-col gap-4 border-b border-gray-200 pb-5 dark:border-dark-700 sm:flex-row sm:items-end sm:justify-between"
+        class="flex flex-col gap-4 border-b border-ui pb-5 dark:border-ui sm:flex-row sm:items-end sm:justify-between"
       >
         <div class="min-w-0">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+          <h2 class="text-lg font-semibold text-ui-ink">
             {{ t("admin.plugins.title") }}
           </h2>
-          <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+          <p class="mt-1 max-w-3xl text-sm text-ui-muted">
             {{ t("admin.plugins.description") }}
           </p>
           <div
-            class="mt-3 flex flex-wrap gap-2 text-xs text-gray-600 dark:text-gray-300"
+            class="mt-3 flex flex-wrap gap-2 text-xs text-ui-muted dark:text-ui-ink"
           >
             <span class="rounded bg-gray-100 px-2 py-1 dark:bg-dark-700">{{
               t("admin.plugins.onlyOpenAI")
@@ -53,7 +53,7 @@
         </div>
       </section>
 
-      <p class="text-xs text-gray-500 dark:text-gray-400">
+      <p class="text-xs text-ui-muted">
         {{ t("admin.plugins.uploadHint") }}
       </p>
 
@@ -66,20 +66,20 @@
 
       <div
         v-if="loading"
-        class="flex min-h-48 items-center justify-center text-sm text-gray-500"
+        class="flex min-h-48 items-center justify-center text-sm text-ui-muted"
       >
         {{ t("common.loading") }}
       </div>
 
       <div
         v-else-if="plugins.length === 0"
-        class="flex min-h-56 flex-col items-center justify-center border border-dashed border-gray-300 px-6 text-center dark:border-dark-600"
+        class="flex min-h-56 flex-col items-center justify-center border border-dashed border-ui px-6 text-center dark:border-ui"
       >
-        <Icon name="cube" size="xl" class="text-gray-400" />
-        <p class="mt-3 font-medium text-gray-800 dark:text-gray-200">
+        <Icon name="cube" size="xl" class="text-ui-muted" />
+        <p class="mt-3 font-medium text-ui-ink">
           {{ t("admin.plugins.empty") }}
         </p>
-        <p class="mt-1 max-w-lg text-sm text-gray-500 dark:text-gray-400">
+        <p class="mt-1 max-w-lg text-sm text-ui-muted">
           {{ t("admin.plugins.emptyHint") }}
         </p>
       </div>
@@ -88,19 +88,19 @@
         <article
           v-for="plugin in plugins"
           :key="plugin.id"
-          class="card overflow-hidden border border-gray-200 dark:border-dark-700"
+          class="card overflow-hidden border border-ui"
         >
           <div
-            class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 p-5 dark:border-dark-700"
+            class="flex flex-wrap items-start justify-between gap-3 border-b border-ui p-5 dark:border-ui"
           >
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <h3
-                  class="truncate text-base font-semibold text-gray-900 dark:text-white"
+                  class="truncate text-base font-semibold text-ui-ink"
                 >
                   {{ plugin.name }}
                 </h3>
-                <span class="font-mono text-xs text-gray-500"
+                <span class="font-mono text-xs text-ui-muted"
                   >v{{ plugin.version }}</span
                 >
                 <span
@@ -110,13 +110,13 @@
                   {{ t(`admin.plugins.${plugin.state}`) }}
                 </span>
               </div>
-              <p class="mt-1 text-xs text-gray-500">
+              <p class="mt-1 text-xs text-ui-muted">
                 {{ plugin.plugin_key
                 }}<span v-if="plugin.author"> · {{ plugin.author }}</span>
               </p>
               <p
                 v-if="plugin.description"
-                class="mt-2 text-sm text-gray-600 dark:text-gray-300"
+                class="mt-2 text-sm text-ui-muted dark:text-ui-ink"
               >
                 {{ plugin.description }}
               </p>
@@ -133,7 +133,7 @@
 
           <div class="grid grid-cols-1 gap-x-6 gap-y-4 p-5 md:grid-cols-2">
             <div>
-              <p class="text-xs font-medium uppercase text-gray-500">
+              <p class="text-xs font-medium uppercase text-ui-muted">
                 {{ t("admin.plugins.compatibility") }}
               </p>
               <div class="mt-2 flex items-center gap-2">
@@ -143,36 +143,36 @@
                 >
                   {{ t(`admin.plugins.${plugin.compatibility.status}`) }}
                 </span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                <span class="text-xs text-ui-muted">{{
                   plugin.compatibility.message
                 }}</span>
               </div>
               <dl
                 class="mt-3 grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-xs"
               >
-                <dt class="text-gray-500">
+                <dt class="text-ui-muted">
                   {{ t("admin.plugins.currentVersion") }}
                 </dt>
-                <dd class="font-mono text-gray-800 dark:text-gray-200">
+                <dd class="font-mono text-ui-ink">
                   {{ plugin.compatibility.current_sub2api_version }}
                 </dd>
-                <dt class="text-gray-500">
+                <dt class="text-ui-muted">
                   {{ t("admin.plugins.requiredVersion") }}
                 </dt>
-                <dd class="font-mono text-gray-800 dark:text-gray-200">
+                <dd class="font-mono text-ui-ink">
                   {{ plugin.compatibility.required_sub2api_version }}
                 </dd>
-                <dt class="text-gray-500">
+                <dt class="text-ui-muted">
                   {{ t("admin.plugins.recommendedVersion") }}
                 </dt>
-                <dd class="font-mono text-gray-800 dark:text-gray-200">
+                <dd class="font-mono text-ui-ink">
                   {{ plugin.compatibility.recommended_sub2api_version || "-" }}
                 </dd>
               </dl>
             </div>
 
             <div>
-              <p class="text-xs font-medium uppercase text-gray-500">
+              <p class="text-xs font-medium uppercase text-ui-muted">
                 {{ t("admin.plugins.runtime") }}
               </p>
               <div class="mt-2 flex flex-wrap gap-2 text-xs">
@@ -181,7 +181,7 @@
                   :class="
                     plugin.runtime_healthy
                       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                      : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
+                      : 'bg-gray-100 text-ui-muted dark:bg-dark-700 dark:text-ui-ink'
                   "
                 >
                   {{
@@ -191,7 +191,7 @@
                   }}
                 </span>
                 <span
-                  class="rounded bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+                  class="rounded bg-gray-100 px-2 py-0.5 text-ui-muted dark:bg-dark-700 dark:text-ui-ink"
                 >
                   {{ t("admin.plugins.signature") }}:
                   {{ t(`admin.plugins.${plugin.signature_status}`) }}
@@ -205,7 +205,7 @@
               </p>
               <p
                 v-else-if="plugin.runtime_message"
-                class="mt-3 break-words text-xs text-gray-500"
+                class="mt-3 break-words text-xs text-ui-muted"
               >
                 {{ plugin.runtime_message }}
               </p>
@@ -213,7 +213,7 @@
 
             <div class="md:col-span-2">
               <label
-                class="flex items-center justify-between gap-4 text-xs font-medium text-gray-600 dark:text-gray-300"
+                class="flex items-center justify-between gap-4 text-xs font-medium text-ui-muted dark:text-ui-ink"
               >
                 <span>{{ t("admin.plugins.rollout") }}</span>
                 <span class="w-11 text-right font-mono"
@@ -236,7 +236,7 @@
           </div>
 
           <div
-            class="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-dark-700"
+            class="flex flex-wrap justify-end gap-2 border-t border-ui px-5 py-4 dark:border-ui"
           >
             <button
               type="button"
@@ -293,12 +293,12 @@
         @close="closeConfiguration"
       >
         <div
-          class="relative min-h-[520px] overflow-hidden bg-gray-50 dark:bg-dark-900"
+          class="relative min-h-[520px] overflow-hidden bg-gray-50 dark:bg-ui-canvas"
           :style="{ height: `${iframeHeight}px` }"
         >
           <div
             v-if="uiLoading"
-            class="absolute inset-0 z-10 flex items-center justify-center text-sm text-gray-500"
+            class="absolute inset-0 z-10 flex items-center justify-center text-sm text-ui-muted"
           >
             {{ t("admin.plugins.loadingUI") }}
           </div>
@@ -307,10 +307,10 @@
             class="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center"
           >
             <Icon name="exclamationTriangle" size="xl" class="text-amber-500" />
-            <p class="mt-3 font-medium text-gray-800 dark:text-gray-200">
+            <p class="mt-3 font-medium text-ui-ink">
               {{ t("admin.plugins.uiUnavailable") }}
             </p>
-            <p class="mt-1 max-w-xl text-sm text-gray-500">{{ uiError }}</p>
+            <p class="mt-1 max-w-xl text-sm text-ui-muted">{{ uiError }}</p>
           </div>
           <iframe
             v-if="uiSession"
@@ -318,7 +318,7 @@
             :src="uiSession.url"
             sandbox="allow-scripts"
             referrerpolicy="no-referrer"
-            class="h-full w-full border-0 bg-white dark:bg-dark-900"
+            class="h-full w-full border-0 bg-ui-surface dark:bg-ui-canvas"
             :title="
               t('admin.plugins.configTitle', { name: configPlugin?.name || '' })
             "
@@ -709,7 +709,7 @@ function stateClass(state: PluginInstallation["state"]): string {
     return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
   if (state === "starting")
     return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
-  return "bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300";
+  return "bg-gray-100 text-ui-muted dark:bg-dark-700 dark:text-ui-ink";
 }
 
 function compatibilityClass(

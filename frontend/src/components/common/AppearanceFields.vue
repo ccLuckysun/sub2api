@@ -32,7 +32,7 @@ function update(event: Event, key: keyof typeof choices) {
         </select>
       </label>
     </div>
-    <label v-if="admin" class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4">
+    <label v-if="admin" class="flex cursor-pointer items-start gap-3 rounded-xl border p-4">
       <input type="checkbox" class="mt-1 h-4 w-4 accent-current" data-testid="appearance-allow-override" :checked="modelValue.allow_user_override" :disabled="disabled" @change="emit('update:modelValue', { ...modelValue, allow_user_override: ($event.target as HTMLInputElement).checked })" />
       <span><span class="block font-semibold">{{ t('common.appearance.allowOverride') }}</span><span class="input-hint">{{ t('common.appearance.allowOverrideHint') }}</span></span>
     </label>

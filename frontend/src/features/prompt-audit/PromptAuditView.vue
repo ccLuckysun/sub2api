@@ -4,10 +4,10 @@
       <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary-600 dark:text-primary-400">{{ t('nav.securityAudit') }}</p>
-          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-gray-950 dark:text-white">{{ t('admin.promptAudit.title') }}</h1>
-          <p class="mt-2 max-w-3xl text-sm text-gray-500 dark:text-dark-300">{{ t('admin.promptAudit.description') }}</p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-ui-ink">{{ t('admin.promptAudit.title') }}</h1>
+          <p class="mt-2 max-w-3xl text-sm text-ui-muted dark:text-dark-300">{{ t('admin.promptAudit.description') }}</p>
         </div>
-        <div v-if="draft" class="text-right text-xs text-gray-500 dark:text-dark-400">
+        <div v-if="draft" class="text-right text-xs text-ui-muted dark:text-dark-400">
           <p>{{ t('admin.promptAudit.configVersion', { version: draft.config_version }) }}</p>
           <p v-if="draft.updated_at" class="mt-1">{{ formatDate(draft.updated_at) }}</p>
         </div>
@@ -99,7 +99,7 @@
           <SaveToggle :label="t('admin.promptAudit.saveBar.storePass')" :model-value="draft.store_pass_events" data-test="store-pass-toggle" @update:model-value="replaceDraft({ ...draft!, store_pass_events: $event })" />
         </div>
         <div class="flex items-center gap-3">
-          <span class="text-sm" :class="dirty ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-dark-400'">
+          <span class="text-sm" :class="dirty ? 'text-amber-700 dark:text-amber-300' : 'text-ui-muted dark:text-dark-400'">
             {{ dirty ? t('admin.promptAudit.saveBar.dirty') : t('admin.promptAudit.saveBar.synced') }}
           </span>
           <button type="button" class="btn btn-secondary" :disabled="!dirty || loading.saving" @click="resetDraft">{{ t('common.reset') }}</button>
@@ -225,12 +225,12 @@ const SaveToggle = defineComponent({
       }, [
         h('span', {
           class: [
-            'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ease-in-out',
+            'pointer-events-none inline-block h-5 w-5 rounded-full bg-ui-surface shadow transition-transform duration-200 ease-in-out',
             props.modelValue ? 'translate-x-5' : 'translate-x-0',
           ],
         }),
       ]),
-      h('span', { class: 'select-none text-gray-700 dark:text-dark-200' }, props.label),
+      h('span', { class: 'select-none text-ui-ink dark:text-dark-200' }, props.label),
     ])
   },
 })

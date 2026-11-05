@@ -17,6 +17,7 @@ const paymentStore = vi.hoisted(() => ({
 const loadStripe = vi.hoisted(() => vi.fn())
 const stripeElements = vi.hoisted(() => ({
   create: vi.fn(),
+  update: vi.fn(),
 }))
 const stripePaymentElement = vi.hoisted(() => ({
   mount: vi.fn(),
@@ -64,6 +65,8 @@ vi.mock('@stripe/stripe-js/pure', () => ({
 }))
 
 import StripePaymentView from '../StripePaymentView.vue'
+import { initializeAppearance, useAppearance } from '@/composables/useAppearance'
+import { DEFAULT_APPEARANCE } from '@/types/appearance'
 import { formatPaymentAmount } from '@/components/payment/currency'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
@@ -140,6 +143,7 @@ describe('StripePaymentView', () => {
     paymentStore.pollOrderStatus.mockReset()
     loadStripe.mockReset().mockResolvedValue(stripeInstance)
     stripeElements.create.mockReset().mockReturnValue(stripePaymentElement)
+    stripeElements.update.mockReset()
     stripePaymentElement.mount.mockReset()
     stripePaymentElement.on.mockReset().mockImplementation((event: string, callback: () => void) => {
       if (event === 'ready') callback()
@@ -160,6 +164,26 @@ describe('StripePaymentView', () => {
 
     expect(getOrder).toHaveBeenCalledWith(42)
     expect(stripeInstance.confirmAlipayPayment).toHaveBeenCalledWith('pi_secret_42', expect.any(Object))
+  })
+
+  it('updates official appearance without recreating live payment inputs', async () => {
+    initializeAppearance({ ...DEFAULT_APPEARANCE, theme: 'light' })
+    mountView()
+    await flushPromises()
+    await flushPromises()
+    expect(stripeElements.create).toHaveBeenCalledTimes(1)
+    expect(stripePaymentElement.mount).toHaveBeenCalledTimes(1)
+
+    useAppearance().setPreferences({ theme: 'dark', accent: 'blue' })
+    await flushPromises()
+
+    expect(stripeElements.update).toHaveBeenCalledWith({
+      appearance: expect.objectContaining({ theme: 'night' }),
+    })
+    expect(stripeInstance.elements).toHaveBeenCalledTimes(1)
+    expect(stripeElements.create).toHaveBeenCalledTimes(1)
+    expect(stripePaymentElement.mount).toHaveBeenCalledTimes(1)
+    expect(stripeInstance.confirmPayment).not.toHaveBeenCalled()
   })
 
   it('ignores a client secret supplied in the URL query', async () => {

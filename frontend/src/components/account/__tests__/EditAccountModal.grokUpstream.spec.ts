@@ -1258,7 +1258,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
     expect(translateMock).toHaveBeenCalledWith('admin.accounts.grokModelDiagnostics.mappingTargetAria', { index: 1 })
     expect(translateMock).toHaveBeenCalledWith('admin.accounts.grokModelDiagnostics.removeMappingAria', { index: 1 })
     const remove = editor.get('[data-testid="grok-model-mapping-row"]').findAll('button').at(-1)
-    expect(remove?.classes()).toEqual(expect.arrayContaining(['text-gray-500', 'dark:text-gray-400']))
+    expect(remove?.classes()).toEqual(expect.arrayContaining(['text-ui-muted', 'dark:text-ui-muted']))
     expect(remove?.classes()).not.toContain('text-gray-400')
     expect(remove?.classes()).not.toContain('text-red-500')
     await wrapper.get('[data-testid="grok-model-mapping-add"]').trigger('click')

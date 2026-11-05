@@ -1,6 +1,6 @@
 <template>
   <div class="card p-4">
-    <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
+    <h3 class="mb-4 text-sm font-semibold text-ui-ink">
       {{ t('payment.admin.dailyRevenue') }}
     </h3>
     <div class="h-64">
@@ -10,7 +10,7 @@
       <Line v-else-if="chartData" :data="chartData" :options="chartOptions" />
       <div
         v-else
-        class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+        class="flex h-full items-center justify-center text-sm text-ui-muted"
       >
         {{ t('payment.admin.noData') }}
       </div>
@@ -20,6 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useChartTheme } from '@/composables/useChartTheme'
 import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
@@ -38,6 +39,7 @@ import type { DailyPaymentStats } from '@/types/payment'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
 const { t } = useI18n()
+const chartTheme = useChartTheme()
 
 const props = defineProps<{
   data: DailyPaymentStats[]
@@ -85,27 +87,43 @@ const chartData = computed(() => {
   }
 })
 
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  interaction: { mode: 'index' as const, intersect: false },
-  scales: {
-    y: {
-      type: 'linear' as const,
-      display: true,
-      position: 'left' as const,
-      title: { display: true, text: t('payment.admin.revenue') },
+// Appearance is reactive; the operational datasets and their scales stay intact.
+const chartOptions = computed(() => {
+  const c = chartTheme.colors.value
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: chartTheme.animation.value,
+    interaction: { mode: 'index' as const, intersect: false },
+    scales: {
+      x: {
+        ticks: { color: c.muted },
+        grid: { color: c.grid },
+        border: { color: c.border },
+      },
+      y: {
+        type: 'linear' as const,
+        display: true,
+        position: 'left' as const,
+        title: { display: true, text: t('payment.admin.revenue'), color: c.text },
+        ticks: { color: c.muted },
+        grid: { color: c.grid },
+        border: { color: c.border },
+      },
+      y1: {
+        type: 'linear' as const,
+        display: true,
+        position: 'right' as const,
+        title: { display: true, text: t('payment.admin.orderCount'), color: c.text },
+        ticks: { color: c.muted },
+        grid: { drawOnChartArea: false },
+        border: { color: c.border },
+      }
     },
-    y1: {
-      type: 'linear' as const,
-      display: true,
-      position: 'right' as const,
-      title: { display: true, text: t('payment.admin.orderCount') },
-      grid: { drawOnChartArea: false },
+    plugins: {
+      legend: { position: 'top' as const, labels: { color: c.text } },
+      tooltip: chartTheme.tooltip.value,
     }
-  },
-  plugins: {
-    legend: { position: 'top' as const },
   }
-}
+})
 </script>

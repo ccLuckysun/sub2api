@@ -35,7 +35,7 @@
 
               <!-- Content -->
               <div class="min-w-0 flex-1">
-                <p v-if="toast.title" class="text-sm font-semibold text-gray-900 dark:text-white">
+                <p v-if="toast.title" class="text-sm font-semibold text-gray-900 dark:text-dark-100">
                   {{ toast.title }}
                 </p>
                 <p
@@ -43,7 +43,7 @@
                     'text-sm leading-relaxed',
                     toast.title
                       ? 'mt-1 text-gray-600 dark:text-gray-300'
-                      : 'text-gray-900 dark:text-white'
+                      : 'text-gray-900 dark:text-dark-100'
                   ]"
                 >
                   {{ toast.message }}
@@ -158,7 +158,7 @@ const removeToast = (id: string) => {
 </script>
 
 <style scoped>
-.neo-toast { border: 2px solid var(--neo-border); border-left-width: 6px; border-radius: 10px; background: var(--neo-surface); color: var(--neo-ink); box-shadow: var(--neo-shadow); }
+.neo-toast { border: 1px solid var(--ui-border); border-left-width: 3px; border-radius: 10px; background: var(--ui-surface); color: var(--ui-ink); box-shadow: var(--ui-shadow); }
 /* Colour is semantic and independent of the chosen appearance accent. */
 .neo-toast.border-l-emerald-600 { border-left-color: #059669; }
 .neo-toast.border-l-red-600 { border-left-color: #dc2626; }

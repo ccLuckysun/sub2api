@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" fill="none">
+  <defs>
+    <radialGradient id="haze"><stop stop-color="#b37945" stop-opacity=".13"/><stop offset=".5" stop-color="#96552c" stop-opacity=".045"/><stop offset="1" stop-color="#030304" stop-opacity="0"/></radialGradient>
+    <linearGradient id="disk" x1="260" y1="500" x2="1310" y2="500" gradientUnits="userSpaceOnUse"><stop stop-color="#5e2912" stop-opacity="0"/><stop offset=".17" stop-color="#b36b38" stop-opacity=".45"/><stop offset=".37" stop-color="#f3d5ac"/><stop offset=".52" stop-color="#f4e9d7"/><stop offset=".7" stop-color="#d59b60" stop-opacity=".72"/><stop offset="1" stop-color="#7e391a" stop-opacity="0"/></linearGradient>
+    <linearGradient id="arch" x1="600" y1="360" x2="1010" y2="500" gradientUnits="userSpaceOnUse"><stop stop-color="#c78d55" stop-opacity=".3"/><stop offset=".4" stop-color="#f1debe"/><stop offset="1" stop-color="#9f5b2e" stop-opacity=".45"/></linearGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="8"/></filter>
+    <filter id="fine"><feGaussianBlur stdDeviation="1.2"/></filter>
+  </defs>
+  <ellipse cx="800" cy="500" rx="680" ry="295" fill="url(#haze)"/>
+  <g transform="rotate(-4.3 800 500)">
+    <path d="M210 503C490 494 590 538 800 535S1150 484 1390 499C1140 555 1020 569 800 568S440 525 210 503Z" fill="url(#disk)" opacity=".5" filter="url(#soft)"/>
+    <path d="M325 505C535 506 594 471 645 421C695 361 686 352 800 351C910 351 905 374 954 429C1003 484 1105 502 1280 499" stroke="url(#arch)" stroke-width="15" filter="url(#soft)"/>
+    <path d="M325 505C535 506 594 471 645 421C695 361 686 352 800 351C910 351 905 374 954 429C1003 484 1105 502 1280 499" stroke="url(#arch)" stroke-width="3" opacity=".75"/>
+    <circle cx="800" cy="500" r="143" fill="#010102"/>
+    <circle cx="800" cy="500" r="145" stroke="#e5c8a5" stroke-opacity=".3" stroke-width="6" filter="url(#soft)"/>
+    <circle cx="800" cy="500" r="144" stroke="#efe4d3" stroke-opacity=".85" stroke-width="1.35"/>
+    <path d="M190 501C420 487 602 511 800 517S1138 479 1410 497C1176 533 1004 557 800 551S398 511 190 501Z" fill="url(#disk)" opacity=".88" filter="url(#fine)"/>
+    <g stroke="url(#disk)" stroke-linecap="round">
+      <path d="M245 501C471 498 602 524 800 526S1150 494 1350 498" stroke-width="2"/>
+      <path d="M280 507C491 506 627 533 800 535S1120 508 1290 505" stroke-width="1.3" opacity=".7"/>
+      <path d="M341 512C510 517 655 541 800 543S1073 522 1230 514" opacity=".6"/>
+      <path d="M290 496C490 492 621 511 800 515S1100 490 1320 492" opacity=".75"/>
+      <path d="M470 521C590 535 709 549 800 550S992 536 1140 523" opacity=".4"/>
+    </g>
+  </g>
+</svg>

@@ -22,7 +22,7 @@ function update(value: AppearanceSettings) {
   </button>
   <BaseDialog :show="open" :title="t('common.appearance.title')" @close="open = false">
     <p class="mb-5 text-sm text-gray-600 dark:text-dark-300">{{ t('common.appearance.personalHint') }}</p>
-    <p v-if="!allowUserOverride" class="mb-4 rounded-lg border-2 p-3 text-sm" role="status">{{ t('common.appearance.locked') }}</p>
+    <p v-if="!allowUserOverride" class="mb-4 rounded-lg border p-3 text-sm" role="status">{{ t('common.appearance.locked') }}</p>
     <AppearanceFields :model-value="effective" :disabled="!allowUserOverride" @update:model-value="update" />
     <template #footer>
       <button type="button" class="btn btn-secondary" :disabled="!allowUserOverride" @click="resetPreferences">{{ t('common.appearance.reset') }}</button>

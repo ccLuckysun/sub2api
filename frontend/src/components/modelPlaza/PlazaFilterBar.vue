@@ -182,14 +182,13 @@ function chipClass(active: boolean): string {
 </script>
 
 <style scoped>
-.plaza-filters { padding: 20px; background: var(--neo-surface); border: 2px solid var(--neo-border); border-radius: 12px; box-shadow: var(--neo-shadow); }
-.plaza-filters > div > span { text-transform: none; letter-spacing: normal; color: var(--neo-muted); font-weight: 800; }
+.plaza-filters { padding: 20px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow-sm); }
+.plaza-filters > div > span { text-transform: none; letter-spacing: normal; color: var(--ui-muted); font-weight: 500; }
 .plaza-filters > div > div { min-width: 0; }
-.plaza-filters button:not(.absolute) { min-height: 36px; border: 2px solid var(--neo-border); font-weight: 750; overflow-wrap: anywhere; max-width: 100%; }
-.plaza-chip { background: var(--neo-surface); color: var(--neo-ink); }
-.plaza-chip:hover:not(:disabled) { background: var(--neo-surface-soft); }
-.plaza-chip-active { background: var(--neo-accent); color: var(--neo-accent-ink); box-shadow: 2px 2px 0 var(--neo-shadow-color); }
-.plaza-filters .chip-tinted-active { box-shadow: 2px 2px 0 var(--neo-shadow-color); }
+.plaza-filters button:not(.absolute) { min-height: 36px; border: 1px solid var(--ui-border); font-weight: 500; overflow-wrap: anywhere; max-width: 100%; }
+.plaza-chip { background: var(--ui-surface); color: var(--ui-ink); }
+.plaza-chip:hover:not(:disabled) { background: var(--ui-surface-raised); }
+.plaza-chip-active { background: var(--ui-accent); color: var(--ui-accent-ink); box-shadow: var(--ui-shadow-sm); }
 @media (max-width: 480px) { .plaza-filters { padding: 16px; } }
 /* 平台/分组 chip 的配色统一从 --chip-accent(平台主色)派生,新增平台无需扩展样式。
    激活态与非激活态在模板上互斥挂载,避免选择器优先级互相覆盖。 */

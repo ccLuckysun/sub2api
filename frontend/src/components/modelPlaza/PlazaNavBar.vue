@@ -7,11 +7,11 @@
       <div class="flex min-w-0 items-center gap-3">
         <template v-if="settings">
           <span
-            class="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700"
+            class="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden"
           >
             <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </span>
-          <span class="min-w-0 text-base font-extrabold text-gray-950 [overflow-wrap:anywhere] dark:text-white">
+          <span class="min-w-0 text-base font-semibold text-gray-950 [overflow-wrap:anywhere] dark:text-white">
             {{ siteName }}
           </span>
         </template>
@@ -61,7 +61,6 @@ const backTarget = computed(() => (authStore.isAdmin ? '/admin/dashboard' : '/da
 </script>
 
 <style scoped>
-.plaza-nav { background: var(--neo-surface); color: var(--neo-ink); border-bottom: 2px solid var(--neo-border); }
-.plaza-nav > div > div > span:first-child { border: 2px solid var(--neo-border); box-shadow: var(--neo-shadow-sm); background: #fff; --tw-ring-shadow: 0 0 #0000; }
+.plaza-nav { background: var(--ui-surface); color: var(--ui-ink); border-bottom: 1px solid var(--ui-border); }
 @media (max-width: 480px) { .plaza-nav > div { gap: 14px; flex-wrap: wrap; } .plaza-nav > div > div { flex: 1 1 180px; } }
 </style>

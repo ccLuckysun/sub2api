@@ -325,13 +325,15 @@ onUnmounted(() => {
 .date-picker-trigger {
   @apply flex cursor-pointer items-center gap-2 px-3 py-2 text-sm;
   min-height: 40px;
-  border: 2px solid var(--neo-border);
+  border: 1px solid var(--ui-control-border);
   border-radius: 9px;
-  background: var(--neo-surface);
-  color: var(--neo-ink);
-  transition: box-shadow var(--neo-duration) ease;
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  transition: box-shadow var(--ui-duration) ease;
 }
-.date-picker-trigger:focus-visible, .date-picker-trigger-open { outline: none; border-color: var(--neo-focus); box-shadow: 3px 3px 0 var(--neo-focus); }
+.date-picker-trigger:focus-visible, .date-picker-trigger-open { outline: none; border-color: var(--ui-ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-ring) 24%, transparent); }
+
+.date-picker-trigger:focus-visible { outline: 2px solid var(--ui-ring); outline-offset: 2px; }
 
 .date-picker-icon {
   @apply text-gray-400 dark:text-dark-400;
@@ -347,11 +349,11 @@ onUnmounted(() => {
 
 .date-picker-dropdown {
   @apply absolute left-0 z-[100] mt-2;
-  background: var(--neo-surface);
-  color: var(--neo-ink);
-  border: 2px solid var(--neo-border);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  box-shadow: var(--neo-shadow);
+  box-shadow: var(--ui-shadow);
   @apply overflow-hidden;
   @apply min-w-[320px];
 }
@@ -390,8 +392,8 @@ onUnmounted(() => {
 
 .date-picker-input {
   @apply w-full rounded-md px-2 py-1.5 text-sm;
-  @apply bg-gray-50 dark:bg-dark-700;
-  @apply border border-gray-200 dark:border-dark-600;
+  background: var(--ui-surface-raised);
+  border: 1px solid var(--ui-control-border);
   @apply text-gray-900 dark:text-gray-100;
   @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
 }
@@ -414,12 +416,12 @@ onUnmounted(() => {
 }
 
 .date-picker-apply {
-  @apply px-4 py-1.5 text-sm font-bold;
-  background: var(--neo-accent);
-  color: var(--neo-accent-ink);
-  border: 2px solid var(--neo-border);
+  @apply px-4 py-1.5 text-sm font-semibold;
+  background: var(--ui-accent);
+  color: var(--ui-accent-ink);
+  border: 1px solid var(--ui-border);
   border-radius: 7px;
-  box-shadow: 2px 2px 0 var(--neo-shadow-color);
+  box-shadow: var(--ui-shadow-sm);
 }
 .date-picker-apply:active { box-shadow: none; }
 

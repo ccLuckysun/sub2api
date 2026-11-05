@@ -15,9 +15,9 @@ export default {
         payment: '支付设置',
       },
       appearance: {
-        title: '站点外观 · 新粗野主义',
+        title: '站点外观',
         description: '统一首页、登录页和控制台的品牌配色、明暗模式与交互反馈。',
-        saveHint: '点击页面底部“保存设置”后生效。已有站点名称、Logo、自定义首页和简洁首页仍在通用设置中管理；个人外观偏好不会被改写。'
+        saveHint: '保存后生效，不会覆盖个人外观偏好。'
       },
       features: {
         channelMonitor: {

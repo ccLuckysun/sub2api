@@ -4,7 +4,7 @@
     <header class="relative z-20 px-6 py-4">
       <nav class="mx-auto flex max-w-6xl items-center justify-between">
         <router-link to="/home" class="flex items-center gap-3">
-          <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md">
+          <div class="h-10 w-10 overflow-hidden">
             <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </div>
           <span class="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">{{ siteName }}</span>
@@ -913,18 +913,18 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.key-usage-page { background: var(--neo-canvas); color: var(--neo-ink); }
-.key-usage-page > header { background: var(--neo-surface); border-bottom: 2px solid var(--neo-border); }
+.key-usage-page { background: var(--ui-canvas); color: var(--ui-ink); }
+.key-usage-page > header { background: var(--ui-surface); border-bottom: 1px solid var(--ui-border); }
 .key-usage-page > header nav { gap: 18px; flex-wrap: wrap; }
 .key-usage-page > header nav > a { min-width: 0; flex: 1 1 180px; overflow-wrap: anywhere; }
-.key-usage-page > header nav > a > div { flex-shrink: 0; border: 2px solid var(--neo-border); background: #fff; box-shadow: var(--neo-shadow-sm); }
-.key-usage-page > header nav > a > span { font-weight: 900; letter-spacing: -.035em; }
-.key-usage-page h1 { font-weight: 950; letter-spacing: -.055em; }
-.key-usage-page .usage-card { background: var(--neo-surface); border: 2px solid var(--neo-border); box-shadow: var(--neo-shadow); border-radius: 12px; backdrop-filter: none; }
-.key-usage-page input { border: 2px solid var(--neo-border); background: var(--neo-surface); color: var(--neo-ink); }
-.key-usage-page main h3 { text-transform: none; letter-spacing: normal; font-weight: 800; }
-.key-usage-page th { background: var(--neo-surface-soft); text-transform: none; letter-spacing: normal; font-weight: 800; color: var(--neo-ink); border-bottom: 2px solid var(--neo-border); }
-.key-usage-page footer { border-top: 2px solid var(--neo-border); background: var(--neo-surface); overflow-wrap: anywhere; }
+.key-usage-page > header nav > a > div { flex-shrink: 0; }
+.key-usage-page > header nav > a > span { font-weight: 600; letter-spacing: -.025em; }
+.key-usage-page h1 { font-weight: 600; letter-spacing: -.035em; }
+.key-usage-page .usage-card { background: var(--ui-surface); border: 1px solid var(--ui-border); box-shadow: var(--ui-shadow-sm); border-radius: var(--ui-radius); backdrop-filter: none; }
+.key-usage-page input { border: 1px solid var(--ui-border); background: var(--ui-surface); color: var(--ui-ink); }
+.key-usage-page main h3 { text-transform: none; letter-spacing: normal; font-weight: 600; }
+.key-usage-page th { background: var(--ui-surface-raised); text-transform: none; letter-spacing: normal; font-weight: 600; color: var(--ui-ink); border-bottom: 1px solid var(--ui-border); }
+.key-usage-page footer { border-top: 1px solid var(--ui-border); background: var(--ui-surface); overflow-wrap: anywhere; }
 .key-usage-page .query-row > .relative { min-width: 0; }
 @media (max-width: 480px) {
   .key-usage-page > header { padding: 16px; }
@@ -940,8 +940,8 @@ onUnmounted(() => {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .input-ring:focus {
-  box-shadow: 3px 3px 0 var(--neo-focus);
-  border-color: var(--neo-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-ring) 24%, transparent);
+  border-color: var(--ui-ring);
   outline: none;
 }
 
@@ -958,14 +958,10 @@ onUnmounted(() => {
   100% { background-position: 200% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background: linear-gradient(90deg, var(--ui-border) 25%, var(--ui-surface-raised) 50%, var(--ui-border) 75%);
   background-size: 200% 100%;
   animation: shimmer-kv 1.8s ease-in-out infinite;
   border-radius: 8px;
-}
-.dark .skeleton {
-  background: linear-gradient(90deg, #334155 25%, #1e293b 50%, #334155 75%);
-  background-size: 200% 100%;
 }
 
 /* Fade up animation */

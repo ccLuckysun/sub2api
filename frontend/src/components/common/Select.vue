@@ -521,20 +521,21 @@ onUnmounted(() => {
 .select-trigger {
   @apply flex w-full cursor-pointer items-center justify-between gap-2 px-3.5 py-2.5 text-sm;
   min-height: 42px;
-  border: 2px solid var(--neo-border);
+  border: 1px solid var(--ui-control-border);
   border-radius: 9px;
-  background: var(--neo-surface);
-  color: var(--neo-ink);
-  transition: box-shadow var(--neo-duration) ease, border-color var(--neo-duration) ease;
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  transition: box-shadow var(--ui-duration) ease, border-color var(--ui-duration) ease;
 }
 .select-trigger:focus-visible, .select-trigger-open {
-  border-color: var(--neo-focus);
+  border-color: var(--ui-ring);
   outline: none;
-  box-shadow: 3px 3px 0 var(--neo-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-ring) 24%, transparent);
 }
+.select-trigger:focus-visible { outline: 2px solid var(--ui-ring); outline-offset: 2px; }
 .select-trigger-error { border-color: #dc2626; }
-.select-trigger-error:focus-visible, .select-trigger-error.select-trigger-open { box-shadow: 3px 3px 0 #dc2626; }
-.select-trigger-disabled { @apply cursor-not-allowed opacity-60; background: var(--neo-surface-soft); }
+.select-trigger-error:focus-visible, .select-trigger-error.select-trigger-open { outline-color: #dc2626; box-shadow: 0 0 0 2px rgb(220 38 38 / .2); }
+.select-trigger-disabled { @apply cursor-not-allowed opacity-60; background: var(--ui-surface-raised); }
 
 .select-value {
   @apply flex-1 truncate text-left;
@@ -554,11 +555,11 @@ onUnmounted(() => {
 <style>
 .select-dropdown-portal {
   @apply w-max min-w-[200px];
-  background: var(--neo-surface);
-  color: var(--neo-ink);
-  border: 2px solid var(--neo-border);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  box-shadow: var(--neo-shadow);
+  box-shadow: var(--ui-shadow);
   @apply overflow-hidden;
   pointer-events: auto !important;
 }
@@ -589,15 +590,21 @@ onUnmounted(() => {
 }
 
 .select-dropdown-portal .select-option-selected {
-  background: var(--neo-accent);
-  color: var(--neo-accent-ink);
-  font-weight: 700;
+  background: var(--ui-accent);
+  color: var(--ui-accent-ink);
+  font-weight: 600;
 }
 
 .select-dropdown-portal .select-option-focused {
-  background: var(--neo-surface-soft);
-  outline: 2px solid var(--neo-border);
-  outline-offset: -2px;
+  outline: 1px solid var(--ui-ring);
+  outline-offset: -1px;
+}
+.select-dropdown-portal .select-option-focused:not(.select-option-selected) {
+  background: var(--ui-surface-raised);
+  color: var(--ui-ink);
+}
+.select-dropdown-portal .select-option-selected.select-option-focused {
+  outline-color: var(--ui-accent-ink);
 }
 
 .select-dropdown-portal .select-option-disabled {
@@ -607,7 +614,7 @@ onUnmounted(() => {
 .select-dropdown-portal .select-option-group {
   @apply cursor-default select-none;
   @apply bg-gray-50 dark:bg-dark-900;
-  @apply text-[11px] font-bold uppercase tracking-wider;
+  @apply text-[11px] font-semibold uppercase tracking-wider;
   @apply text-gray-500 dark:text-gray-400;
 }
 

@@ -1,7 +1,7 @@
 import { sanitizeUrl } from '@/utils/url'
 
 export function updateFavicon(logoUrl: string): void {
-  const sanitizedLogoUrl = sanitizeUrl(logoUrl, {
+  const sanitizedLogoUrl = sanitizeUrl(logoUrl || '/logo.svg', {
     allowRelative: true,
     allowDataUrl: true,
   })

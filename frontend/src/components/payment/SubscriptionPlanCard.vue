@@ -26,7 +26,7 @@
         <div class="shrink-0 text-right">
           <div class="flex items-baseline gap-1">
             <span class="text-xs text-gray-400 dark:text-dark-500">{{ planCurrencySymbol }}</span>
-            <span :class="['text-2xl font-extrabold tracking-tight', textClass]">{{ plan.price }}</span>
+            <span :class="['text-2xl font-semibold tracking-tight', textClass]">{{ plan.price }}</span>
             <span v-if="plan.currency" class="text-xs font-medium text-gray-400 dark:text-dark-500">{{ plan.currency }}</span>
           </div>
           <div class="flex items-center justify-end gap-1">

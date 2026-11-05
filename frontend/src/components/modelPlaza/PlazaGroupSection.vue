@@ -123,8 +123,8 @@ const longContextNote = computed(() => {
 </script>
 
 <style scoped>
-.plaza-group { border: 2px solid var(--neo-border); border-radius: 12px; background: var(--neo-surface); box-shadow: var(--neo-shadow); }
-.plaza-group > header { border-bottom: 2px solid var(--neo-border); background: var(--neo-surface-soft); }
+.plaza-group { border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-surface); box-shadow: var(--ui-shadow-sm); }
+.plaza-group > header { border-bottom: 1px solid var(--ui-border); background: var(--ui-surface-raised); }
 .plaza-group > header p { overflow-wrap: anywhere; }
 .plaza-group :deep(th) { text-transform: none; letter-spacing: normal; }
 </style>

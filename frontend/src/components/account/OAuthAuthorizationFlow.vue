@@ -151,7 +151,7 @@
             <!-- Refresh Token Input -->
             <div class="mb-4">
               <label
-                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink"
               >
                 <Icon name="key" size="sm" class="text-blue-500" />
                 Refresh Token
@@ -234,7 +234,7 @@
 
             <div class="mb-4">
               <label
-                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink"
               >
                 <Icon name="key" size="sm" class="text-blue-500" />
                 {{ t(getOAuthKey('ssoCookieLabel')) }}
@@ -308,7 +308,7 @@
             </p>
             <div class="mb-4">
               <label
-                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink"
               >
                 <Icon name="user" size="sm" class="text-blue-500" />
                 {{ t(getOAuthKey('emailPasswordInputLabel')) }}
@@ -382,7 +382,7 @@
 
             <div class="mb-4">
               <label
-                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink"
               >
                 <Icon name="key" size="sm" class="text-blue-500" />
                 {{ t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityInputLabel' : 'admin.accounts.oauth.openai.codexSessionInputLabel') }}
@@ -461,7 +461,7 @@
 
             <div class="mb-4">
               <label
-                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink"
               >
                 <Icon name="key" size="sm" class="text-blue-500" />
                 {{ t('admin.accounts.oauth.openai.codexPatInputLabel') }}
@@ -535,7 +535,7 @@
             <!-- sessionKey Input -->
             <div class="mb-4">
               <label
-                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-ui-ink"
               >
                 <Icon name="key" size="sm" class="text-blue-500" />
                 {{ t('admin.accounts.oauth.sessionKey') }}
@@ -667,7 +667,7 @@
           >
             <div class="flex items-start gap-3">
               <div
-                class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white"
+                class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white"
               >
                 1
               </div>
@@ -696,7 +696,7 @@
                     class="input w-full font-mono text-sm"
                     :placeholder="t('admin.accounts.oauth.gemini.projectIdPlaceholder')"
                   />
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  <p class="mt-1 text-xs text-ui-muted">
                     {{ t('admin.accounts.oauth.gemini.projectIdHint') }}
                   </p>
                 </div>
@@ -786,7 +786,7 @@
           >
             <div class="flex items-start gap-3">
               <div
-                class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white"
+                class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white"
               >
                 2
               </div>
@@ -827,7 +827,7 @@
           >
             <div class="flex items-start gap-3">
               <div
-                class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white"
+                class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white"
               >
                 3
               </div>
@@ -850,7 +850,7 @@
                     class="input w-full resize-none font-mono text-sm"
                     :placeholder="oauthAuthCodePlaceholder"
                   ></textarea>
-                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  <p class="mt-2 text-xs text-ui-muted">
                     <Icon name="infoCircle" size="xs" class="mr-1 inline" />
                     {{ oauthAuthCodeHint }}
                   </p>

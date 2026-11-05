@@ -1,0 +1,187 @@
+/* Black-hole interface foundations. useAppearance owns html attributes and .dark. */
+:root {
+  --ui-canvas: #F5F5F6;
+  --ui-surface: #FFFFFF;
+  --ui-surface-raised: #EEEEF0;
+  --ui-ink: #202126;
+  --ui-muted: #62636B;
+  --ui-border: #D5D6DC;
+  --ui-control-border: #7D7F89;
+  --ui-accent: #D5BEA4;
+  --ui-accent-ink: #191715;
+  --ui-ring: #785C42;
+  --ui-lavender: #C5B9EE;
+  --ui-ice: #BAD9E5;
+  --ui-shadow-color: rgb(16 18 24 / .08);
+  --ui-shadow: 0 8px 28px rgb(16 18 24 / .06), 0 1px 3px rgb(16 18 24 / .04);
+  --ui-shadow-sm: 0 2px 8px rgb(16 18 24 / .05);
+  --ui-radius: 12px;
+  --ui-duration: 180ms;
+  --ui-ease: cubic-bezier(.2, .8, .2, 1);
+  --ui-table-py: 12px;
+  --ui-table-px: 16px;
+  --ui-primary-50: 247 245 242;
+  --ui-primary-100: 238 231 223;
+  --ui-primary-200: 226 212 195;
+  --ui-primary-300: 213 190 164;
+  --ui-primary-400: 121 93 66;
+  --ui-primary-500: 112 83 56;
+  --ui-primary-600: 99 72 48;
+  --ui-primary-700: 82 59 40;
+  --ui-primary-800: 63 46 32;
+  --ui-primary-900: 43 33 25;
+  --ui-primary-950: 26 21 17;
+}
+
+:root[data-accent='pink'] {
+  --ui-accent: #C5B9EE;
+  --ui-ring: #694F8C;
+  --ui-primary-50: 247 245 252;
+  --ui-primary-100: 237 231 248;
+  --ui-primary-200: 218 207 240;
+  --ui-primary-300: 197 185 238;
+  --ui-primary-400: 115 89 150;
+  --ui-primary-500: 105 79 140;
+  --ui-primary-600: 92 66 125;
+  --ui-primary-700: 78 55 108;
+  --ui-primary-800: 60 43 82;
+  --ui-primary-900: 41 31 56;
+  --ui-primary-950: 25 20 33;
+}
+
+:root[data-accent='blue'] {
+  --ui-accent: #BAD9E5;
+  --ui-ring: #2E5E6F;
+  --ui-primary-50: 243 248 250;
+  --ui-primary-100: 227 239 244;
+  --ui-primary-200: 205 225 234;
+  --ui-primary-300: 186 217 229;
+  --ui-primary-400: 56 103 120;
+  --ui-primary-500: 46 94 111;
+  --ui-primary-600: 37 81 98;
+  --ui-primary-700: 30 68 82;
+  --ui-primary-800: 25 51 62;
+  --ui-primary-900: 20 36 44;
+  --ui-primary-950: 15 23 28;
+}
+
+:root.dark {
+  --ui-canvas: #08090B;
+  --ui-surface: #111216;
+  --ui-surface-raised: #1A1B20;
+  --ui-ink: #ECE8E1;
+  --ui-muted: #A6A19A;
+  --ui-border: #33353D;
+  --ui-control-border: #70727D;
+  --ui-ring: var(--ui-accent);
+  --ui-shadow-color: rgb(0 0 0 / .3);
+  --ui-shadow: 0 12px 36px rgb(0 0 0 / .22), inset 0 1px 0 rgb(255 255 255 / .025);
+  --ui-shadow-sm: 0 2px 10px rgb(0 0 0 / .16);
+  --ui-primary-400: 225 205 183;
+  --ui-primary-500: 213 190 164;
+  --ui-primary-600: 194 166 136;
+  --ui-primary-700: 181 151 120;
+  --ui-primary-800: 107 85 63;
+}
+
+:root.dark[data-accent='pink'] {
+  --ui-primary-400: 218 209 245;
+  --ui-primary-500: 197 185 238;
+  --ui-primary-600: 183 167 225;
+  --ui-primary-700: 168 148 211;
+  --ui-primary-800: 98 80 128;
+}
+
+:root.dark[data-accent='blue'] {
+  --ui-primary-400: 212 232 240;
+  --ui-primary-500: 186 217 229;
+  --ui-primary-600: 160 200 216;
+  --ui-primary-700: 140 185 204;
+  --ui-primary-800: 67 103 119;
+}
+
+/* Compatibility only: legacy page-local styles migrate without a flag day. */
+:root {
+  --neo-canvas: var(--ui-canvas);
+  --neo-surface: var(--ui-surface);
+  --neo-surface-soft: var(--ui-surface-raised);
+  --neo-ink: var(--ui-ink);
+  --neo-muted: var(--ui-muted);
+  --neo-border: var(--ui-border);
+  --neo-divider: var(--ui-border);
+  --neo-accent: var(--ui-accent);
+  --neo-accent-ink: var(--ui-accent-ink);
+  --neo-pink: var(--ui-lavender);
+  --neo-blue: var(--ui-ice);
+  --neo-shadow-color: var(--ui-shadow-color);
+  --neo-shadow: var(--ui-shadow);
+  --neo-shadow-sm: var(--ui-shadow-sm);
+  --neo-radius: var(--ui-radius);
+  --neo-focus: var(--ui-ring);
+  --neo-duration: var(--ui-duration);
+  --neo-ease: var(--ui-ease);
+  --neo-table-py: var(--ui-table-py);
+  --neo-table-px: var(--ui-table-px);
+  --neo-primary-50: var(--ui-primary-50);
+  --neo-primary-100: var(--ui-primary-100);
+  --neo-primary-200: var(--ui-primary-200);
+  --neo-primary-300: var(--ui-primary-300);
+  --neo-primary-400: var(--ui-primary-400);
+  --neo-primary-500: var(--ui-primary-500);
+  --neo-primary-600: var(--ui-primary-600);
+  --neo-primary-700: var(--ui-primary-700);
+  --neo-primary-800: var(--ui-primary-800);
+  --neo-primary-900: var(--ui-primary-900);
+  --neo-primary-950: var(--ui-primary-950);
+}
+
+html[data-density='compact'] { --ui-table-py: 8px; --ui-table-px: 12px; }
+html[data-motion='moderate'] { --ui-duration: 100ms; }
+html[data-motion='off'] { --ui-duration: 0ms; }
+
+@layer utilities {
+  /* Dark primary utility backgrounds use light channels for readable text.
+     White-on-primary legacy controls therefore need the paired dark ink. */
+  .dark .text-white:is(.bg-primary-500, .bg-primary-600, .from-primary-500, .from-primary-600) { color: var(--ui-accent-ink); }
+  .bg-ui-canvas, .bg-neo-canvas { background-color: var(--ui-canvas); }
+  .bg-ui-surface, .bg-neo-surface { background-color: var(--ui-surface); }
+  .bg-ui-accent, .bg-neo-accent { background-color: var(--ui-accent); color: var(--ui-accent-ink); }
+  .text-ui-ink, .text-neo-ink { color: var(--ui-ink); }
+  .text-ui-muted, .text-neo-muted { color: var(--ui-muted); }
+  .border-ui-control { border-color: var(--ui-control-border); }
+  .border-ui, .border-neo { border-color: var(--ui-border); }
+  .neo-outline { border: 1px solid var(--ui-border); }
+  .neo-shadow { box-shadow: var(--ui-shadow); }
+  .neo-panel { background: var(--ui-surface); color: var(--ui-ink); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow); }
+}
+
+/* Motion preferences cover component-scoped and third-party transitions too.
+   Keep a single animation frame so completion events still fire. Spinner shapes,
+   loading labels and progress values remain visible without perpetual motion. */
+html[data-motion='off'],
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: .01ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0ms !important;
+  transition-delay: 0ms !important;
+}
+
+html[data-motion='off'] :is(.btn, .sidebar-link, .card-hover):is(:hover, :active) {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html, html *, html *::before, html *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+    transition-delay: 0ms !important;
+  }
+  :is(.btn, .sidebar-link, .card-hover):is(:hover, :active) { transform: none; }
+}

@@ -9,17 +9,17 @@
       <!-- Account Info Card -->
       <div
         v-if="account"
-        class="flex items-center justify-between rounded-xl border p-3 bg-neo-surface console-panel"
+        class="flex items-center justify-between rounded-xl border p-3 bg-ui-surface console-panel"
       >
         <div class="flex items-center gap-3">
           <div
-            class="flex h-10 w-10 items-center justify-center rounded-lg bg-neo-accent console-stat-icon"
+            class="flex h-10 w-10 items-center justify-center rounded-lg bg-ui-accent console-stat-icon"
           >
-            <Icon name="play" size="md" class="text-gray-950" :stroke-width="2" />
+            <Icon name="play" size="md" class="text-ui-ink" :stroke-width="2" />
           </div>
           <div>
-            <div class="font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
-            <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <div class="font-semibold text-ui-ink dark:text-gray-100">{{ account.name }}</div>
+            <div class="flex items-center gap-1.5 text-xs text-ui-muted">
               <span
                 class="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase dark:bg-dark-500"
               >
@@ -34,7 +34,7 @@
             'rounded-full px-2.5 py-1 text-xs font-semibold',
             account.status === 'active'
               ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+              : 'bg-gray-100 text-ui-muted dark:bg-gray-700 dark:text-ui-muted'
           ]"
         >
           {{ account.status }}
@@ -42,7 +42,7 @@
       </div>
 
       <div class="space-y-1.5">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label class="text-sm font-medium text-ui-ink">
           {{ t('admin.accounts.selectTestModel') }}
         </label>
         <Select
@@ -56,7 +56,7 @@
       </div>
 
       <div v-if="isOpenAIAccount" class="space-y-1.5">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label class="text-sm font-medium text-ui-ink">
           {{ t('admin.accounts.openai.testMode') }}
         </label>
         <Select
@@ -84,7 +84,7 @@
           class="max-h-[240px] min-h-[120px] overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-4 font-mono text-sm dark:border-gray-800 dark:bg-black"
         >
           <!-- Status Line -->
-          <div v-if="status === 'idle'" class="flex items-center gap-2 text-gray-500">
+          <div v-if="status === 'idle'" class="flex items-center gap-2 text-ui-muted">
             <Icon name="play" size="sm" :stroke-width="2" />
             <span>{{ t('admin.accounts.readyToTest') }}</span>
           </div>
@@ -124,7 +124,7 @@
         <button
           v-if="outputLines.length > 0"
           @click="copyOutput"
-          class="absolute right-2 top-2 rounded-lg bg-gray-800/80 p-1.5 text-gray-400 opacity-0 transition-all hover:bg-gray-700 hover:text-white group-hover:opacity-100"
+          class="absolute right-2 top-2 rounded-lg bg-gray-800/80 p-1.5 text-ui-muted opacity-0 transition-all hover:bg-gray-700 hover:text-white group-hover:opacity-100"
           :title="t('admin.accounts.copyOutput')"
         >
           <Icon name="link" size="sm" :stroke-width="2" />
@@ -132,21 +132,21 @@
       </div>
 
       <div v-if="generatedImages.length > 0" class="space-y-2">
-        <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
+        <div class="text-xs font-medium text-ui-muted dark:text-ui-ink">
           {{ t('admin.accounts.imagePreview') }}
         </div>
         <div class="flex flex-wrap justify-center gap-3">
           <div
             v-for="(image, index) in generatedImages"
             :key="`${image.url}-${index}`"
-            class="group/img relative cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
+            class="group/img relative cursor-pointer overflow-hidden rounded-xl border border-ui bg-ui-surface shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
             @click="previewImageUrl = image.url"
           >
             <img :src="image.url" :alt="`test-image-${index + 1}`" class="max-h-[360px] w-full object-contain" />
             <div class="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/20">
               <Icon name="eye" size="lg" class="text-white opacity-0 drop-shadow-lg transition-opacity group-hover/img:opacity-100" :stroke-width="2" />
             </div>
-            <div class="border-t border-gray-100 px-3 py-1.5 text-xs text-gray-500 dark:border-dark-500 dark:text-gray-300">
+            <div class="border-t border-ui px-3 py-1.5 text-xs text-ui-muted dark:border-dark-500 dark:text-ui-ink">
               {{ image.mimeType || 'image/*' }}
             </div>
           </div>
@@ -177,7 +177,7 @@
       </Teleport>
 
       <!-- Test Info -->
-      <div class="flex items-center justify-between px-1 text-xs text-gray-500 dark:text-gray-400">
+      <div class="flex items-center justify-between px-1 text-xs text-ui-muted">
         <div class="flex items-center gap-3">
           <span class="flex items-center gap-1">
             <Icon name="grid" size="sm" :stroke-width="2" />
@@ -199,7 +199,7 @@
       <div class="flex justify-end gap-3">
         <button
           @click="handleClose"
-          class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500"
+          class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-ui-ink transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-ui-ink dark:hover:bg-dark-500"
         >
           {{ t('common.close') }}
         </button>
@@ -410,7 +410,7 @@ const startTest = async () => {
   resetState()
   status.value = 'connecting'
   addLine(t('admin.accounts.startingTestForAccount', { name: props.account.name }), 'text-blue-400')
-  addLine(t('admin.accounts.testAccountTypeLabel', { type: props.account.type }), 'text-gray-400')
+  addLine(t('admin.accounts.testAccountTypeLabel', { type: props.account.type }), 'text-ui-muted')
   addLine('', 'text-gray-300')
 
   abortStream()
@@ -501,7 +501,7 @@ const handleEvent = (event: {
         supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
             : t('admin.accounts.sendingTestMessage'),
-        'text-gray-400'
+        'text-ui-muted'
       )
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')

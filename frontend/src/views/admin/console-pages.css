@@ -2,50 +2,50 @@
    stay with their existing components; this is not a global utility override. */
 .console-toolbar {
   padding-bottom: .75rem;
-  border-bottom: 2px solid var(--neo-border);
+  border-bottom: 1px solid var(--ui-border);
 }
 .console-panel,
 .console-popover {
-  background: var(--neo-surface);
-  color: var(--neo-ink);
-  border: 2px solid var(--neo-border);
-  border-radius: var(--neo-radius);
-  box-shadow: var(--neo-shadow);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow);
 }
 .console-popover { border-radius: 9px; }
 .console-bulk-bar {
-  background: var(--neo-surface-soft);
-  border-bottom: 2px solid var(--neo-border);
+  background: var(--ui-surface-raised);
+  border-bottom: 1px solid var(--ui-border);
   border-radius: 0;
 }
 .console-stat-icon {
-  border: 2px solid var(--neo-border);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
-  box-shadow: 2px 2px 0 var(--neo-shadow-color);
+  box-shadow: none;
 }
 .console-kpi {
-  color: var(--neo-ink);
-  font-weight: 800;
+  color: var(--ui-ink);
+  font-weight: 600;
   letter-spacing: -.035em;
   font-variant-numeric: tabular-nums;
 }
 .console-choice {
-  border: 2px solid var(--neo-border);
-  transition: box-shadow var(--neo-duration) var(--neo-ease), background-color var(--neo-duration) ease;
+  border: 1px solid var(--ui-border);
+  transition: border-color var(--ui-duration) ease, background-color var(--ui-duration) ease;
 }
 .console-choice[aria-pressed='true'] {
-  border-color: var(--neo-border);
-  box-shadow: var(--neo-shadow-sm);
+  border-color: var(--ui-ring);
+  box-shadow: inset 0 0 0 1px var(--ui-ring);
 }
 .console-plan-card {
-  border: 2px solid var(--neo-border);
-  border-radius: var(--neo-radius);
-  box-shadow: var(--neo-shadow);
-  transition: box-shadow var(--neo-duration) var(--neo-ease);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-sm);
+  transition: border-color var(--ui-duration) ease, box-shadow var(--ui-duration) var(--ui-ease);
 }
-.console-plan-card:hover { box-shadow: 6px 6px 0 var(--neo-shadow-color); }
+.console-plan-card:hover { border-color: var(--ui-ring); box-shadow: var(--ui-shadow); }
 .console-save-bar {
-  background: var(--neo-surface);
-  border-top: 2px solid var(--neo-border);
-  box-shadow: 0 -3px 0 var(--neo-shadow-color);
+  background: var(--ui-surface);
+  border-top: 1px solid var(--ui-border);
+  box-shadow: 0 -4px 18px var(--ui-shadow-color);
 }

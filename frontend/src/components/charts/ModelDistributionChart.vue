@@ -1,7 +1,7 @@
 <template>
   <div class="card p-4">
     <div class="mb-4 flex items-center justify-between gap-3">
-      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+      <h3 class="text-sm font-semibold text-ui-ink">
         {{ !enableRankingView || activeView === 'model_distribution'
           ? t('admin.dashboard.modelDistribution')
           : t('admin.dashboard.spendingRankingTitle') }}
@@ -9,14 +9,14 @@
       <div class="flex flex-wrap items-center justify-end gap-2">
         <div
           v-if="showSourceToggle"
-          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-700 dark:bg-dark-800"
+          class="inline-flex rounded-lg border border-ui bg-gray-50 p-0.5 dark:border-ui dark:bg-ui-surface"
         >
           <button
             type="button"
             class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
             :class="source === 'requested'
-              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+              ? 'bg-ui-surface text-ui-ink shadow-sm dark:bg-dark-700 dark:text-ui-ink'
+              : 'text-ui-muted hover:text-gray-700 dark:text-ui-muted dark:hover:text-gray-200'"
             @click="emit('update:source', 'requested')"
           >
             {{ t('usage.requestedModel') }}
@@ -25,8 +25,8 @@
             type="button"
             class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
             :class="source === 'upstream'
-              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+              ? 'bg-ui-surface text-ui-ink shadow-sm dark:bg-dark-700 dark:text-ui-ink'
+              : 'text-ui-muted hover:text-gray-700 dark:text-ui-muted dark:hover:text-gray-200'"
             @click="emit('update:source', 'upstream')"
           >
             {{ t('usage.upstreamModel') }}
@@ -35,8 +35,8 @@
             type="button"
             class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
             :class="source === 'mapping'
-              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+              ? 'bg-ui-surface text-ui-ink shadow-sm dark:bg-dark-700 dark:text-ui-ink'
+              : 'text-ui-muted hover:text-gray-700 dark:text-ui-muted dark:hover:text-gray-200'"
             @click="emit('update:source', 'mapping')"
           >
             {{ t('usage.mapping') }}
@@ -44,14 +44,14 @@
         </div>
         <div
           v-if="showMetricToggle"
-          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-700 dark:bg-dark-800"
+          class="inline-flex rounded-lg border border-ui bg-gray-50 p-0.5 dark:border-ui dark:bg-ui-surface"
         >
           <button
             type="button"
             class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
             :class="metric === 'tokens'
-              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+              ? 'bg-ui-surface text-ui-ink shadow-sm dark:bg-dark-700 dark:text-ui-ink'
+              : 'text-ui-muted hover:text-gray-700 dark:text-ui-muted dark:hover:text-gray-200'"
             @click="emit('update:metric', 'tokens')"
           >
             {{ t('admin.dashboard.metricTokens') }}
@@ -60,21 +60,21 @@
             type="button"
             class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
             :class="metric === 'actual_cost'
-              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
-              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+              ? 'bg-ui-surface text-ui-ink shadow-sm dark:bg-dark-700 dark:text-ui-ink'
+              : 'text-ui-muted hover:text-gray-700 dark:text-ui-muted dark:hover:text-gray-200'"
             @click="emit('update:metric', 'actual_cost')"
           >
             {{ t('admin.dashboard.metricActualCost') }}
           </button>
         </div>
-        <div v-if="enableRankingView" class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-dark-800">
+        <div v-if="enableRankingView" class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-ui-surface">
           <button
             type="button"
             class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
             :class="
               activeView === 'model_distribution'
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                ? 'bg-ui-surface text-ui-ink shadow-sm dark:bg-dark-700 dark:text-ui-ink'
+                : 'text-ui-muted hover:text-gray-700 dark:text-ui-muted dark:hover:text-gray-200'
             "
             @click="activeView = 'model_distribution'"
           >
@@ -85,8 +85,8 @@
             class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
             :class="
               activeView === 'spending_ranking'
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                ? 'bg-ui-surface text-ui-ink shadow-sm dark:bg-dark-700 dark:text-ui-ink'
+                : 'text-ui-muted hover:text-gray-700 dark:text-ui-muted dark:hover:text-gray-200'
             "
             @click="activeView = 'spending_ranking'"
           >
@@ -109,7 +109,7 @@
       <div class="max-h-48 w-full min-w-0 flex-1 overflow-auto">
         <table class="w-full text-xs">
           <thead>
-            <tr class="text-gray-500 dark:text-gray-400">
+            <tr class="text-ui-muted">
               <th class="pb-2 text-left">{{ t('admin.dashboard.model') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.requests') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.tokens') }}</th>
@@ -121,13 +121,13 @@
           <tbody>
             <template v-for="model in displayModelStats" :key="model.model">
               <tr
-                class="border-t border-gray-100 transition-colors dark:border-dark-700"
+                class="border-t border-ui transition-colors dark:border-ui"
                 :class="enableBreakdown ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40' : ''"
                 @click="enableBreakdown && toggleBreakdown('model', model.model)"
               >
                 <td
                   class="max-w-[100px] truncate py-1.5 font-medium"
-                  :class="enableBreakdown ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300' : 'text-gray-900 dark:text-white'"
+                  :class="enableBreakdown ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300' : 'text-ui-ink'"
                   :title="model.model"
                 >
                   <span class="inline-flex items-center gap-1">
@@ -136,10 +136,10 @@
                     {{ model.model }}
                   </span>
                 </td>
-                <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
+                <td class="py-1.5 text-right text-ui-muted">
                   {{ formatNumber(model.requests) }}
                 </td>
-                <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
+                <td class="py-1.5 text-right text-ui-muted">
                   {{ formatTokens(model.total_tokens) }}
                 </td>
                 <td class="py-1.5 text-right text-green-600 dark:text-green-400">
@@ -148,7 +148,7 @@
                 <td v-if="showAccountCost" class="py-1.5 text-right text-orange-500 dark:text-orange-400">
                   ${{ formatCost(model.account_cost) }}
                 </td>
-                <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
+                <td class="py-1.5 text-right text-ui-muted">
                   ${{ formatCost(model.cost) }}
                 </td>
               </tr>
@@ -168,7 +168,7 @@
     </div>
     <div
       v-else-if="activeView === 'model_distribution'"
-      class="flex h-48 items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+      class="flex h-48 items-center justify-center text-sm text-ui-muted"
     >
       {{ t('admin.dashboard.noDataAvailable') }}
     </div>
@@ -178,7 +178,7 @@
     </div>
     <div
       v-else-if="rankingError"
-      class="flex h-48 items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+      class="flex h-48 items-center justify-center text-sm text-ui-muted"
     >
       {{ t('admin.dashboard.failedToLoad') }}
     </div>
@@ -189,7 +189,7 @@
       <div class="max-h-48 w-full min-w-0 flex-1 overflow-auto">
         <table class="w-full text-xs">
           <thead>
-            <tr class="text-gray-500 dark:text-gray-400">
+            <tr class="text-ui-muted">
               <th class="pb-2 text-left">{{ t('admin.dashboard.spendingRankingUser') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingRequests') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingTokens') }}</th>
@@ -200,7 +200,7 @@
             <tr
               v-for="(item, index) in rankingDisplayItems"
               :key="item.isOther ? 'others' : `${item.user_id}-${index}`"
-              class="border-t border-gray-100 transition-colors dark:border-dark-700"
+              class="border-t border-ui transition-colors dark:border-ui"
               :class="item.isOther
                 ? 'bg-gray-50/70 dark:bg-dark-700/20'
                 : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40'"
@@ -208,21 +208,21 @@
             >
               <td class="py-1.5">
                 <div class="flex min-w-0 items-center gap-2">
-                  <span class="shrink-0 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                  <span class="shrink-0 text-[11px] font-semibold text-ui-muted">
                     {{ item.isOther ? 'Σ' : `#${index + 1}` }}
                   </span>
                   <span
-                    class="block max-w-[140px] truncate font-medium text-gray-900 dark:text-white"
+                    class="block max-w-[140px] truncate font-medium text-ui-ink"
                     :title="getRankingRowLabel(item)"
                   >
                     {{ getRankingRowLabel(item) }}
                   </span>
                 </div>
               </td>
-              <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
+              <td class="py-1.5 text-right text-ui-muted">
                 {{ formatNumber(item.requests) }}
               </td>
-              <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
+              <td class="py-1.5 text-right text-ui-muted">
                 {{ formatTokens(item.tokens) }}
               </td>
               <td class="py-1.5 text-right text-green-600 dark:text-green-400">
@@ -235,7 +235,7 @@
     </div>
     <div
       v-else
-      class="flex h-48 items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+      class="flex h-48 items-center justify-center text-sm text-ui-muted"
     >
       {{ t('admin.dashboard.noDataAvailable') }}
     </div>

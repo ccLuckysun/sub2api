@@ -15,7 +15,7 @@ export default {
       remaining: 'Closes in {seconds}s',
       options: {
         system: 'System', light: 'Light', dark: 'Dark',
-        yellow: 'Classic yellow', pink: 'Berry pink', blue: 'Sky blue',
+        yellow: 'Champagne', pink: 'Lavender', blue: 'Ice blue',
         rich: 'Rich', moderate: 'Moderate', off: 'Off',
         standard: 'Standard', compact: 'Compact'
       }

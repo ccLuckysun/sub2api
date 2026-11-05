@@ -15,9 +15,9 @@ export default {
         payment: 'Payment',
       },
       appearance: {
-        title: 'Site appearance · Neo-brutalist',
+        title: 'Site appearance',
         description: 'Unify the homepage, sign-in pages and console with consistent color, contrast and interaction.',
-        saveHint: 'Apply changes with Save settings at the bottom. Branding, custom home content and compact home remain under General. Personal preferences are not overwritten.'
+        saveHint: 'Changes apply after saving. Personal preferences are preserved.'
       },
       features: {
         channelMonitor: {

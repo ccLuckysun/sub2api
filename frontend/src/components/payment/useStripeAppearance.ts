@@ -9,9 +9,12 @@ export function useStripeAppearance() {
   const { colors } = useChartTheme()
   return computed<Appearance>(() => {
     const palette = colors.value
-    const focus = isDark.value ? palette.accent : {
-      yellow: '#705400', pink: '#9c275c', blue: '#175ea0'
-    }[effective.value.accent]
+    const ring = typeof document !== 'undefined' && typeof getComputedStyle !== 'undefined'
+      ? getComputedStyle(document.documentElement).getPropertyValue('--ui-ring').trim()
+      : ''
+    const focus = ring || (isDark.value ? palette.accent : {
+      yellow: '#785C42', pink: '#694F8C', blue: '#2E5E6F'
+    }[effective.value.accent])
     return {
       theme: isDark.value ? 'night' : 'stripe',
       variables: {
@@ -21,25 +24,25 @@ export function useStripeAppearance() {
         colorTextSecondary: palette.muted,
         colorTextPlaceholder: palette.muted,
         colorDanger: isDark.value ? '#f87171' : '#b91c1c',
-        borderRadius: '8px',
-        fontFamily: '"Avenir Next", "Segoe UI", sans-serif'
+        borderRadius: '9px',
+        fontFamily: '"Helvetica Neue", "Segoe UI", "PingFang SC", sans-serif'
       },
       rules: {
         '.Input': {
-          border: `2px solid ${palette.border}`,
+          border: `1px solid ${palette.border}`,
           boxShadow: 'none',
           transition: motion.value === 'off' ? 'none' : 'box-shadow 120ms ease'
         },
-        '.Input:focus': { borderColor: focus, boxShadow: `3px 3px 0 ${focus}` },
-        '.Tab': { border: `2px solid ${palette.border}`, boxShadow: 'none' },
+        '.Input:focus': { borderColor: focus, boxShadow: `0 0 0 1px ${focus}` },
+        '.Tab': { border: `1px solid ${palette.border}`, boxShadow: 'none' },
         '.Tab--selected': {
           backgroundColor: palette.accent,
-          color: '#111111',
+          color: '#191715',
           borderColor: palette.border,
-          boxShadow: `3px 3px 0 ${isDark.value ? '#050505' : '#111111'}`
+          boxShadow: 'none'
         },
-        '.TabIcon--selected': { color: '#111111' },
-        '.Label': { fontWeight: '700' }
+        '.TabIcon--selected': { color: '#191715' },
+        '.Label': { fontWeight: '500' }
       }
     }
   })

@@ -13,6 +13,12 @@ describe('updateFavicon', () => {
     expect(link?.href).toBe('https://example.com/custom-logo.png')
   })
 
+  it('restores the default black-hole favicon when custom branding is cleared', () => {
+    updateFavicon('https://example.com/custom-logo.png')
+    updateFavicon('')
+    expect(document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.getAttribute('href')).toBe('/logo.svg')
+  })
+
   it('ignores unsafe logo URLs', () => {
     updateFavicon('javascript:alert(1)')
 

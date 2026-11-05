@@ -688,15 +688,15 @@ async function waitForServiceRestart() {
 </script>
 
 <style scoped>
-.setup-page { background: var(--neo-canvas); color: var(--neo-ink); padding-top: 40px; padding-bottom: 40px; overflow-wrap: anywhere; }
-.setup-mark { background: var(--neo-accent); color: var(--neo-accent-ink); border: 2px solid var(--neo-border); border-radius: 12px; box-shadow: 5px 5px 0 var(--neo-shadow-color); }
-.setup-page h1 { font-weight: 950; letter-spacing: -.05em; }
-.setup-page h2 { font-weight: 900; letter-spacing: -.025em; }
-.setup-step { border: 2px solid var(--neo-border); border-radius: 8px; }
-.setup-step.bg-primary-500 { background: var(--neo-accent); color: var(--neo-accent-ink); }
-.setup-step[aria-current='step'] { box-shadow: 3px 3px 0 var(--neo-shadow-color); --tw-ring-shadow: 0 0 #0000; }
+.setup-page { background: var(--ui-canvas); color: var(--ui-ink); padding-top: 40px; padding-bottom: 40px; overflow-wrap: anywhere; }
+.setup-mark { background: var(--ui-surface-raised); color: var(--ui-ink); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
+.setup-page h1 { font-weight: 600; letter-spacing: -.035em; }
+.setup-page h2 { font-weight: 600; letter-spacing: -.025em; }
+.setup-step { border: 1px solid var(--ui-border); border-radius: 8px; }
+.setup-step.bg-primary-500 { background: var(--ui-accent); color: var(--ui-accent-ink); }
+.setup-step[aria-current='step'] { outline: 2px solid var(--ui-ring); outline-offset: 3px; --tw-ring-shadow: 0 0 #0000; }
 .setup-card { min-width: 0; }
-.setup-card .border-gray-200 { border: 2px solid var(--neo-border); }
+.setup-card .border-gray-200 { border-color: var(--ui-border); }
 .setup-card input { min-width: 0; }
 .setup-page > div { min-width: 0; }
 </style>

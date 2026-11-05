@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<Props>(), {
   <div class="space-y-6">
     <!-- Header (matches OpsDashboardHeader + overview blocks) -->
     <div :class="['console-panel', props.fullscreen ? 'p-8' : 'p-6']">
-      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4 dark:border-dark-700">
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-ui pb-4 dark:border-ui">
         <div class="space-y-2">
           <div class="h-6 w-44 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
           <div class="h-3 w-80 max-w-full animate-pulse rounded bg-gray-100 dark:bg-dark-700/70"></div>

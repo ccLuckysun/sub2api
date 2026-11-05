@@ -14,13 +14,13 @@
           data-test="withdraw-selected-user"
         >
           <div class="min-w-0 truncate text-sm">
-            <span class="font-mono text-gray-500 dark:text-dark-400">#{{ selectedUser.id }}</span>
-            <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ selectedUser.email }}</span>
-            <span v-if="selectedUser.username" class="ml-1 text-xs text-gray-500 dark:text-dark-400">({{ selectedUser.username }})</span>
+            <span class="font-mono text-ui-muted dark:text-dark-400">#{{ selectedUser.id }}</span>
+            <span class="ml-2 font-medium text-ui-ink">{{ selectedUser.email }}</span>
+            <span v-if="selectedUser.username" class="ml-1 text-xs text-ui-muted dark:text-dark-400">({{ selectedUser.username }})</span>
           </div>
           <button
             type="button"
-            class="text-lg leading-none text-gray-400 hover:text-red-600 disabled:opacity-50"
+            class="text-lg leading-none text-ui-muted hover:text-red-600 disabled:opacity-50"
             :title="t('admin.affiliates.withdraw.changeUser')"
             :disabled="submitting || outcomeUncertain"
             data-test="withdraw-clear-user"
@@ -40,17 +40,17 @@
           />
           <div
             v-if="userResults.length > 0"
-            class="mt-1 max-h-40 overflow-y-auto rounded border border-gray-200 dark:border-dark-700"
+            class="mt-1 max-h-40 overflow-y-auto rounded border border-ui"
           >
             <button
               v-for="user in userResults"
               :key="user.id"
               type="button"
-              class="w-full px-3 py-1.5 text-left text-sm text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-dark-800"
+              class="w-full px-3 py-1.5 text-left text-sm text-ui-ink hover:bg-gray-100 dark:text-ui-ink dark:hover:bg-dark-800"
               data-test="withdraw-user-option"
               @click="selectUser(user)"
             >
-              {{ user.email }} <span class="text-xs text-gray-500 dark:text-dark-400">({{ user.username }})</span>
+              {{ user.email }} <span class="text-xs text-ui-muted dark:text-dark-400">({{ user.username }})</span>
             </button>
           </div>
           <p v-else-if="searched" class="input-hint">{{ t('admin.affiliates.withdraw.noUserFound') }}</p>
@@ -59,19 +59,19 @@
 
       <div
         v-if="selectedUser"
-        class="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-800"
+        class="rounded-lg border border-ui bg-gray-50 p-3 dark:border-ui dark:bg-ui-surface"
       >
         <div class="flex items-center justify-between text-sm">
-          <span class="text-gray-500 dark:text-dark-400">{{ t('admin.affiliates.withdraw.availableQuota') }}</span>
+          <span class="text-ui-muted dark:text-dark-400">{{ t('admin.affiliates.withdraw.availableQuota') }}</span>
           <span
             v-if="overviewLoading"
             class="h-4 w-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
           ></span>
-          <span v-else class="font-semibold text-gray-900 dark:text-white" data-test="withdraw-available-quota">
+          <span v-else class="font-semibold text-ui-ink" data-test="withdraw-available-quota">
             ${{ formatPreciseAmount(availableQuota) }}
           </span>
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.affiliates.withdraw.frozenHint') }}</p>
+        <p class="mt-1 text-xs text-ui-muted dark:text-dark-400">{{ t('admin.affiliates.withdraw.frozenHint') }}</p>
       </div>
 
       <div>

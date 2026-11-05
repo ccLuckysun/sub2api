@@ -33,7 +33,7 @@
       <p class="input-hint">{{ t("admin.groups.form.maxReasoningEffortOverLimitHint") }}</p>
     </div>
 
-    <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+    <div class="border-t border-ui pt-4 dark:border-ui">
       <div class="mb-3 flex items-center justify-between gap-3">
         <div>
           <label class="input-label mb-0">
@@ -57,7 +57,7 @@
         <div
           v-for="group in mappings"
           :key="group.id"
-          class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/40 p-3 dark:border-dark-600 dark:bg-dark-800/40"
+          class="space-y-3 rounded-lg border border-ui bg-gray-50/40 p-3 dark:border-ui dark:bg-dark-800/40"
         >
           <div
             class="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(0,1fr)_1.25rem_minmax(0,1fr)_2.75rem]"
@@ -107,7 +107,7 @@
 
             <button
               type="button"
-              class="flex h-11 w-11 items-center justify-center self-end rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              class="flex h-11 w-11 items-center justify-center self-end rounded-lg text-ui-muted transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               :title="t('admin.groups.form.removeReasoningEffortMapping')"
               :aria-label="t('admin.groups.form.removeReasoningEffortMapping')"
               @click="removeGroup(group.id)"
@@ -153,7 +153,7 @@
               </p>
             </div>
 
-            <div class="hidden h-11 items-center justify-center self-end text-gray-400 md:flex dark:text-dark-400">
+            <div class="hidden h-11 items-center justify-center self-end text-ui-muted md:flex dark:text-dark-400">
               <Icon name="arrowRight" size="sm" />
             </div>
 
@@ -183,7 +183,7 @@
 
             <button
               type="button"
-              class="flex h-11 w-11 items-center justify-center self-end rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              class="flex h-11 w-11 items-center justify-center self-end rounded-lg text-ui-muted transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               :title="t('admin.groups.form.removeReasoningEffortPair')"
               :aria-label="t('admin.groups.form.removeReasoningEffortPair')"
               @click="removePair(group.id, pair.id)"

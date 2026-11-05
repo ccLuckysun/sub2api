@@ -61,10 +61,10 @@ onUnmounted(() => {
 /* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
   @apply flex h-full flex-col overflow-hidden;
-  background: var(--neo-surface);
-  border: 2px solid var(--neo-border);
-  border-radius: var(--neo-radius);
-  box-shadow: var(--neo-shadow);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow);
 }
 
 .table-scroll-container :deep(.table-wrapper) {
@@ -80,7 +80,7 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(thead) {
-  background: var(--neo-surface-soft);
+  background: var(--ui-surface-raised);
 }
 
 .table-scroll-container :deep(tbody) {
@@ -88,17 +88,17 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(th) {
-  @apply text-left text-xs font-extrabold;
-  padding: var(--neo-table-py) var(--neo-table-px);
-  color: var(--neo-ink);
-  border-bottom: 2px solid var(--neo-border);
+  @apply text-left text-xs font-semibold;
+  padding: var(--ui-table-py) var(--ui-table-px);
+  color: var(--ui-ink);
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .table-scroll-container :deep(td) {
   @apply text-sm;
-  padding: var(--neo-table-py) var(--neo-table-px);
-  color: var(--neo-ink);
-  border-bottom: 1px solid var(--neo-divider);
+  padding: var(--ui-table-py) var(--ui-table-px);
+  color: var(--ui-ink);
+  border-bottom: 1px solid var(--ui-border);
 }
 
 /* 移动端：恢复正常滚动 */

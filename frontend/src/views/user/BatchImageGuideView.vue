@@ -2657,20 +2657,16 @@ onBeforeUnmount(() => {
   justify-content: center !important;
   min-width: 42px;
   line-height: 1;
-  outline: none;
-}
-
-.batch-row-action:focus {
-  outline: none;
 }
 
 .batch-row-action :deep(svg) {
   margin-right: 0 !important;
 }
 
-.batch-prompt-trigger:focus {
-  outline: none;
-  box-shadow: none;
+.batch-row-action:focus-visible,
+.batch-prompt-trigger:focus-visible {
+  outline: 2px solid var(--ui-ring);
+  outline-offset: 3px;
 }
 
 .batch-prompt-popover {

@@ -317,13 +317,14 @@ onUnmounted(() => {
   @apply flex w-full items-center justify-between gap-2;
   @apply rounded-xl px-4 py-2.5 text-sm;
   @apply bg-white dark:bg-dark-800;
-  @apply border border-gray-200 dark:border-dark-600;
+  border: 1px solid var(--ui-control-border);
   @apply text-gray-900 dark:text-gray-100;
   @apply transition-all duration-200;
   @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-  @apply hover:border-gray-300 dark:hover:border-dark-500;
   @apply cursor-pointer;
 }
+
+.select-trigger:focus-visible { outline: 2px solid var(--ui-ring); outline-offset: 2px; }
 
 .select-trigger-open {
   @apply border-primary-500 ring-2 ring-primary-500/30;

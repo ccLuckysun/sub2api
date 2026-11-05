@@ -12,7 +12,7 @@
         </button>
 
         <div class="hidden lg:block">
-          <h1 class="header-title text-lg font-extrabold">
+          <h1 class="header-title text-lg font-semibold">
             {{ pageTitle }}
           </h1>
           <p v-if="pageDescription" class="text-xs text-gray-500 dark:text-dark-400">
@@ -32,7 +32,7 @@
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white sm:flex"
+          class="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-dark-100 sm:flex"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
@@ -44,7 +44,7 @@
           :to="{ path: '/model-plaza', query: { embedded: '1' } }"
           :title="t('nav.modelPlaza')"
           :aria-label="t('nav.modelPlaza')"
-          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-dark-100"
         >
           <Icon name="grid" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
@@ -88,7 +88,7 @@
           >
             <div class="flex items-center justify-between">
               <span class="text-gray-500 dark:text-dark-400">{{ balanceAvailableText }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ formatHeaderMoney(availableBalance) }}</span>
+              <span class="font-medium text-gray-900 dark:text-dark-100">{{ formatHeaderMoney(availableBalance) }}</span>
             </div>
             <div class="mt-2 flex items-center justify-between">
               <span class="text-gray-500 dark:text-dark-400">{{ balanceFrozenText }}</span>
@@ -97,7 +97,7 @@
             <div class="mt-2 border-t border-gray-100 pt-2 dark:border-dark-700">
               <div class="flex items-center justify-between">
                 <span class="text-gray-500 dark:text-dark-400">{{ balanceTotalText }}</span>
-                <span class="font-semibold text-gray-900 dark:text-white">{{ formatHeaderMoney(totalBalance) }}</span>
+                <span class="font-semibold text-gray-900 dark:text-dark-100">{{ formatHeaderMoney(totalBalance) }}</span>
               </div>
             </div>
           </div>
@@ -110,7 +110,7 @@
             class="flex items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
             :aria-label="t('common.userMenu')"
           >
-            <div class="header-avatar flex h-8 w-8 items-center justify-center overflow-hidden text-sm font-extrabold">
+            <div class="header-avatar flex h-8 w-8 items-center justify-center overflow-hidden text-sm font-semibold">
               <img
                 v-if="avatarUrl"
                 :src="avatarUrl"
@@ -120,7 +120,7 @@
               <span v-else>{{ userInitials }}</span>
             </div>
             <div class="hidden text-left md:block">
-              <div class="text-sm font-medium text-gray-900 dark:text-white">
+              <div class="text-sm font-medium text-gray-900 dark:text-dark-100">
                 {{ displayName }}
               </div>
               <div class="text-xs text-gray-500 dark:text-dark-400">
@@ -135,7 +135,7 @@
             <div v-if="dropdownOpen" class="dropdown right-0 mt-2 w-56">
               <!-- User Info -->
               <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
-                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                <div class="text-sm font-medium text-gray-900 dark:text-dark-100">
                   {{ displayName }}
                 </div>
                 <div class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
@@ -394,10 +394,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.app-header { background: var(--neo-surface); border-bottom: 2px solid var(--neo-border); }
-.header-title { color: var(--neo-ink); letter-spacing: -.025em; }
-.header-balance { border: 2px solid var(--neo-border); border-radius: 8px; background: var(--neo-surface-soft); }
-.header-avatar { border: 2px solid var(--neo-border); border-radius: 8px; background: var(--neo-blue); color: #111; box-shadow: 2px 2px 0 var(--neo-shadow-color); }
+.app-header { background: var(--ui-surface); border-bottom: 1px solid var(--ui-border); }
+.header-title { color: var(--ui-ink); letter-spacing: -.025em; }
+.header-balance { border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-raised); }
+.header-avatar { border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-raised); color: var(--ui-ink); box-shadow: none; }
 
 .dropdown-enter-active,
 .dropdown-leave-active {

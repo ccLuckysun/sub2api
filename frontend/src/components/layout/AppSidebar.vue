@@ -19,7 +19,7 @@
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
         <router-link
           :to="homePath"
-          class="sidebar-brand-title text-lg font-bold text-gray-900 transition-colors hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
+          class="sidebar-brand-title text-lg font-semibold text-gray-900 transition-colors hover:text-primary-600 dark:text-dark-100 dark:hover:text-primary-400"
           @click="handleMenuItemClick(homePath)"
         >
           {{ siteName }}
@@ -159,7 +159,7 @@
         :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
         :title="sidebarCollapsed ? (isDark ? t('nav.lightMode') : t('nav.darkMode')) : undefined"
       >
-        <SunIcon v-if="isDark" class="h-5 w-5 flex-shrink-0 text-amber-500" />
+        <SunIcon v-if="isDark" class="h-5 w-5 flex-shrink-0 text-primary-400" />
         <MoonIcon v-else class="h-5 w-5 flex-shrink-0" />
         <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{
           isDark ? t('nav.lightMode') : t('nav.darkMode')
@@ -976,14 +976,14 @@ onBeforeUnmount(() => {
   flex: 0 0 2.25rem;
   min-width: 2.25rem;
   padding: 3px;
-  border: 2px solid var(--neo-border);
-  background: var(--neo-accent);
-  box-shadow: var(--neo-shadow-sm);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-raised);
+  box-shadow: none;
 }
 
 .sidebar-brand-title {
   letter-spacing: -.04em;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .sidebar-header-collapsed {
@@ -1051,7 +1051,7 @@ onBeforeUnmount(() => {
   right: 0.75rem;
   top: 50%;
   height: 1px;
-  background: var(--neo-divider);
+  background: var(--ui-border);
   opacity: 0;
   transform: translateY(-50%);
   transition: opacity 0.18s ease;

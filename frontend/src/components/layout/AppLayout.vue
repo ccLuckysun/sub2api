@@ -1,8 +1,5 @@
 <template>
   <div class="app-shell min-h-screen">
-    <!-- Background Decoration -->
-    <div class="app-shell-pattern pointer-events-none fixed inset-0"></div>
-
     <!-- Sidebar -->
     <AppSidebar />
 
@@ -52,11 +49,6 @@ defineExpose({ replayTour })
 </script>
 
 <style scoped>
-.app-shell { background: var(--neo-canvas); }
-.app-shell-pattern {
-  background-image: radial-gradient(circle, var(--neo-muted) .65px, transparent .65px);
-  background-size: 16px 16px;
-  opacity: .12;
-}
+.app-shell { background: var(--ui-canvas); }
 .app-content { position: relative; min-width: 0; padding-bottom: max(2rem, env(safe-area-inset-bottom)); }
 </style>

@@ -4,10 +4,10 @@
       <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <RouterLink to="/home" class="flex min-w-0 items-center gap-3">
           <template v-if="settings">
-            <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700">
+            <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden">
               <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
             </span>
-            <span class="break-words text-base font-extrabold text-gray-950 [overflow-wrap:anywhere] dark:text-white">
+            <span class="break-words text-base font-semibold text-gray-950 [overflow-wrap:anywhere] dark:text-white">
               {{ siteName }}
             </span>
           </template>
@@ -183,12 +183,11 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.legal-page { background: var(--neo-canvas); color: var(--neo-ink); }
-.legal-page > header { background: var(--neo-surface); border-bottom: 2px solid var(--neo-border); }
-.legal-page > header a > span:first-child { border: 2px solid var(--neo-border); box-shadow: var(--neo-shadow-sm); background: #fff; --tw-ring-shadow: 0 0 #0000; }
-.legal-page article { padding: clamp(20px, 4vw, 44px); background: var(--neo-surface); border: 2px solid var(--neo-border); border-radius: 12px; box-shadow: var(--neo-shadow); }
-.legal-page article > div:first-child { border-bottom: 2px solid var(--neo-border); }
-.legal-page article > div:first-child h1 { font-weight: 900; letter-spacing: -.035em; }
+.legal-page { background: var(--ui-canvas); color: var(--ui-ink); }
+.legal-page > header { background: var(--ui-surface); border-bottom: 1px solid var(--ui-border); }
+.legal-page article { padding: clamp(20px, 4vw, 44px); background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow-sm); }
+.legal-page article > div:first-child { border-bottom: 1px solid var(--ui-border); }
+.legal-page article > div:first-child h1 { font-weight: 600; letter-spacing: -.025em; }
 .legal-document-content {
   line-height: 1.75;
   overflow-wrap: anywhere;

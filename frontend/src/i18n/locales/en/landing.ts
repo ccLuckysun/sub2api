@@ -5,6 +5,14 @@ export default {
   },
   // Home Page
   home: {
+    blackhole: {
+      headingLine1: 'Every model.',
+      headingLine2: 'One point of connection.',
+      sceneLabel: 'Black hole background. Hold Space to deepen the effect.',
+      pause: 'Pause animation', resume: 'Play animation', pure: 'Focus on black hole',
+      restore: 'Restore interface', hold: 'Hold to deepen',
+      explore: 'Explore capabilities', spaceHint: 'Hold Space to deepen', capabilities: 'Capabilities'
+    },
     demo: {
       title: 'Request illustration', note: 'Example only. No network requests or credits used.',
       run: 'Run example', reset: 'Reset example', request: 'Request', response: 'Sample response',

@@ -1,7 +1,7 @@
 <template>
   <section class="card space-y-4 p-6" :aria-label="t('adminAccessKeys.title')">
     <h2 class="text-lg font-semibold">{{ t('adminAccessKeys.title') }}</h2>
-    <p class="text-sm text-gray-500">{{ t('adminAccessKeys.authorizationHint') }}</p>
+    <p class="text-sm text-ui-muted">{{ t('adminAccessKeys.authorizationHint') }}</p>
     <p class="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">{{ t('adminAccessKeys.sharedAccountWarning') }}</p>
     <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
     <p v-if="notice" role="status" class="text-sm text-green-600">{{ notice }}</p>
@@ -16,11 +16,11 @@
       <button type="button" class="btn btn-secondary" :disabled="busy || loading" @click="load">{{ t('adminAccessKeys.refresh') }}</button>
     </div>
     <p v-if="loading">{{ t('adminAccessKeys.loading') }}</p>
-    <div v-for="item in items" :key="item.id" class="space-y-2 rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+    <div v-for="item in items" :key="item.id" class="space-y-2 rounded-lg border border-ui p-4 dark:border-ui">
       <p class="font-medium">{{ item.name }} <code>{{ item.key_prefix }}…</code> · {{ status(item) }}</p>
-      <p class="text-sm text-gray-500">{{ item.description || t('adminAccessKeys.noDescription') }} · {{ t('adminAccessKeys.expires', { value: item.expires_at || t('adminAccessKeys.never') }) }}</p>
-      <p class="text-sm text-gray-500">{{ t('adminAccessKeys.lastUsed', { value: item.last_used_at || t('adminAccessKeys.neverUsed') }) }} {{ item.last_used_ip }}</p>
-      <div class="space-y-1 text-sm text-gray-500" :aria-label="t('adminAccessKeys.summaryLabel')">
+      <p class="text-sm text-ui-muted">{{ item.description || t('adminAccessKeys.noDescription') }} · {{ t('adminAccessKeys.expires', { value: item.expires_at || t('adminAccessKeys.never') }) }}</p>
+      <p class="text-sm text-ui-muted">{{ t('adminAccessKeys.lastUsed', { value: item.last_used_at || t('adminAccessKeys.neverUsed') }) }} {{ item.last_used_ip }}</p>
+      <div class="space-y-1 text-sm text-ui-muted" :aria-label="t('adminAccessKeys.summaryLabel')">
         <p v-if="item.policy.full_access" class="font-semibold text-red-600">{{ t('adminAccessKeys.fullAccessLabel') }}</p>
         <p>{{ t('adminAccessKeys.summary', { globals: item.policy.global_permissions.length, rules: item.policy.rules.length }) }}</p>
         <p v-for="(rule, index) in item.policy.rules" :key="index">{{ t('adminAccessKeys.ruleLine', { index: index + 1, summary: ruleSummary(rule) }) }}</p>
@@ -35,7 +35,7 @@
         <button type="button" class="btn btn-secondary btn-sm text-red-600" :disabled="busy" @click="deleteRecord(item)">{{ t('adminAccessKeys.deleteRecord') }}</button>
       </div>
     </div>
-    <div v-if="draft" class="space-y-4 rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+    <div v-if="draft" class="space-y-4 rounded-lg border border-ui p-4 dark:border-ui">
       <h3 class="font-semibold">{{ editingID ? t('adminAccessKeys.editTitle') : t('adminAccessKeys.createTitle') }}</h3>
       <label class="block">{{ t('adminAccessKeys.name') }}<input v-model="draft.name" data-test="name" class="input mt-1" maxlength="100" /></label>
       <label class="block">{{ t('adminAccessKeys.description') }}<textarea v-model="draft.description" class="input mt-1" maxlength="1000" /></label>
@@ -48,27 +48,27 @@
         <p v-if="draft.policy.full_access" class="text-sm">{{ t('adminAccessKeys.rulesSuspended') }}</p>
       </div>
       <fieldset :disabled="busy || !!draft.policy.full_access" class="space-y-4">
-      <fieldset v-for="(rule, index) in draft.policy.rules" :key="index" class="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+      <fieldset v-for="(rule, index) in draft.policy.rules" :key="index" class="space-y-3 rounded-lg border border-ui p-3 dark:border-ui">
         <legend>{{ t('adminAccessKeys.ruleLegend', { index: index + 1 }) }}</legend>
         <label class="flex gap-2"><input v-model="rule.all_groups" type="checkbox" />{{ t('adminAccessKeys.allGroups') }}</label>
         <label class="block">{{ t('adminAccessKeys.groups') }}<select v-model="rule.group_ids" :data-test="`groups-${index}`" multiple class="input mt-1" :disabled="rule.all_groups"><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label>
         <label class="flex gap-2"><input v-model="rule.include_ungrouped" type="checkbox" />{{ t('adminAccessKeys.includeUngrouped') }}</label>
         <div>{{ t('adminAccessKeys.accountTypes') }}<div class="flex flex-wrap gap-4"><label v-for="type in accountTypes" :key="type" class="flex gap-2"><input v-model="rule.account_types" type="checkbox" :value="type" />{{ type }}</label></div></div>
         <label class="block">{{ t('adminAccessKeys.platforms') }}<select v-model="rule.platforms" multiple class="input mt-1"><option v-for="platform in CONCRETE_PLATFORM_OPTIONS" :key="platform.value" :value="platform.value">{{ platform.label }}</option></select></label>
-        <div>{{ t('adminAccessKeys.accountOperations') }}<div class="grid gap-2 sm:grid-cols-2"><label v-for="permission in accountPermissions" :key="permission.id" class="flex gap-2"><input v-model="rule.permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label></div></div>
+        <div>{{ t('adminAccessKeys.accountOperations') }}<div class="grid gap-2 sm:grid-cols-2"><label v-for="permission in accountPermissions" :key="permission.id" class="flex gap-2"><input v-model="rule.permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-ui-muted">{{ permission.id }}</span></label></div></div>
         <div v-if="groupPermissions.length" class="space-y-2 rounded border border-amber-300 p-3">
           <p>{{ t('adminAccessKeys.groupOperations') }}</p>
           <p class="text-sm text-amber-700 dark:text-amber-300">{{ t('adminAccessKeys.modelAllowlistHint') }}</p>
-          <div class="grid gap-2 sm:grid-cols-2"><label v-for="permission in groupPermissions" :key="permission.id" class="flex gap-2"><input v-model="rule.permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label></div>
+          <div class="grid gap-2 sm:grid-cols-2"><label v-for="permission in groupPermissions" :key="permission.id" class="flex gap-2"><input v-model="rule.permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-ui-muted">{{ permission.id }}</span></label></div>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" @click="draft.policy.rules.splice(index, 1)">{{ t('adminAccessKeys.removeRule') }}</button>
       </fieldset>
       <button type="button" data-test="add-rule" class="btn btn-secondary btn-sm" @click="draft.policy.rules.push(emptyRule())">{{ t('adminAccessKeys.addRule') }}</button>
       <fieldset class="space-y-3 rounded-lg border border-amber-300 p-3">
         <legend>{{ t('adminAccessKeys.globalPermissions') }}</legend>
-        <fieldset v-for="category in globalCategories" :key="category.name" class="space-y-2 rounded border border-gray-200 p-3 dark:border-dark-700">
+        <fieldset v-for="category in globalCategories" :key="category.name" class="space-y-2 rounded border border-ui p-3 dark:border-ui">
           <legend class="text-sm font-medium">{{ category.name }}</legend>
-          <label v-for="permission in category.permissions" :key="permission.id" class="flex gap-2"><input v-model="draft.policy.global_permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label>
+          <label v-for="permission in category.permissions" :key="permission.id" class="flex gap-2"><input v-model="draft.policy.global_permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-ui-muted">{{ permission.id }}</span></label>
         </fieldset>
       </fieldset>
       </fieldset>

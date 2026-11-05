@@ -6,7 +6,7 @@
       </div>
       <div class="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300">
         <span>{{ t('usage.exportedCount', { current, total }) }}</span>
-        <span class="font-medium text-gray-900 dark:text-white">{{ normalizedProgress }}%</span>
+        <span class="font-medium text-gray-900 dark:text-dark-100">{{ normalizedProgress }}%</span>
       </div>
       <div class="h-2 w-full rounded-full bg-gray-200 dark:bg-dark-700">
         <div

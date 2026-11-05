@@ -5,7 +5,7 @@
       v-if="windowStats && (windowStats.requests > 0 || windowStats.tokens > 0)"
       class="mb-0.5 flex items-center"
     >
-      <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+      <div class="flex items-center gap-1.5 text-[9px] text-ui-muted">
         <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatRequests }} req
         </span>
@@ -54,7 +54,7 @@
       </span>
 
       <!-- Reset time -->
-      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
+      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-ui-muted">
         {{ formatResetTime }}
       </span>
     </div>
@@ -160,14 +160,14 @@ const textClass = computed(() => {
     } else if (props.utilization <= 50) {
       return 'text-amber-600 dark:text-amber-400'
     }
-    return 'text-gray-600 dark:text-gray-400'
+    return 'text-ui-muted'
   }
   if (props.utilization >= 90) {
     return 'text-red-600 dark:text-red-400'
   } else if (props.utilization >= 75) {
     return 'text-amber-600 dark:text-amber-400'
   } else {
-    return 'text-gray-600 dark:text-gray-400'
+    return 'text-ui-muted'
   }
 })
 

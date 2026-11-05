@@ -14,12 +14,12 @@ export function useChartTheme() {
       : null
     const token = (name: string, fallback: string) => css?.getPropertyValue(name).trim() || fallback
     return {
-      surface: token('--neo-surface', dark ? '#252525' : '#ffffff'),
-      text: token('--neo-ink', dark ? '#fff9e9' : '#111111'),
-      muted: token('--neo-muted', dark ? '#bcb7a9' : '#6d6657'),
-      grid: token('--neo-divider', dark ? '#49473f' : '#ded8c9'),
-      border: token('--neo-border', dark ? '#eee8d8' : '#111111'),
-      accent: token('--neo-accent', { yellow: '#ffe14d', pink: '#ff9ecb', blue: '#9bd0ff' }[accent])
+      surface: token('--ui-surface', dark ? '#111216' : '#FFFFFF'),
+      text: token('--ui-ink', dark ? '#ECE8E1' : '#202126'),
+      muted: token('--ui-muted', dark ? '#A6A19A' : '#62636B'),
+      grid: token('--ui-border', dark ? '#33353D' : '#D5D6DC'),
+      border: token('--ui-border', dark ? '#33353D' : '#D5D6DC'),
+      accent: token('--ui-accent', { yellow: '#D5BEA4', pink: '#C5B9EE', blue: '#BAD9E5' }[accent])
     }
   })
   const animation = computed(() => motion.value === 'off'
@@ -30,7 +30,7 @@ export function useChartTheme() {
     titleColor: colors.value.text,
     bodyColor: colors.value.text,
     borderColor: colors.value.border,
-    borderWidth: 2,
+    borderWidth: 1,
     cornerRadius: 6,
     padding: 10
   }))

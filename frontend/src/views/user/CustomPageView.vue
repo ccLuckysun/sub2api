@@ -475,7 +475,7 @@ onUnmounted(() => {
     width: 70%;
     max-width: 240px;
     height: 100%;
-    box-shadow: var(--neo-shadow);
+    box-shadow: var(--ui-shadow);
   }
 }
 
@@ -519,15 +519,15 @@ onUnmounted(() => {
 .custom-embed-shell {
   @apply relative;
   @apply h-full w-full overflow-hidden rounded-2xl;
-  background: var(--neo-surface);
+  background: var(--ui-surface);
   @apply p-0;
 }
 
 .custom-open-fab {
   @apply absolute right-3 top-3 z-10 w-max max-w-full touch-none select-none transition-colors;
-  background: var(--neo-surface);
-  border: 2px solid var(--neo-border);
-  box-shadow: var(--neo-shadow-sm);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow-sm);
 }
 
 .custom-embed-frame {
@@ -566,7 +566,7 @@ onUnmounted(() => {
 .markdown-page-content pre code { @apply bg-transparent p-0 text-inherit; }
 .markdown-page-content hr { @apply my-6 border-gray-200 dark:border-dark-600; }
 
-.copy-btn {
+.markdown-page-content .copy-btn {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -581,6 +581,8 @@ onUnmounted(() => {
   transition: opacity 0.2s, background 0.2s;
   font-family: inherit;
 }
-.copy-btn:hover { background: rgba(255, 255, 255, 0.25); }
-pre:hover .copy-btn { opacity: 1; }
+.markdown-page-content .copy-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.markdown-page-content pre:hover .copy-btn,
+.markdown-page-content pre:focus-within .copy-btn,
+.markdown-page-content .copy-btn:focus-visible { opacity: 1; }
 </style>

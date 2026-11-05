@@ -7,7 +7,7 @@
     @close="handleClose"
   >
     <form id="import-data-form" class="space-y-4" @submit.prevent="handleImport">
-      <div class="text-sm text-gray-600 dark:text-dark-300">
+      <div class="text-sm text-ui-muted dark:text-dark-300">
         {{ t('admin.accounts.dataImportHint') }}
       </div>
       <div
@@ -22,17 +22,17 @@
           class="flex items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3 transition-colors"
           :class="dragActive
             ? 'border-primary-400 bg-primary-50/70 dark:border-primary-500 dark:bg-primary-900/20'
-            : 'border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'"
+            : 'border-ui bg-gray-50 dark:border-ui dark:bg-ui-surface'"
           @dragenter.prevent="handleDragEnter"
           @dragover.prevent
           @dragleave.prevent="handleDragLeave"
           @drop.prevent="handleDrop"
         >
           <div class="min-w-0">
-            <div class="truncate text-sm text-gray-700 dark:text-dark-200" :title="fileListTitle">
+            <div class="truncate text-sm text-ui-ink dark:text-dark-200" :title="fileListTitle">
               {{ selectedFilesLabel || t('admin.accounts.dataImportSelectFile') }}
             </div>
-            <div class="text-xs text-gray-500 dark:text-dark-400">
+            <div class="text-xs text-ui-muted dark:text-dark-400">
               JSON (.json)
               <span v-if="files.length > 1"> · {{ fileListTitle }}</span>
             </div>
@@ -53,12 +53,12 @@
 
       <div
         v-if="result"
-        class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
+        class="space-y-2 rounded-xl border border-ui p-4 dark:border-ui"
       >
-        <div class="text-sm font-medium text-gray-900 dark:text-white">
+        <div class="text-sm font-medium text-ui-ink">
           {{ t('admin.accounts.dataImportResult') }}
         </div>
-        <div class="text-sm text-gray-700 dark:text-dark-300">
+        <div class="text-sm text-ui-ink dark:text-dark-300">
           {{ t('admin.accounts.dataImportResultSummary', result) }}
         </div>
 
@@ -67,7 +67,7 @@
             {{ t('admin.accounts.dataImportErrors') }}
           </div>
           <div
-            class="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 font-mono text-xs dark:bg-dark-800"
+            class="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 font-mono text-xs dark:bg-ui-surface"
           >
             <div v-for="(item, idx) in errorItems" :key="idx" class="whitespace-pre-wrap">
               {{ item.kind }} {{ item.name || item.proxy_key || '-' }} — {{ item.message }}

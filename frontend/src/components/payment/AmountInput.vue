@@ -12,7 +12,7 @@
           :aria-pressed="modelValue === amt"
           type="button"
           :class="[
-            'console-choice relative rounded-lg border-2 px-3 py-3 text-center font-medium transition-colors',
+            'console-choice relative rounded-lg border px-3 py-3 text-center font-medium transition-colors',
             modelValue === amt
               ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/40 dark:text-primary-300'
               : quoteFor(amt).percent > 0
@@ -22,17 +22,16 @@
           :data-testid="`quick-amount-${amt}`"
           @click="selectAmount(amt)"
         >
-          <!-- 促销价签（单行）：仅命中档位的金额显示；红底白字、内圈点线、右侧圆孔、整体旋转 -->
+          <!-- Only show a compact bonus label for matching tiers. -->
           <span
             v-if="quoteFor(amt).percent > 0"
-            class="pointer-events-none absolute -right-2 -top-3 z-10 rotate-12"
+            class="pointer-events-none absolute -right-2 -top-3 z-10"
             data-testid="quick-amount-bonus-badge"
           >
             <span
-              class="relative flex items-center gap-1 whitespace-nowrap rounded bg-red-600 py-0.5 pl-1.5 pr-1 text-[11px] font-extrabold leading-tight tracking-tight text-white shadow-md ring-2 ring-white before:pointer-events-none before:absolute before:inset-[2px] before:rounded-sm before:border before:border-dotted before:border-white/70 dark:bg-red-500 dark:ring-dark-800"
+              class="relative flex items-center gap-1 whitespace-nowrap rounded-md border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[11px] font-medium leading-tight text-primary-700 dark:border-primary-800 dark:bg-primary-950 dark:text-primary-300"
             >
               <span>{{ badgeText(amt) }}</span>
-              <span class="h-1 w-1 shrink-0 rounded-full bg-white"></span>
             </span>
           </span>
           <span class="block">{{ amt }}</span>

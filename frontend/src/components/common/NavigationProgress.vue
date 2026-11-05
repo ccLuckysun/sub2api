@@ -42,8 +42,8 @@ const isVisible = computed(() => isLoading.value)
 .navigation-progress-bar {
   height: 100%;
   width: 100%;
-  background: var(--neo-accent);
-  border-bottom: 1px solid var(--neo-border);
+  background: var(--ui-accent);
+  border-bottom: 1px solid var(--ui-border);
   animation: progress-slide 1.5s ease-in-out infinite;
 }
 

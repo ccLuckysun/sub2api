@@ -5,6 +5,14 @@ export default {
   },
   // Home Page
   home: {
+    blackhole: {
+      headingLine1: '让所有智能，',
+      headingLine2: '向同一个入口汇聚。',
+      sceneLabel: '黑洞背景。按住空格键可增强引力效果。',
+      pause: '暂停动画', resume: '播放动画', pure: '纯净黑洞',
+      restore: '恢复页面界面', hold: '按住，加深引力',
+      explore: '了解平台能力', spaceHint: '按住空格，加深引力', capabilities: '平台能力'
+    },
     demo: {
       title: '请求演示', note: '仅为示例，不发送网络请求或消耗额度。',
       run: '运行示例', reset: '重置示例', request: '请求', response: '示例响应',

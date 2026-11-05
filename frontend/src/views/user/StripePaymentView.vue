@@ -1,5 +1,5 @@
 <template>
-  <component :is="isPopup ? 'div' : AppLayout" :class="isPopup ? 'min-h-screen bg-gray-50 dark:bg-dark-900' : ''">
+  <component :is="isPopup ? 'div' : AppLayout" :class="isPopup ? 'min-h-screen bg-ui-canvas text-ui-ink' : ''">
     <div class="mx-auto max-w-lg space-y-6 py-8" :class="isPopup ? 'px-4' : ''">
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
@@ -15,9 +15,9 @@
       <template v-else>
         <!-- 金额头部 -->
         <div v-if="order" class="card overflow-hidden">
-          <div class="bg-neo-accent px-6 py-6 text-center">
-            <p class="text-sm font-semibold text-gray-950">{{ t('payment.actualPay') }}</p>
-            <p class="mt-1 text-3xl font-extrabold text-gray-950">{{ formatGatewayAmount(order.pay_amount) }}</p>
+          <div class="bg-ui-surface px-6 py-6 text-center">
+            <p class="text-sm font-semibold text-ui-ink">{{ t('payment.actualPay') }}</p>
+            <p class="mt-1 text-3xl font-semibold text-ui-ink">{{ formatGatewayAmount(order.pay_amount) }}</p>
           </div>
         </div>
 

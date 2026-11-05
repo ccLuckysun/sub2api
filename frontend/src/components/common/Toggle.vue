@@ -2,7 +2,7 @@
   <button
     type="button"
     @click="toggle"
-    class="neo-toggle relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2"
+    class="neo-toggle relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border"
     :class="{ 'neo-toggle-active': modelValue }"
     role="switch"
     :aria-checked="modelValue"
@@ -29,7 +29,8 @@ function toggle() {
 </script>
 
 <style scoped>
-.neo-toggle { border-color: var(--neo-border); background: var(--neo-divider); transition: background-color var(--neo-duration) ease; }
-.neo-toggle-active { background: var(--neo-accent); }
-.neo-toggle-thumb { background: var(--neo-surface); border: 1px solid var(--neo-border); transition: transform var(--neo-duration) var(--neo-ease); }
+.neo-toggle { align-items: center; padding: 1px; border-color: var(--ui-control-border); background: var(--ui-surface-raised); transition: background-color var(--ui-duration) ease; }
+.neo-toggle-active { background: var(--ui-accent); }
+.neo-toggle-thumb { background: var(--ui-ink); border: 1px solid var(--ui-control-border); transition: transform var(--ui-duration) var(--ui-ease); }
+.neo-toggle-active .neo-toggle-thumb { background: var(--ui-accent-ink); }
 </style>

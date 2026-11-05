@@ -1,13 +1,13 @@
 <template>
   <div class="card" data-testid="recharge-bonus-tier-editor">
     <!-- Header：与服务商管理卡片同款 -->
-    <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+    <div class="border-b border-ui px-4 py-3 dark:border-ui">
       <div class="flex items-center justify-between gap-3">
         <div class="min-w-0">
-          <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+          <h2 class="text-base font-semibold text-ui-ink">
             {{ t('admin.settings.payment.rechargeBonus.label') }}
           </h2>
-          <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+          <p class="mt-0.5 text-xs text-ui-muted">
             {{ t('admin.settings.payment.rechargeBonus.hint') }}
           </p>
         </div>
@@ -27,11 +27,11 @@
     <div class="space-y-4 p-4">
       <!-- 模式：整条阶梯共用 -->
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <span class="text-sm font-medium text-ui-ink">
           {{ t('admin.settings.payment.rechargeBonus.modeLabel') }}
         </span>
         <div
-          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-600 dark:bg-dark-800"
+          class="inline-flex rounded-lg border border-ui bg-gray-50 p-0.5 dark:border-ui dark:bg-ui-surface"
           role="group"
         >
           <button
@@ -41,8 +41,8 @@
             :class="[
               'rounded-md px-3 py-1 text-sm font-medium transition-colors',
               currentMode === option.value
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+                ? 'bg-ui-surface text-ui-ink shadow-sm dark:bg-dark-700 dark:text-ui-ink'
+                : 'text-ui-muted hover:text-gray-700 dark:text-ui-muted dark:hover:text-gray-200',
             ]"
             :aria-pressed="currentMode === option.value"
             :data-testid="`recharge-bonus-mode-${option.value}`"
@@ -51,7 +51,7 @@
             {{ option.label }}
           </button>
         </div>
-        <span class="text-xs text-gray-400 dark:text-gray-500">
+        <span class="text-xs text-ui-muted">
           {{ currentMode === 'discount'
             ? t('admin.settings.payment.rechargeBonus.modeDiscountHint')
             : t('admin.settings.payment.rechargeBonus.modeBonusHint') }}
@@ -61,13 +61,13 @@
       <!-- 档位列表：紧凑表格 -->
       <div
         v-if="tiers.length === 0"
-        class="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+        class="rounded-xl border border-dashed border-ui px-4 py-3 text-sm text-ui-muted dark:border-ui dark:text-ui-muted"
       >
         {{ t('admin.settings.payment.rechargeBonus.empty') }}
       </div>
-      <div v-else class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-600">
+      <div v-else class="overflow-hidden rounded-xl border border-ui">
         <div
-          class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] items-center gap-3 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 dark:bg-dark-800 dark:text-gray-400"
+          class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] items-center gap-3 bg-gray-50 px-3 py-2 text-xs font-medium text-ui-muted dark:bg-ui-surface dark:text-ui-muted"
         >
           <span>{{ t('admin.settings.payment.rechargeBonus.minAmountLabel') }}</span>
           <span>
@@ -108,12 +108,12 @@
               />
               <span
                 class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs font-medium"
-                :class="currentMode === 'discount' ? 'text-red-600 dark:text-red-400' : 'text-gray-400'"
+                :class="currentMode === 'discount' ? 'text-red-600 dark:text-red-400' : 'text-ui-muted'"
               >{{ currentMode === 'discount' ? '% OFF' : '%' }}</span>
             </div>
             <button
               type="button"
-              class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-dark-700 dark:hover:text-red-400"
+              class="flex h-8 w-8 items-center justify-center rounded-lg text-ui-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-dark-700 dark:hover:text-red-400"
               :title="t('admin.settings.payment.rechargeBonus.removeTier')"
               data-testid="recharge-bonus-tier-remove"
               @click="removeTier(index)"
@@ -129,7 +129,7 @@
             </p>
             <p
               v-else-if="rowIncomplete(index)"
-              class="col-span-3 -mt-1 text-xs text-gray-400 dark:text-gray-500"
+              class="col-span-3 -mt-1 text-xs text-ui-muted"
               data-testid="recharge-bonus-tier-incomplete"
             >
               {{ t('admin.settings.payment.rechargeBonus.incompleteRow') }}
@@ -141,10 +141,10 @@
       <!-- 区间预览：单行内联 -->
       <p
         v-if="intervals.length > 0"
-        class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
+        class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ui-muted"
         data-testid="recharge-bonus-tier-preview"
       >
-        <span class="font-medium text-gray-700 dark:text-gray-300">
+        <span class="font-medium text-ui-ink">
           {{ t('admin.settings.payment.rechargeBonus.previewTitle') }}
         </span>
         <span
@@ -155,7 +155,7 @@
       </p>
 
       <!-- 活动文案 -->
-      <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+      <div class="border-t border-ui pt-4 dark:border-ui">
         <label class="input-label">
           {{ t('admin.settings.payment.rechargeBonus.noticeLabel') }}
         </label>
@@ -167,7 +167,7 @@
           data-testid="recharge-bonus-notice-input"
           @input="emit('update:notice', ($event.target as HTMLTextAreaElement).value)"
         ></textarea>
-        <p class="mt-1 text-xs text-gray-400">
+        <p class="mt-1 text-xs text-ui-muted">
           {{ t('admin.settings.payment.rechargeBonus.noticeHint') }}
         </p>
       </div>

@@ -1,7 +1,5 @@
 <template>
   <div class="auth-layout relative flex min-h-screen items-center justify-center p-4 py-10">
-    <div class="auth-pattern pointer-events-none absolute inset-0" aria-hidden="true"></div>
-
     <!-- Content Container -->
     <div class="relative z-10 min-w-0 w-full max-w-md">
       <!-- Logo/Brand -->
@@ -13,7 +11,7 @@
           >
             <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </div>
-          <h1 class="auth-title mb-2 text-3xl font-extrabold">
+          <h1 class="auth-title mb-2 text-3xl font-semibold">
             {{ siteName }}
           </h1>
           <p class="auth-subtitle text-sm text-gray-500 dark:text-dark-400">
@@ -60,10 +58,9 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.auth-layout { background: var(--neo-canvas); }
-.auth-pattern { background-image: radial-gradient(circle, var(--neo-muted) .7px, transparent .7px); background-size: 16px 16px; opacity: .15; }
-.auth-logo { background: var(--neo-accent); border: 2px solid var(--neo-border); border-radius: 14px; box-shadow: 5px 5px 0 var(--neo-shadow-color); transform: rotate(-3deg); }
-.auth-title { color: var(--neo-ink); letter-spacing: -.05em; }
+.auth-layout { background: var(--ui-canvas); }
+.auth-logo { background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 16px; box-shadow: var(--ui-shadow); }
+.auth-title { color: var(--ui-ink); letter-spacing: -.05em; }
 .auth-title, .auth-subtitle, .auth-copyright { overflow-wrap: anywhere; }
 .auth-subtitle { white-space: pre-wrap; }
 </style>

@@ -16,7 +16,7 @@
                 <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('admin.dashboard.apiKeys') }}
                 </p>
                 <p class="console-kpi text-xl">
@@ -36,7 +36,7 @@
                 <Icon name="server" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('admin.dashboard.accounts') }}
                 </p>
                 <p class="console-kpi text-xl">
@@ -61,13 +61,13 @@
                 <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('admin.dashboard.todayRequests') }}
                 </p>
                 <p class="console-kpi text-xl">
                   {{ stats.today_requests }}
                 </p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
+                <p class="text-xs text-ui-muted">
                   {{ t('common.total') }}: {{ formatNumber(stats.total_requests) }}
                 </p>
               </div>
@@ -81,13 +81,13 @@
                 <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('admin.dashboard.users') }}
                 </p>
                 <p class="console-kpi text-xl">
                   +{{ stats.today_new_users }}
                 </p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
+                <p class="text-xs text-ui-muted">
                   {{ t('common.total') }}: {{ formatNumber(stats.total_users) }}
                 </p>
               </div>
@@ -104,7 +104,7 @@
                 <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('admin.dashboard.todayTokens') }}
                 </p>
                 <p class="console-kpi text-xl">
@@ -116,15 +116,15 @@
                     :title="t('admin.dashboard.actual')"
                     >${{ formatCost(stats.today_actual_cost) }}</span
                   >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
+                  <span class="text-ui-muted"> / </span>
                   <span
                     class="text-orange-500 dark:text-orange-400"
                     :title="t('admin.dashboard.accountCost')"
                     >${{ formatCost(stats.today_account_cost) }}</span
                   >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
+                  <span class="text-ui-muted"> / </span>
                   <span
-                    class="text-gray-400 dark:text-gray-500"
+                    class="text-ui-muted"
                     :title="t('admin.dashboard.standard')"
                     >${{ formatCost(stats.today_cost) }}</span
                   >
@@ -140,7 +140,7 @@
                 <Icon name="database" size="md" class="text-indigo-600 dark:text-indigo-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('admin.dashboard.totalTokens') }}
                 </p>
                 <p class="console-kpi text-xl">
@@ -152,15 +152,15 @@
                     :title="t('admin.dashboard.actual')"
                     >${{ formatCost(stats.total_actual_cost) }}</span
                   >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
+                  <span class="text-ui-muted"> / </span>
                   <span
                     class="text-orange-500 dark:text-orange-400"
                     :title="t('admin.dashboard.accountCost')"
                     >${{ formatCost(stats.total_account_cost) }}</span
                   >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
+                  <span class="text-ui-muted"> / </span>
                   <span
-                    class="text-gray-400 dark:text-gray-500"
+                    class="text-ui-muted"
                     :title="t('admin.dashboard.standard')"
                     >${{ formatCost(stats.total_cost) }}</span
                   >
@@ -176,20 +176,20 @@
                 <Icon name="bolt" size="md" class="text-violet-600 dark:text-violet-400" :stroke-width="2" />
               </div>
               <div class="flex-1">
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('admin.dashboard.performance') }}
                 </p>
                 <div class="flex items-baseline gap-2">
                   <p class="console-kpi text-xl">
                     {{ formatTokens(stats.rpm) }}
                   </p>
-                  <span class="text-xs text-gray-500 dark:text-gray-400">RPM</span>
+                  <span class="text-xs text-ui-muted">RPM</span>
                 </div>
                 <div class="flex items-baseline gap-2">
                   <p class="text-sm font-semibold text-violet-600 dark:text-violet-400">
                     {{ formatTokens(stats.tpm) }}
                   </p>
-                  <span class="text-xs text-gray-500 dark:text-gray-400">TPM</span>
+                  <span class="text-xs text-ui-muted">TPM</span>
                 </div>
               </div>
             </div>
@@ -202,13 +202,13 @@
                 <Icon name="clock" size="md" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('admin.dashboard.avgResponse') }}
                 </p>
                 <p class="console-kpi text-xl">
                   {{ formatDuration(stats.average_duration_ms) }}
                 </p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
+                <p class="text-xs text-ui-muted">
                   {{ stats.active_users }} {{ t('admin.dashboard.activeUsers') }}
                 </p>
               </div>
@@ -219,7 +219,7 @@
         <!-- Quick Actions -->
         <div class="card p-4">
           <div class="mb-3 flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+            <h2 class="text-sm font-semibold text-ui-ink">
               {{ t('admin.dashboard.quickActions') }}
             </h2>
           </div>
@@ -234,14 +234,14 @@
                 <Icon name="sparkles" size="md" :stroke-width="2" />
               </span>
               <span class="min-w-0 flex-1">
-                <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                <span class="block text-sm font-medium text-ui-ink">
                   {{ t('admin.dashboard.batchImage') }}
                 </span>
-                <span class="block text-xs text-gray-500 dark:text-gray-400">
+                <span class="block text-xs text-ui-muted">
                   {{ t('admin.dashboard.batchImageDesc') }}
                 </span>
               </span>
-              <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-sky-500" />
+              <Icon name="chevronRight" size="sm" class="text-ui-muted group-hover:text-sky-500" />
             </button>
             <button
               type="button"
@@ -252,14 +252,14 @@
                 <Icon name="grid" size="md" :stroke-width="2" />
               </span>
               <span class="min-w-0 flex-1">
-                <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                <span class="block text-sm font-medium text-ui-ink">
                   {{ t('admin.dashboard.groupPricing') }}
                 </span>
-                <span class="block text-xs text-gray-500 dark:text-gray-400">
+                <span class="block text-xs text-ui-muted">
                   {{ t('admin.dashboard.groupPricingDesc') }}
                 </span>
               </span>
-              <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-emerald-500" />
+              <Icon name="chevronRight" size="sm" class="text-ui-muted group-hover:text-emerald-500" />
             </button>
           </div>
         </div>
@@ -270,7 +270,7 @@
           <div class="card p-4">
             <div class="flex flex-wrap items-center gap-4">
               <div class="flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                <span class="text-sm font-medium text-ui-ink"
                   >{{ t('admin.dashboard.timeRange') }}:</span
                 >
                 <DateRangePicker
@@ -283,7 +283,7 @@
                 {{ t('common.refresh') }}
               </button>
               <div class="ml-auto flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                <span class="text-sm font-medium text-ui-ink"
                   >{{ t('admin.dashboard.granularity') }}:</span
                 >
                 <div class="w-28">
@@ -319,10 +319,10 @@
           <!-- User Usage Trend (Full Width) -->
           <div class="card p-4">
             <div class="mb-4 flex items-center justify-between gap-3">
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dashboard.recentUsage') }} (Top 12)</h3>
+              <h3 class="text-sm font-semibold text-ui-ink">{{ t('admin.dashboard.recentUsage') }} (Top 12)</h3>
               <div class="flex gap-1" role="group" :aria-label="t('admin.dashboard.recentUsage')">
                 <button v-for="metric in (['tokens', 'actual_cost'] as const)" :key="metric" type="button"
-                  class="rounded px-2 py-1 text-xs" :class="userTrendMetric === metric ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300'"
+                  class="rounded px-2 py-1 text-xs" :class="userTrendMetric === metric ? 'bg-blue-600 text-white' : 'text-ui-muted dark:text-ui-ink'"
                   :aria-pressed="userTrendMetric === metric" @click="setUserTrendMetric(metric)">
                   {{ t(metric === 'tokens' ? 'admin.dashboard.tokens' : 'admin.dashboard.actualSpending') }}
                 </button>
@@ -335,7 +335,7 @@
               <Line v-else-if="userTrendChartData" :data="userTrendChartData" :options="lineOptions" />
               <div
                 v-else
-                class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+                class="flex h-full items-center justify-center text-sm text-ui-muted"
               >
                 {{ t('admin.dashboard.noDataAvailable') }}
               </div>

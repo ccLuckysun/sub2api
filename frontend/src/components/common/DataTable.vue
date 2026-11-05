@@ -217,7 +217,7 @@
             class="hover:bg-gray-50 dark:hover:bg-dark-800"
             :class="{
               'cursor-pointer': clickableRows,
-              'bg-primary-50/40 dark:bg-primary-900/10': selectable && isRowSelected(item.row, item.index)
+              'table-row-selected': selectable && isRowSelected(item.row, item.index)
             }"
             @click="clickableRows && emit('rowClick', item.row)"
           >
@@ -952,12 +952,24 @@ defineExpose({
 </script>
 
 <style scoped>
-.neo-mobile-row { border: 2px solid var(--neo-border); background: var(--neo-surface); box-shadow: var(--neo-shadow-sm); }
-.neo-mobile-row-selected { background: color-mix(in srgb, var(--neo-accent) 22%, var(--neo-surface)); border-color: var(--neo-focus); box-shadow: inset 4px 0 0 var(--neo-focus), var(--neo-shadow-sm); }
+.neo-mobile-row { border: 1px solid var(--ui-border); background: var(--ui-surface); box-shadow: var(--ui-shadow-sm); }
+.neo-mobile-row-selected { background: color-mix(in srgb, var(--ui-accent) 22%, var(--ui-surface)); border-color: var(--ui-ring); box-shadow: inset 2px 0 0 var(--ui-ring), var(--ui-shadow-sm); }
 .table-wrapper table { font-variant-numeric: tabular-nums; }
-.table-wrapper .sticky-header-cell { color: var(--neo-ink); font-weight: 800; border-bottom: 2px solid var(--neo-border); }
+.table-wrapper .table-body { background: var(--ui-surface); }
+.table-wrapper tbody tr:hover { background: var(--ui-surface-raised); }
+/* Opaque selected cells also cover the sticky columns while scrolling. */
+.table-wrapper tbody tr.table-row-selected,
+.table-wrapper tbody tr.table-row-selected .sticky-col,
+.table-wrapper tbody tr.table-row-selected:hover,
+.table-wrapper tbody tr.table-row-selected:hover .sticky-col {
+  background: color-mix(in srgb, var(--ui-accent) 14%, var(--ui-surface));
+}
+.table-wrapper tbody tr.table-row-selected > td:first-child {
+  box-shadow: inset 2px 0 0 var(--ui-ring);
+}
+.table-wrapper .sticky-header-cell { color: var(--ui-ink); font-weight: 600; border-bottom: 1px solid var(--ui-border); }
 /* Preserve measured virtual row geometry when changing global density. */
-.table-wrapper.is-virtualized { --neo-table-py: 16px; --neo-table-px: 20px; }
+.table-wrapper.is-virtualized { --ui-table-py: 16px; --ui-table-px: 20px; }
 :global(html[data-density='compact'] .table-wrapper:not(.is-virtualized) th) { padding-top: 8px; padding-bottom: 8px; }
 :global(html[data-density='compact'] .table-wrapper:not(.is-virtualized) td:not([colspan])) { padding-top: 8px; padding-bottom: 8px; }
 
@@ -977,11 +989,11 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 200;
-  background-color: var(--neo-surface-soft);
+  background-color: var(--ui-surface-raised);
 }
 
 .dark .table-wrapper .table-header {
-  background-color: var(--neo-surface-soft);
+  background-color: var(--ui-surface-raised);
 }
 
 /* 表体保持在表头下方 */
@@ -995,11 +1007,11 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 210; /* 必须高于所有表体内容 */
-  background-color: var(--neo-surface-soft);
+  background-color: var(--ui-surface-raised);
 }
 
 .dark .sticky-header-cell {
-  background-color: var(--neo-surface-soft);
+  background-color: var(--ui-surface-raised);
 }
 
 /* Sticky 列基础样式 */
@@ -1035,20 +1047,20 @@ defineExpose({
 
 /* 表体 sticky 列背景 */
 tbody .sticky-col {
-  background-color: var(--neo-surface);
+  background-color: var(--ui-surface);
 }
 
 .dark tbody .sticky-col {
-  background-color: var(--neo-surface);
+  background-color: var(--ui-surface);
 }
 
 /* hover 状态保持 */
 tbody tr:hover .sticky-col {
-  background-color: var(--neo-surface-soft);
+  background-color: var(--ui-surface-raised);
 }
 
 .dark tbody tr:hover .sticky-col {
-  background-color: var(--neo-surface-soft);
+  background-color: var(--ui-surface-raised);
 }
 
 /* 阴影只在可滚动时显示 */
@@ -1106,10 +1118,10 @@ tbody tr:hover .sticky-col {
 /* Always discoverable scrollbars; sticky/virtualized geometry is untouched. */
 .table-wrapper { scrollbar-width: auto; }
 .table-wrapper::-webkit-scrollbar { width: 12px; height: 12px; display: block; }
-.table-wrapper::-webkit-scrollbar-track { background: var(--neo-surface-soft); }
-.table-wrapper::-webkit-scrollbar-thumb { background: var(--neo-muted); border: 2px solid var(--neo-surface-soft); border-radius: 4px; background-clip: padding-box; }
-.table-wrapper::-webkit-scrollbar-thumb:hover { background: var(--neo-ink); }
+.table-wrapper::-webkit-scrollbar-track { background: var(--ui-surface-raised); }
+.table-wrapper::-webkit-scrollbar-thumb { background: var(--ui-muted); border: 1px solid var(--ui-surface-raised); border-radius: 4px; background-clip: padding-box; }
+.table-wrapper::-webkit-scrollbar-thumb:hover { background: var(--ui-ink); }
 @supports (-moz-appearance: none) {
-  .table-wrapper { scrollbar-width: thin; scrollbar-color: var(--neo-muted) var(--neo-surface-soft); }
+  .table-wrapper { scrollbar-width: thin; scrollbar-color: var(--ui-muted) var(--ui-surface-raised); }
 }
 </style>

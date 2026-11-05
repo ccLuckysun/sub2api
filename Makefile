@@ -11,6 +11,12 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/common/__tests__/AnnouncementPopup.spec.ts \
 	src/components/payment/__tests__/useStripeAppearance.spec.ts \
 	src/views/__tests__/HomeView.compact.spec.ts \
+	src/components/home/blackhole/__tests__/controller.spec.ts \
+	src/components/home/blackhole/__tests__/renderer.spec.ts \
+	src/utils/__tests__/branding.spec.ts \
+	src/views/auth/__tests__/blackholeSurfaces.spec.ts \
+	src/components/admin/payment/__tests__/DailyRevenueChart.appearance.spec.ts \
+	src/views/user/__tests__/StripePaymentView.spec.ts \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/keys.bulkUpdate.spec.ts \

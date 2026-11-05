@@ -7,7 +7,7 @@
       <div class="px-6 py-6 md:px-8">
         <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div
-            class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] console-stat-icon bg-neo-accent text-2xl font-bold text-gray-950"
+            class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] console-stat-icon bg-ui-canvas text-2xl font-bold text-ui-ink"
           >
             <img
               v-if="avatarUrl"
@@ -61,9 +61,9 @@
             <div class="grid gap-3 sm:grid-cols-3">
               <div
                 data-testid="profile-overview-metric-balance"
-                class="rounded-lg border border-neo bg-neo-surface px-4 py-3"
+                class="rounded-lg border border-ui bg-ui-surface px-4 py-3"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('profile.accountBalance') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -72,9 +72,9 @@
               </div>
               <div
                 data-testid="profile-overview-metric-concurrency"
-                class="rounded-lg border border-neo bg-neo-surface px-4 py-3"
+                class="rounded-lg border border-ui bg-ui-surface px-4 py-3"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('profile.concurrencyLimit') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -83,9 +83,9 @@
               </div>
               <div
                 data-testid="profile-overview-metric-member-since"
-                class="rounded-lg border border-neo bg-neo-surface px-4 py-3"
+                class="rounded-lg border border-ui bg-ui-surface px-4 py-3"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <p class="text-xs font-medium text-ui-muted">
                   {{ t('profile.memberSince') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
