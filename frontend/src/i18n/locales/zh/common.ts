@@ -1,5 +1,25 @@
 export default {
   common: {
+    appearance: {
+      title: '外观偏好',
+      theme: '明暗模式',
+      accent: '品牌强调色',
+      motion: '动态效果',
+      density: '界面密度',
+      allowOverride: '允许用户个性化外观',
+      allowOverrideHint: '用户可以在当前浏览器覆盖默认外观；关闭后所有页面遵循站点配置。',
+      motionHint: '开启系统“减弱动态效果”时会自动关闭装饰动画，不影响功能。',
+      personalHint: '修改立即生效，仅保存在当前浏览器，不会改变站点默认设置。',
+      locked: '管理员已统一站点外观，当前不允许个性化修改。',
+      reset: '恢复站点默认',
+      remaining: '{seconds} 秒后自动关闭',
+      options: {
+        system: '跟随系统', light: '浅色', dark: '深色',
+        yellow: '经典黄', pink: '莓果粉', blue: '晴空蓝',
+        rich: '丰富', moderate: '适中', off: '关闭',
+        standard: '标准', compact: '紧凑'
+      }
+    },
     loading: '加载中...',
     submitting: '提交中...',
     justNow: '刚刚',

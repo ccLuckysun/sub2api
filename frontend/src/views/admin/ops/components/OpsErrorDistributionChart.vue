@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useChartTheme } from '@/composables/useChartTheme'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, Legend, Tooltip } from 'chart.js'
@@ -7,6 +8,8 @@ import type { OpsErrorDistributionResponse } from '@/api/admin/ops'
 import type { ChartState } from '../types'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+
+const chartTheme = useChartTheme()
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -21,13 +24,12 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 
-const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
 const colors = computed(() => ({
   blue: '#3b82f6',
   red: '#ef4444',
   orange: '#f59e0b',
   gray: '#9ca3af',
-  text: isDarkMode.value ? '#9ca3af' : '#6b7280'
+  text: chartTheme.colors.value.text
 }))
 
 const totalSlaErrors = computed(() =>
@@ -88,7 +90,8 @@ const chartData = computed(() => {
       {
         data: categories.value.map((c) => c.count),
         backgroundColor: categories.value.map((c) => c.color),
-        borderWidth: 0
+        borderWidth: 2,
+        borderColor: chartTheme.colors.value.surface
       }
     ]
   }
@@ -97,19 +100,18 @@ const chartData = computed(() => {
 const options = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: chartTheme.animation.value,
   plugins: {
     legend: { display: false },
     tooltip: {
-      backgroundColor: isDarkMode.value ? '#1f2937' : '#ffffff',
-      titleColor: isDarkMode.value ? '#f3f4f6' : '#111827',
-      bodyColor: isDarkMode.value ? '#d1d5db' : '#4b5563'
+      ...chartTheme.tooltip.value,
     }
   }
 }))
 </script>
 
 <template>
-  <div class="flex h-full flex-col rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+  <div class="flex h-full flex-col console-panel p-6">
     <div class="mb-4 flex items-center justify-between">
       <h3 class="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
         <svg class="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -159,3 +161,5 @@ const options = computed(() => ({
     </div>
   </div>
 </template>
+
+<style scoped src="../../console-pages.css"></style>

@@ -5,6 +5,11 @@ export default {
   },
   // Home Page
   home: {
+    demo: {
+      title: '请求演示', note: '仅为示例，不发送网络请求或消耗额度。',
+      run: '运行示例', reset: '重置示例', request: '请求', response: '示例响应',
+      ready: '点击运行，查看示例响应。', prompt: '向世界打个招呼', reply: '你好，世界！', replay: '再次运行'
+    },
     viewOnGithub: '在 GitHub 上查看',
     viewDocs: '查看文档',
     docs: '文档',

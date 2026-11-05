@@ -99,7 +99,7 @@
               </button>
               <div
                 v-if="showColumnDropdown"
-                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                class="console-popover absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto py-1"
               >
                 <button
                   v-for="col in currentToggleableColumns"
@@ -885,3 +885,5 @@ watch(modelDistributionSource, (source) => {
 
 defineExpose({ requestedModelStats, refreshData })
 </script>
+
+<style scoped src="./console-pages.css"></style>

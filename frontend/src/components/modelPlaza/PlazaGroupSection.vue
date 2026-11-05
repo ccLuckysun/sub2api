@@ -1,6 +1,6 @@
 <template>
   <section
-    class="overflow-hidden rounded-2xl border bg-white shadow-card dark:bg-dark-800/50"
+    class="plaza-group overflow-hidden rounded-2xl border bg-white shadow-card dark:bg-dark-800/50"
     :class="[platformBorderStrongClass(group.platform)]"
   >
     <!-- 分组头部:名称/平台/倍率徽章/专属/订阅徽章 + 描述 -->
@@ -121,3 +121,10 @@ const longContextNote = computed(() => {
   return hasOfficialLadder ? t('modelPlaza.detail.longContextDisabledNote') : ''
 })
 </script>
+
+<style scoped>
+.plaza-group { border: 2px solid var(--neo-border); border-radius: 12px; background: var(--neo-surface); box-shadow: var(--neo-shadow); }
+.plaza-group > header { border-bottom: 2px solid var(--neo-border); background: var(--neo-surface-soft); }
+.plaza-group > header p { overflow-wrap: anywhere; }
+.plaza-group :deep(th) { text-transform: none; letter-spacing: normal; }
+</style>

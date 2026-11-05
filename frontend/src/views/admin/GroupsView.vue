@@ -3,7 +3,7 @@
     <TablePageLayout>
       <template #filters>
         <div
-          class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start"
+          class="console-toolbar flex flex-col justify-between gap-4 lg:flex-row lg:items-start"
         >
           <!-- Left: fuzzy search + filters (can wrap to multiple lines) -->
           <div class="flex flex-1 flex-wrap items-center gap-3">
@@ -74,7 +74,7 @@
               </button>
               <div
                 v-if="showColumnDropdown"
-                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                class="console-popover absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto py-1"
               >
                 <button
                   v-for="col in toggleableColumns"
@@ -2029,7 +2029,7 @@
                           accountSearchResults[getCreateRuleSearchKey(rule)]
                             ?.length > 0
                         "
-                        class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                        class="console-popover absolute z-50 mt-1 max-h-48 w-full overflow-auto"
                       >
                         <button
                           v-for="account in accountSearchResults[
@@ -3692,7 +3692,7 @@
                           accountSearchResults[getEditRuleSearchKey(rule)]
                             ?.length > 0
                         "
-                        class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                        class="console-popover absolute z-50 mt-1 max-h-48 w-full overflow-auto"
                       >
                         <button
                           v-for="account in accountSearchResults[
@@ -6940,3 +6940,5 @@ onUnmounted(() => {
   clearAllAccountSearchState();
 });
 </script>
+
+<style scoped src="./console-pages.css"></style>

@@ -481,6 +481,7 @@ export interface SystemSettings {
   auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
   // OEM settings
+  appearance?: import('@/types/appearance').AppearanceSettings;
   site_name: string;
   site_logo: string;
   site_subtitle: string;
@@ -833,6 +834,7 @@ export interface UpdateSettingsRequest {
   auth_source_default_github_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
+  appearance?: import('@/types/appearance').AppearanceSettings;
   site_name?: string;
   site_logo?: string;
   site_subtitle?: string;

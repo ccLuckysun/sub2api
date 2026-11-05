@@ -4,6 +4,7 @@ export default {
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {
         general: 'General',
+        appearance: 'Appearance',
         agreement: 'Agreement',
         features: 'Feature Switches',
         security: 'Security',
@@ -12,6 +13,11 @@ export default {
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
+      },
+      appearance: {
+        title: 'Site appearance · Neo-brutalist',
+        description: 'Unify the homepage, sign-in pages and console with consistent color, contrast and interaction.',
+        saveHint: 'Apply changes with Save settings at the bottom. Branding, custom home content and compact home remain under General. Personal preferences are not overwritten.'
       },
       features: {
         channelMonitor: {

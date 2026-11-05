@@ -4,6 +4,7 @@ export default {
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {
         general: '通用设置',
+        appearance: '外观',
         agreement: '登录条款',
         features: '功能开关',
         security: '安全与认证',
@@ -12,6 +13,11 @@ export default {
         email: '邮件设置',
         backup: '数据备份',
         payment: '支付设置',
+      },
+      appearance: {
+        title: '站点外观 · 新粗野主义',
+        description: '统一首页、登录页和控制台的品牌配色、明暗模式与交互反馈。',
+        saveHint: '点击页面底部“保存设置”后生效。已有站点名称、Logo、自定义首页和简洁首页仍在通用设置中管理；个人外观偏好不会被改写。'
       },
       features: {
         channelMonitor: {

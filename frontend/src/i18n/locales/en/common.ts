@@ -1,5 +1,25 @@
 export default {
   common: {
+    appearance: {
+      title: 'Appearance',
+      theme: 'Color mode',
+      accent: 'Brand accent',
+      motion: 'Motion',
+      density: 'Density',
+      allowOverride: 'Allow personal appearance preferences',
+      allowOverrideHint: 'Users can override defaults in their browser. Turn off to enforce the site appearance.',
+      motionHint: 'System reduced-motion preferences always disable decorative animation without affecting functionality.',
+      personalHint: 'Changes apply immediately in this browser only. Site defaults are not changed.',
+      locked: 'Your administrator has enforced the site appearance. Personal overrides are disabled.',
+      reset: 'Use site defaults',
+      remaining: 'Closes in {seconds}s',
+      options: {
+        system: 'System', light: 'Light', dark: 'Dark',
+        yellow: 'Classic yellow', pink: 'Berry pink', blue: 'Sky blue',
+        rich: 'Rich', moderate: 'Moderate', off: 'Off',
+        standard: 'Standard', compact: 'Compact'
+      }
+    },
     loading: 'Loading...',
     submitting: 'Submitting...',
     justNow: 'just now',

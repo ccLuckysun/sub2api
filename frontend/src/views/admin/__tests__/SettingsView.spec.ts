@@ -725,6 +725,59 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("loads, edits and saves all appearance defaults without changing branding", async () => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, appearance: {
+      theme: 'dark', accent: 'pink', motion: 'moderate', density: 'compact', allow_user_override: false
+    } });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('#settings-tab-appearance').trigger('click');
+    expect((wrapper.get('[data-testid="appearance-theme"]').element as HTMLSelectElement).value).toBe('dark');
+    await wrapper.get('[data-testid="appearance-theme"]').setValue('system');
+    await wrapper.get('[data-testid="appearance-accent"]').setValue('blue');
+    await wrapper.get('[data-testid="appearance-motion"]').setValue('off');
+    await wrapper.get('[data-testid="appearance-density"]').setValue('standard');
+    await wrapper.get('[data-testid="appearance-allow-override"]').setValue(true);
+    await wrapper.find('form').trigger('submit.prevent');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      appearance: { theme: 'system', accent: 'blue', motion: 'off', density: 'standard', allow_user_override: true },
+      site_name: baseSettingsResponse.site_name,
+      home_content: baseSettingsResponse.home_content,
+      compact_home_enabled: baseSettingsResponse.compact_home_enabled
+    }));
+    expect(fetchPublicSettings).toHaveBeenCalledWith(true);
+    wrapper.unmount();
+  });
+
+  it("waits for an older public-settings request before requesting saved appearance", async () => {
+    let finishOlder!: (value: undefined) => void;
+    const olderRequest = new Promise<undefined>(resolve => { finishOlder = resolve; });
+    fetchPublicSettings.mockReturnValueOnce(olderRequest);
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.find('form').trigger('submit.prevent');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalled();
+    expect(fetchPublicSettings).toHaveBeenCalledWith();
+    expect(fetchPublicSettings).not.toHaveBeenCalledWith(true);
+    finishOlder(undefined);
+    await flushPromises();
+    expect(fetchPublicSettings).toHaveBeenLastCalledWith(true);
+    wrapper.unmount();
+  });
+
+  it("uses D defaults when an older backend has no appearance field", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.find('form').trigger('submit.prevent');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ appearance: {
+      theme: 'system', accent: 'yellow', motion: 'rich', density: 'standard', allow_user_override: true
+    } }));
+    wrapper.unmount();
+  });
+
   it("loads and saves the open button visibility for each custom menu", async () => {
     const menuItems = [
       { id: "docs", label: "Docs", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },

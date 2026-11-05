@@ -15,9 +15,9 @@
       <template v-else>
         <!-- 金额头部 -->
         <div v-if="order" class="card overflow-hidden">
-          <div class="bg-gradient-to-br from-[#635bff] to-[#4f46e5] px-6 py-6 text-center">
-            <p class="text-sm font-medium text-indigo-200">{{ t('payment.actualPay') }}</p>
-            <p class="mt-1 text-3xl font-bold text-white">{{ formatGatewayAmount(order.pay_amount) }}</p>
+          <div class="bg-neo-accent px-6 py-6 text-center">
+            <p class="text-sm font-semibold text-gray-950">{{ t('payment.actualPay') }}</p>
+            <p class="mt-1 text-3xl font-extrabold text-gray-950">{{ formatGatewayAmount(order.pay_amount) }}</p>
           </div>
         </div>
 
@@ -94,7 +94,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { useStripeAppearance } from '@/components/payment/useStripeAppearance'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '@/stores/payment'
@@ -132,6 +133,11 @@ const showPaymentElement = ref(false)
 let disposed = false
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
+const stripeAppearance = useStripeAppearance()
+// Update the existing Elements instance: never remount or discard payment input.
+watch(stripeAppearance, (appearance) => {
+  elementsInstance?.update({ appearance })
+}, { flush: 'post' })
 let redirectTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
@@ -241,10 +247,9 @@ async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
 
 function mountPaymentElement(stripe: Stripe, clientSecret: string) {
   if (disposed) return
-  const isDark = document.documentElement.classList.contains('dark')
   const elements = stripe.elements({
     clientSecret,
-    appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
+    appearance: stripeAppearance.value,
   })
   elementsInstance = elements
   const paymentElement = elements.create('payment', {

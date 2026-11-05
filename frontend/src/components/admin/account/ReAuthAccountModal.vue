@@ -13,16 +13,16 @@
         <div class="flex items-center gap-3">
           <div
             :class="[
-              'flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br',
+              'flex h-10 w-10 items-center justify-center console-stat-icon rounded-lg',
               isOpenAILike
-                ? 'from-green-500 to-green-600'
+                ? 'bg-green-600'
                 : isGemini
-                  ? 'from-blue-500 to-blue-600'
+                  ? 'bg-blue-600'
                   : isAntigravity
-                    ? 'from-purple-500 to-purple-600'
+                    ? 'bg-purple-600'
                     : isGrok
                       ? 'from-zinc-700 to-zinc-900'
-                      : 'from-orange-500 to-orange-600'
+                      : 'bg-orange-600'
             ]"
           >
             <Icon name="sparkles" size="md" class="text-white" />
@@ -749,3 +749,5 @@ const handleGrokValidateRefreshToken = async (refreshTokenInput: string) => {
   }
 }
 </script>
+
+<style scoped src="../../../views/admin/console-pages.css"></style>

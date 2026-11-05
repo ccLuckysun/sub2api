@@ -38,9 +38,9 @@
     <template v-else>
       <!-- Amount -->
       <div class="card overflow-hidden">
-        <div class="bg-gradient-to-br from-[#635bff] to-[#4f46e5] px-6 py-5 text-center">
-          <p class="text-sm font-medium text-indigo-200">{{ t('payment.actualPay') }}</p>
-          <p class="mt-1 text-3xl font-bold text-white">{{ paymentAmountSymbol }}{{ payAmount.toFixed(2) }}</p>
+        <div class="bg-neo-accent px-6 py-5 text-center">
+          <p class="text-sm font-semibold text-gray-950">{{ t('payment.actualPay') }}</p>
+          <p class="mt-1 text-3xl font-extrabold text-gray-950">{{ paymentAmountSymbol }}{{ payAmount.toFixed(2) }}</p>
         </div>
       </div>
       <!-- Stripe Payment Element -->
@@ -64,7 +64,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick } from 'vue'
+import { useStripeAppearance } from '@/components/payment/useStripeAppearance'
+import { computed, ref, onMounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { extractI18nErrorMessage } from '@/utils/apiError'
@@ -108,6 +109,11 @@ const paymentAmountSymbol = computed(() => currencySymbol(props.currency))
 
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
+const stripeAppearance = useStripeAppearance()
+// Update the existing Elements instance: never remount or discard payment input.
+watch(stripeAppearance, (appearance) => {
+  elementsInstance?.update({ appearance })
+}, { flush: 'post' })
 
 onMounted(async () => {
   try {
@@ -120,10 +126,9 @@ onMounted(async () => {
     await nextTick()
     if (!stripeMount.value) return
 
-    const isDark = document.documentElement.classList.contains('dark')
     const elements = stripe.elements({
       clientSecret: props.clientSecret,
-      appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
+      appearance: stripeAppearance.value,
     })
     elementsInstance = elements
     const paymentElement = elements.create('payment', {

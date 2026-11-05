@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div
-      class="pointer-events-none fixed right-4 top-4 z-[9999] space-y-3"
+      class="pointer-events-none fixed right-4 top-4 z-[9999] w-[calc(100vw-32px)] max-w-md space-y-3"
       aria-live="polite"
       aria-atomic="true"
     >
@@ -17,9 +17,7 @@
           v-for="toast in toasts"
           :key="toast.id"
           :class="[
-            'pointer-events-auto min-w-[320px] max-w-md overflow-hidden rounded-lg shadow-lg',
-            'bg-white dark:bg-dark-800',
-            'border-l-4',
+            'neo-toast pointer-events-auto w-full overflow-hidden',
             getBorderColor(toast.type)
           ]"
         >
@@ -64,7 +62,10 @@
           </div>
 
           <!-- Progress bar -->
-          <div v-if="toast.duration" class="h-1 bg-gray-100 dark:bg-dark-700">
+          <p v-if="toast.duration && motion === 'off'" class="px-4 pb-3 text-xs text-gray-600 dark:text-gray-300" aria-hidden="true">
+            {{ t('common.appearance.remaining', { seconds: remainingSeconds(toast) }) }}
+          </p>
+          <div v-else-if="toast.duration" class="h-1 bg-gray-100 dark:bg-dark-700">
             <div
               :class="['h-full toast-progress', getProgressBarColor(toast.type)]"
               :style="{ animationDuration: `${toast.duration}ms` }"
@@ -77,13 +78,35 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useAppearance } from '@/composables/useAppearance'
+import type { Toast } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
 
 const appStore = useAppStore()
 
 const toasts = computed(() => appStore.toasts)
+const { motion } = useAppearance()
+const { t } = useI18n()
+const now = ref(Date.now())
+let countdown: ReturnType<typeof setInterval> | undefined
+function stopCountdown() {
+  if (countdown !== undefined) clearInterval(countdown)
+  countdown = undefined
+}
+watch(() => motion.value === 'off' && toasts.value.some(toast => toast.duration), (enabled) => {
+  stopCountdown()
+  if (enabled) {
+    now.value = Date.now()
+    countdown = setInterval(() => { now.value = Date.now() }, 250)
+  }
+}, { immediate: true })
+onBeforeUnmount(stopCountdown)
+function remainingSeconds(toast: Toast): number {
+  return Math.max(0, Math.ceil(((toast.startTime ?? now.value) + (toast.duration ?? 0) - now.value) / 1000))
+}
 
 const getToastIconName = (type: string): 'checkCircle' | 'xCircle' | 'exclamationTriangle' | 'infoCircle' => {
   switch (type) {
@@ -111,10 +134,10 @@ const getIconColor = (type: string): string => {
 
 const getBorderColor = (type: string): string => {
   const colors: Record<string, string> = {
-    success: 'border-green-500',
-    error: 'border-red-500',
-    warning: 'border-yellow-500',
-    info: 'border-blue-500'
+    success: 'border-l-emerald-600',
+    error: 'border-l-red-600',
+    warning: 'border-l-amber-500',
+    info: 'border-l-blue-600'
   }
   return colors[type] || colors.info
 }
@@ -135,6 +158,13 @@ const removeToast = (id: string) => {
 </script>
 
 <style scoped>
+.neo-toast { border: 2px solid var(--neo-border); border-left-width: 6px; border-radius: 10px; background: var(--neo-surface); color: var(--neo-ink); box-shadow: var(--neo-shadow); }
+/* Colour is semantic and independent of the chosen appearance accent. */
+.neo-toast.border-l-emerald-600 { border-left-color: #059669; }
+.neo-toast.border-l-red-600 { border-left-color: #dc2626; }
+.neo-toast.border-l-amber-500 { border-left-color: #f59e0b; }
+.neo-toast.border-l-blue-600 { border-left-color: #2563eb; }
+
 .toast-progress {
   width: 100%;
   animation-name: toast-progress-shrink;

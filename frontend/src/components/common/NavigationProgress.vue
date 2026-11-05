@@ -19,7 +19,6 @@ const isVisible = computed(() => isLoading.value)
       class="navigation-progress"
       role="progressbar"
       aria-label="Loading"
-      aria-valuenow="0"
       aria-valuemin="0"
       aria-valuemax="100"
     >
@@ -43,27 +42,9 @@ const isVisible = computed(() => isLoading.value)
 .navigation-progress-bar {
   height: 100%;
   width: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    theme('colors.primary.400') 20%,
-    theme('colors.primary.500') 50%,
-    theme('colors.primary.400') 80%,
-    transparent 100%
-  );
+  background: var(--neo-accent);
+  border-bottom: 1px solid var(--neo-border);
   animation: progress-slide 1.5s ease-in-out infinite;
-}
-
-/* 暗色模式下的进度条颜色 */
-:root.dark .navigation-progress-bar {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    theme('colors.primary.500') 20%,
-    theme('colors.primary.400') 50%,
-    theme('colors.primary.500') 80%,
-    transparent 100%
-  );
 }
 
 /* 进度条滑动动画 */
@@ -90,20 +71,8 @@ const isVisible = computed(() => isLoading.value)
   opacity: 0;
 }
 
-/* 减少动画模式 */
+/* With motion disabled, retain a visible, indeterminate loading indicator. */
 @media (prefers-reduced-motion: reduce) {
-  .navigation-progress-bar {
-    animation: progress-pulse 2s ease-in-out infinite;
-  }
-
-  @keyframes progress-pulse {
-    0%,
-    100% {
-      opacity: 0.4;
-    }
-    50% {
-      opacity: 1;
-    }
-  }
+  .navigation-progress-bar { animation: none; transform: none; }
 }
 </style>

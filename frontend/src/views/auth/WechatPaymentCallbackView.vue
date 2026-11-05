@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-10 dark:bg-dark-900">
+  <div class="public-auth min-h-screen bg-gray-50 px-4 py-10 dark:bg-dark-900">
     <div class="mx-auto max-w-2xl">
       <div class="card p-6">
         <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -39,6 +39,7 @@
 </template>
 
 <script setup lang="ts">
+import './auth-pages.css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'

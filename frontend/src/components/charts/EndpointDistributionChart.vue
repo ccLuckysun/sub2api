@@ -133,6 +133,7 @@
 </template>
 
 <script setup lang="ts">
+import { useChartTheme } from '@/composables/useChartTheme'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
@@ -141,6 +142,8 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { EndpointStat, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
+
+const chartTheme = useChartTheme()
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -249,7 +252,8 @@ const chartData = computed(() => {
           props.metric === 'actual_cost' ? item.actual_cost : item.total_tokens
         ),
         backgroundColor: chartColors.slice(0, displayEndpointStats.value.length),
-        borderWidth: 0
+        borderWidth: 2,
+        borderColor: chartTheme.colors.value.surface
       }
     ]
   }
@@ -258,11 +262,13 @@ const chartData = computed(() => {
 const doughnutOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: chartTheme.animation.value,
   plugins: {
     legend: {
       display: false
     },
     tooltip: {
+      ...chartTheme.tooltip.value,
       callbacks: {
         label: (context: any) => {
           const value = context.raw as number

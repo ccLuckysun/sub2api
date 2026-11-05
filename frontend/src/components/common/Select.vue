@@ -519,28 +519,22 @@ onUnmounted(() => {
 
 <style scoped>
 .select-trigger {
-  @apply flex w-full items-center justify-between gap-2;
-  @apply rounded-xl px-4 py-2.5 text-sm;
-  @apply bg-white dark:bg-dark-800;
-  @apply border border-gray-200 dark:border-dark-600;
-  @apply text-gray-900 dark:text-gray-100;
-  @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-  @apply hover:border-gray-300 dark:hover:border-dark-500;
-  @apply cursor-pointer;
+  @apply flex w-full cursor-pointer items-center justify-between gap-2 px-3.5 py-2.5 text-sm;
+  min-height: 42px;
+  border: 2px solid var(--neo-border);
+  border-radius: 9px;
+  background: var(--neo-surface);
+  color: var(--neo-ink);
+  transition: box-shadow var(--neo-duration) ease, border-color var(--neo-duration) ease;
 }
-
-.select-trigger-open {
-  @apply border-primary-500 ring-2 ring-primary-500/30;
+.select-trigger:focus-visible, .select-trigger-open {
+  border-color: var(--neo-focus);
+  outline: none;
+  box-shadow: 3px 3px 0 var(--neo-focus);
 }
-
-.select-trigger-error {
-  @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
-}
-
-.select-trigger-disabled {
-  @apply cursor-not-allowed bg-gray-100 opacity-60 dark:bg-dark-900;
-}
+.select-trigger-error { border-color: #dc2626; }
+.select-trigger-error:focus-visible, .select-trigger-error.select-trigger-open { box-shadow: 3px 3px 0 #dc2626; }
+.select-trigger-disabled { @apply cursor-not-allowed opacity-60; background: var(--neo-surface-soft); }
 
 .select-value {
   @apply flex-1 truncate text-left;
@@ -560,10 +554,11 @@ onUnmounted(() => {
 <style>
 .select-dropdown-portal {
   @apply w-max min-w-[200px];
-  @apply bg-white dark:bg-dark-800;
-  @apply rounded-xl;
-  @apply border border-gray-200 dark:border-dark-700;
-  @apply shadow-lg shadow-black/10 dark:shadow-black/30;
+  background: var(--neo-surface);
+  color: var(--neo-ink);
+  border: 2px solid var(--neo-border);
+  border-radius: 10px;
+  box-shadow: var(--neo-shadow);
   @apply overflow-hidden;
   pointer-events: auto !important;
 }
@@ -594,12 +589,15 @@ onUnmounted(() => {
 }
 
 .select-dropdown-portal .select-option-selected {
-  @apply bg-primary-50 dark:bg-primary-900/20;
-  @apply text-primary-700 dark:text-primary-300;
+  background: var(--neo-accent);
+  color: var(--neo-accent-ink);
+  font-weight: 700;
 }
 
 .select-dropdown-portal .select-option-focused {
-  @apply bg-gray-100 dark:bg-dark-700;
+  background: var(--neo-surface-soft);
+  outline: 2px solid var(--neo-border);
+  outline-offset: -2px;
 }
 
 .select-dropdown-portal .select-option-disabled {

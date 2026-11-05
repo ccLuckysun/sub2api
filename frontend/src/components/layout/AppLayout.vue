@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-dark-950">
+  <div class="app-shell min-h-screen">
     <!-- Background Decoration -->
-    <div class="pointer-events-none fixed inset-0 bg-mesh-gradient"></div>
+    <div class="app-shell-pattern pointer-events-none fixed inset-0"></div>
 
     <!-- Sidebar -->
     <AppSidebar />
@@ -15,7 +15,7 @@
       <AppHeader />
 
       <!-- Main Content -->
-      <main class="p-4 md:p-6 lg:p-8">
+      <main class="app-content p-4 md:p-6 lg:p-8">
         <slot />
       </main>
     </div>
@@ -50,3 +50,13 @@ onMounted(() => {
 
 defineExpose({ replayTour })
 </script>
+
+<style scoped>
+.app-shell { background: var(--neo-canvas); }
+.app-shell-pattern {
+  background-image: radial-gradient(circle, var(--neo-muted) .65px, transparent .65px);
+  background-size: 16px 16px;
+  opacity: .12;
+}
+.app-content { position: relative; min-width: 0; padding-bottom: max(2rem, env(safe-area-inset-bottom)); }
+</style>

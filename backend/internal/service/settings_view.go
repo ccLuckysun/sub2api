@@ -12,6 +12,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 type SystemSettings struct {
+	Appearance                          *AppearanceSettings // nil on update leaves the stored object unchanged
 	RegistrationEnabled                 bool
 	EmailVerifyEnabled                  bool
 	RegistrationEmailSuffixWhitelist    []string
@@ -327,6 +328,7 @@ type DefaultSubscriptionSetting struct {
 }
 
 type PublicSettings struct {
+	Appearance                          *AppearanceSettings
 	RegistrationEnabled                 bool
 	EmailVerifyEnabled                  bool
 	ForceEmailOnThirdPartySignup        bool

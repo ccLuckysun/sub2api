@@ -1,7 +1,7 @@
 <template>
   <div v-if="!isDesktopViewport" class="space-y-3">
     <template v-if="loading">
-      <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+      <div v-for="i in 5" :key="i" class="neo-mobile-row rounded-lg p-4">
         <div class="space-y-3">
           <div v-for="column in dataColumns" :key="column.key" class="flex justify-between">
             <div class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
@@ -15,7 +15,7 @@
     </template>
 
     <template v-else-if="!data || data.length === 0">
-      <div class="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
+      <div class="neo-mobile-row rounded-lg p-12 text-center">
         <slot name="empty">
           <div class="flex flex-col items-center">
             <Icon
@@ -48,10 +48,10 @@
       <div
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
-        class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
+        class="neo-mobile-row rounded-lg p-4"
         :class="{
           'cursor-pointer': clickableRows,
-          'border-primary-300 bg-primary-50/40 dark:border-primary-700 dark:bg-primary-900/10': selectable && isRowSelected(row, index)
+          'neo-mobile-row-selected': selectable && isRowSelected(row, index)
         }"
         @click="clickableRows && emit('rowClick', row)"
       >
@@ -96,7 +96,8 @@
     class="table-wrapper"
     :class="{
       'actions-expanded': actionsExpanded,
-      'is-scrollable': isScrollable
+      'is-scrollable': isScrollable,
+      'is-virtualized': shouldVirtualize
     }"
   >
     <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
@@ -951,6 +952,15 @@ defineExpose({
 </script>
 
 <style scoped>
+.neo-mobile-row { border: 2px solid var(--neo-border); background: var(--neo-surface); box-shadow: var(--neo-shadow-sm); }
+.neo-mobile-row-selected { background: color-mix(in srgb, var(--neo-accent) 22%, var(--neo-surface)); border-color: var(--neo-focus); box-shadow: inset 4px 0 0 var(--neo-focus), var(--neo-shadow-sm); }
+.table-wrapper table { font-variant-numeric: tabular-nums; }
+.table-wrapper .sticky-header-cell { color: var(--neo-ink); font-weight: 800; border-bottom: 2px solid var(--neo-border); }
+/* Preserve measured virtual row geometry when changing global density. */
+.table-wrapper.is-virtualized { --neo-table-py: 16px; --neo-table-px: 20px; }
+:global(html[data-density='compact'] .table-wrapper:not(.is-virtualized) th) { padding-top: 8px; padding-bottom: 8px; }
+:global(html[data-density='compact'] .table-wrapper:not(.is-virtualized) td:not([colspan])) { padding-top: 8px; padding-bottom: 8px; }
+
 /* 表格横向滚动 */
 .table-wrapper {
   --select-col-width: 52px; /* 勾选列宽度：px-6 (24px*2) + checkbox (16px) */
@@ -967,11 +977,11 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 200;
-  background-color: rgb(249 250 251);
+  background-color: var(--neo-surface-soft);
 }
 
 .dark .table-wrapper .table-header {
-  background-color: rgb(31 41 55);
+  background-color: var(--neo-surface-soft);
 }
 
 /* 表体保持在表头下方 */
@@ -985,11 +995,11 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 210; /* 必须高于所有表体内容 */
-  background-color: rgb(249 250 251);
+  background-color: var(--neo-surface-soft);
 }
 
 .dark .sticky-header-cell {
-  background-color: rgb(31 41 55);
+  background-color: var(--neo-surface-soft);
 }
 
 /* Sticky 列基础样式 */
@@ -1025,20 +1035,20 @@ defineExpose({
 
 /* 表体 sticky 列背景 */
 tbody .sticky-col {
-  background-color: white;
+  background-color: var(--neo-surface);
 }
 
 .dark tbody .sticky-col {
-  background-color: rgb(17 24 39);
+  background-color: var(--neo-surface);
 }
 
 /* hover 状态保持 */
 tbody tr:hover .sticky-col {
-  background-color: rgb(249 250 251);
+  background-color: var(--neo-surface-soft);
 }
 
 .dark tbody tr:hover .sticky-col {
-  background-color: rgb(31 41 55);
+  background-color: var(--neo-surface-soft);
 }
 
 /* 阴影只在可滚动时显示 */
@@ -1093,60 +1103,13 @@ tbody tr:hover .sticky-col {
 </style>
 
 <style>
-/* ==========================================================================
-   终极悬浮滚动条防丢器 (Sledgehammer Override)
-   绕过 style.css 中 `* { scrollbar-color: transparent }` 的全局悬停隐身诅咒！
-   ========================================================================== */
-
-/* 1. 废除全局针对所有元素的 scrollbar-width 设定，拿回 Chrome/Safari 下 Webkit 滚动条规则的控制权！ */
-.table-wrapper {
-  scrollbar-width: auto !important; /* 阻止 Chrome 121 退化到原生 Mac 闪隐滚动条 */
-}
-
-/* 2. 重写 Webkit 滚动层，全部加上 !important 强制覆盖透明悬停陷阱 */
-.table-wrapper::-webkit-scrollbar {
-  height: 12px !important;
-  width: 12px !important;
-  display: block !important;
-  background-color: transparent !important;
-}
-
-.table-wrapper::-webkit-scrollbar-track {
-  background-color: rgba(0, 0, 0, 0.03) !important;
-  border-radius: 6px !important;
-  margin: 0 4px !important;
-}
-.dark .table-wrapper::-webkit-scrollbar-track {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-}
-
-/* 常驻、不透明的滑块，无视鼠标是否 hover 都在那！ */
-.table-wrapper::-webkit-scrollbar-thumb {
-  background-color: rgba(107, 114, 128, 0.75) !important; 
-  border-radius: 6px !important;
-  border: 2px solid transparent !important;
-  background-clip: padding-box !important;
-  -webkit-appearance: none !important;
-}
-.table-wrapper::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(75, 85, 99, 0.9) !important;
-}
-
-.dark .table-wrapper::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.75) !important;
-}
-.dark .table-wrapper::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(209, 213, 219, 0.9) !important;
-}
-
-/* 3. 仅给真正的 Firefox 留的后路 */
-@supports (-moz-appearance:none) {
-  .table-wrapper {
-    scrollbar-width: thin !important;
-    scrollbar-color: rgba(156, 163, 175, 0.5) rgba(0, 0, 0, 0.03) !important;
-  }
-  .dark .table-wrapper {
-    scrollbar-color: rgba(75, 85, 99, 0.5) rgba(255, 255, 255, 0.05) !important;
-  }
+/* Always discoverable scrollbars; sticky/virtualized geometry is untouched. */
+.table-wrapper { scrollbar-width: auto; }
+.table-wrapper::-webkit-scrollbar { width: 12px; height: 12px; display: block; }
+.table-wrapper::-webkit-scrollbar-track { background: var(--neo-surface-soft); }
+.table-wrapper::-webkit-scrollbar-thumb { background: var(--neo-muted); border: 2px solid var(--neo-surface-soft); border-radius: 4px; background-clip: padding-box; }
+.table-wrapper::-webkit-scrollbar-thumb:hover { background: var(--neo-ink); }
+@supports (-moz-appearance: none) {
+  .table-wrapper { scrollbar-width: thin; scrollbar-color: var(--neo-muted) var(--neo-surface-soft); }
 }
 </style>

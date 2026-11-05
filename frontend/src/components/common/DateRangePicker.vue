@@ -323,20 +323,15 @@ onUnmounted(() => {
 
 <style scoped>
 .date-picker-trigger {
-  @apply flex items-center gap-2;
-  @apply rounded-lg px-3 py-2 text-sm;
-  @apply bg-white dark:bg-dark-800;
-  @apply border border-gray-200 dark:border-dark-600;
-  @apply text-gray-700 dark:text-gray-300;
-  @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-  @apply hover:border-gray-300 dark:hover:border-dark-500;
-  @apply cursor-pointer;
+  @apply flex cursor-pointer items-center gap-2 px-3 py-2 text-sm;
+  min-height: 40px;
+  border: 2px solid var(--neo-border);
+  border-radius: 9px;
+  background: var(--neo-surface);
+  color: var(--neo-ink);
+  transition: box-shadow var(--neo-duration) ease;
 }
-
-.date-picker-trigger-open {
-  @apply border-primary-500 ring-2 ring-primary-500/30;
-}
+.date-picker-trigger:focus-visible, .date-picker-trigger-open { outline: none; border-color: var(--neo-focus); box-shadow: 3px 3px 0 var(--neo-focus); }
 
 .date-picker-icon {
   @apply text-gray-400 dark:text-dark-400;
@@ -352,10 +347,11 @@ onUnmounted(() => {
 
 .date-picker-dropdown {
   @apply absolute left-0 z-[100] mt-2;
-  @apply bg-white dark:bg-dark-800;
-  @apply rounded-xl;
-  @apply border border-gray-200 dark:border-dark-700;
-  @apply shadow-lg shadow-black/10 dark:shadow-black/30;
+  background: var(--neo-surface);
+  color: var(--neo-ink);
+  border: 2px solid var(--neo-border);
+  border-radius: 10px;
+  box-shadow: var(--neo-shadow);
   @apply overflow-hidden;
   @apply min-w-[320px];
 }
@@ -418,11 +414,14 @@ onUnmounted(() => {
 }
 
 .date-picker-apply {
-  @apply rounded-lg px-4 py-1.5 text-sm font-medium;
-  @apply bg-primary-600 text-white;
-  @apply hover:bg-primary-700;
-  @apply transition-colors duration-150;
+  @apply px-4 py-1.5 text-sm font-bold;
+  background: var(--neo-accent);
+  color: var(--neo-accent-ink);
+  border: 2px solid var(--neo-border);
+  border-radius: 7px;
+  box-shadow: 2px 2px 0 var(--neo-shadow-color);
 }
+.date-picker-apply:active { box-shadow: none; }
 
 /* Dropdown animation */
 .date-picker-dropdown-enter-active,

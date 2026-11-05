@@ -44,6 +44,19 @@
           </nav>
         </div>
 
+        <section v-show="activeTab === 'appearance'" class="card" data-testid="appearance-settings">
+          <div class="card-header">
+            <h2 class="text-lg font-bold">{{ t('admin.settings.appearance.title') }}</h2>
+            <p class="mt-2 text-sm text-gray-600 dark:text-dark-300">{{ t('admin.settings.appearance.description') }}</p>
+          </div>
+          <div class="card-body">
+            <AppearanceFields v-model="form.appearance" admin />
+            <div class="mt-6 rounded-xl border-2 p-4 text-sm">
+              {{ t('admin.settings.appearance.saveHint') }}
+            </div>
+          </div>
+        </section>
+
         <!-- Tab: Security — Admin API Key -->
         <div v-show="activeTab === 'security'" class="space-y-6">
           <AdminAccessKeysSettings />
@@ -8976,6 +8989,8 @@ import type {
 } from "@/types";
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
+import AppearanceFields from "@/components/common/AppearanceFields.vue";
+import { normalizeAppearance } from "@/types/appearance";
 import Icon from "@/components/icons/Icon.vue";
 import Select, { type SelectOption } from "@/components/common/Select.vue";
 import {
@@ -9057,6 +9072,7 @@ const paymentMethodsHref = computed(() =>
 
 type SettingsTab =
   | "general"
+  | "appearance"
   | "agreement"
   | "features"
   | "security"
@@ -9068,6 +9084,7 @@ type SettingsTab =
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
+  { key: "appearance" as SettingsTab, icon: "sun" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
@@ -9682,6 +9699,7 @@ type SettingsForm = Omit<
   | "wechat_connect_mobile_enabled"
   | "openai_oauth_scheduling_rate_multiplier"
 > & {
+  appearance: import('@/types/appearance').AppearanceSettings;
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
   channel_monitor_show_quota: boolean;
@@ -9739,6 +9757,7 @@ function platformQuotaRows(map: DefaultPlatformQuotasMap | undefined): string[] 
 }
 
 const form = reactive<SettingsForm>({
+  appearance: normalizeAppearance(undefined),
   registration_enabled: true,
   email_verify_enabled: false,
   registration_email_suffix_whitelist: [],
@@ -11020,6 +11039,7 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.appearance = normalizeAppearance(settings.appearance);
     // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
@@ -11478,6 +11498,7 @@ async function saveSettings() {
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
+      appearance: { ...form.appearance },
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
@@ -11816,6 +11837,7 @@ async function saveSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.appearance = normalizeAppearance(updated.appearance ?? form.appearance);
     if (updated.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
     }
@@ -11887,7 +11909,10 @@ async function saveSettings() {
     }
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();
-    // Refresh cached settings so sidebar/header update immediately
+    // Drain an older shared request first: a force refresh intentionally joins
+    // active requests, which may have started before this settings write.
+    await appStore.fetchPublicSettings();
+    // Then load settings guaranteed to have been requested after the write.
     await appStore.fetchPublicSettings(true);
     await adminSettingsStore.fetch(true);
     if (wsOk) {
@@ -13280,11 +13305,12 @@ watch(
 
 /* ============ 系统设置 Tab 导航 ============ */
 .settings-tabs-shell {
-  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
+  @apply sticky z-20 -mx-1 p-2;
   top: 4.75rem;
-  box-shadow:
-    0 12px 28px rgb(15 23 42 / 0.07),
-    0 1px 0 rgb(255 255 255 / 0.9) inset;
+  border: 2px solid var(--neo-border);
+  border-radius: var(--neo-radius);
+  background: var(--neo-surface);
+  box-shadow: var(--neo-shadow);
 }
 
 .settings-tabs-scroll {
@@ -13302,7 +13328,8 @@ watch(
 }
 
 .settings-tab {
-  @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
+  @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium outline-none transition-colors duration-200 ease-out;
+  color: var(--neo-muted);
 }
 
 @media (min-width: 768px) {
@@ -13322,7 +13349,7 @@ watch(
 .settings-tab::before {
   @apply absolute inset-0 -z-10 rounded-xl opacity-0 transition-opacity duration-200;
   content: "";
-  background: linear-gradient(135deg, rgb(248 250 252 / 0.95), rgb(241 245 249 / 0.8));
+  background: var(--neo-surface-soft);
 }
 
 .settings-tab:hover::before,
@@ -13335,10 +13362,11 @@ watch(
 }
 
 .settings-tab-active {
-  @apply border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-400/30 dark:bg-dark-700/95 dark:text-primary-200;
-  box-shadow:
-    0 8px 18px rgb(15 23 42 / 0.08),
-    0 1px 0 rgb(255 255 255 / 0.92) inset;
+  border: 2px solid var(--neo-border);
+  background: var(--neo-accent);
+  color: var(--neo-accent-ink);
+  font-weight: 800;
+  box-shadow: 2px 2px 0 var(--neo-shadow-color);
 }
 
 .settings-tab-active::before {
@@ -13346,27 +13374,22 @@ watch(
 }
 
 .settings-tab-active::after {
-  position: absolute;
-  right: 0.75rem;
-  bottom: 0.25rem;
-  left: 0.75rem;
-  height: 2px;
-  border-radius: 9999px;
-  content: "";
-  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
+  content: none;
 }
 
 .settings-tab-icon {
-  @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors duration-200 dark:text-gray-400;
+  @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-200;
+  color: var(--neo-muted);
 }
 
 .settings-tab:hover .settings-tab-icon,
 .settings-tab:focus-visible .settings-tab-icon {
-  @apply text-gray-700 dark:text-gray-200;
+  color: var(--neo-ink);
 }
 
 .settings-tab-active .settings-tab-icon {
-  @apply bg-primary-50 text-primary-600 dark:bg-primary-400/10 dark:text-primary-300;
+  color: var(--neo-accent-ink);
+  background: transparent;
 }
 
 .settings-tab-label {
@@ -13374,25 +13397,4 @@ watch(
 }
 </style>
 
-<style>
-/* Dark-mode overrides for the settings tabs shell. Kept in an UNSCOPED block
-   because Vue's scoped-CSS compiler was dropping the `:global(.dark) ...`
-   rules in the production build, leaving inactive tabs unreadable on dark. */
-.dark .settings-tabs-shell {
-  border-color: rgb(51 65 85 / 0.65);
-  background: rgb(15 23 42 / 0.86);
-  box-shadow:
-    0 16px 36px rgb(0 0 0 / 0.28),
-    0 1px 0 rgb(255 255 255 / 0.06) inset;
-}
-
-.dark .settings-tab::before {
-  background: linear-gradient(135deg, rgb(30 41 59 / 0.9), rgb(51 65 85 / 0.62));
-}
-
-.dark .settings-tab-active {
-  box-shadow:
-    0 12px 26px rgb(0 0 0 / 0.22),
-    0 1px 0 rgb(255 255 255 / 0.08) inset;
-}
-</style>
+<!-- Shared semantic tokens supply both color modes; no duplicate dark tab rules. -->

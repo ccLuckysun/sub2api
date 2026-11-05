@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-3">
+  <div class="plaza-filters space-y-3">
     <!-- 一级:平台 -->
     <div class="flex items-start gap-2">
       <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
@@ -11,6 +11,7 @@
           :key="`platform-${p}`"
           type="button"
           class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+          :aria-pressed="platform === p"
           :class="p === 'all' ? chipClass(platform === 'all') : platform === p ? 'chip-tinted-active' : 'chip-tinted'"
           :style="p === 'all' ? undefined : { '--chip-accent': platformAccentColor(p) }"
           :disabled="p !== 'all' && !platformEnabled(p)"
@@ -31,6 +32,7 @@
         <button
           type="button"
           class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+          :aria-pressed="groupId === 'all'"
           :class="chipClass(groupId === 'all')"
           @click="$emit('update:groupId', 'all')"
         >
@@ -41,6 +43,7 @@
           :key="`group-${g.id}`"
           type="button"
           class="rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+          :aria-pressed="groupId === g.id"
           :class="groupId === g.id ? 'chip-tinted-active' : 'chip-tinted'"
           :style="{ '--chip-accent': platformAccentColor(g.platform) }"
           :disabled="!groupEnabled(g)"
@@ -60,6 +63,7 @@
         <button
           type="button"
           class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+          :aria-pressed="rate === 'all'"
           :class="chipClass(rate === 'all')"
           @click="$emit('update:rate', 'all')"
         >
@@ -70,6 +74,7 @@
           :key="`rate-${r}`"
           type="button"
           class="rounded-lg px-3 py-1.5 font-mono text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+          :aria-pressed="rate === r"
           :class="chipClass(rate === r)"
           :disabled="!rateEnabled(r)"
           @click="$emit('update:rate', r)"
@@ -93,6 +98,7 @@
         <input
           :value="search"
           type="text"
+          :aria-label="t('modelPlaza.filters.searchPlaceholder')"
           :placeholder="t('modelPlaza.filters.searchPlaceholder')"
           class="input rounded-lg py-1.5 pl-9 pr-9"
           @input="$emit('update:search', ($event.target as HTMLInputElement).value)"
@@ -100,6 +106,7 @@
         <button
           v-if="search"
           type="button"
+          :aria-label="t('common.clear')"
           class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 dark:text-dark-500 dark:hover:text-gray-300"
           @click="$emit('update:search', '')"
         >
@@ -170,13 +177,20 @@ function rateEnabled(r: number): boolean {
 }
 
 function chipClass(active: boolean): string {
-  return active
-    ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-sm shadow-primary-500/30'
-    : 'bg-white text-gray-600 ring-1 ring-inset ring-gray-200 enabled:hover:bg-gray-50 enabled:hover:text-gray-900 enabled:hover:ring-gray-300 dark:bg-dark-800/60 dark:text-dark-300 dark:ring-dark-700 dark:enabled:hover:bg-dark-800 dark:enabled:hover:text-white'
+  return active ? 'plaza-chip-active' : 'plaza-chip'
 }
 </script>
 
 <style scoped>
+.plaza-filters { padding: 20px; background: var(--neo-surface); border: 2px solid var(--neo-border); border-radius: 12px; box-shadow: var(--neo-shadow); }
+.plaza-filters > div > span { text-transform: none; letter-spacing: normal; color: var(--neo-muted); font-weight: 800; }
+.plaza-filters > div > div { min-width: 0; }
+.plaza-filters button:not(.absolute) { min-height: 36px; border: 2px solid var(--neo-border); font-weight: 750; overflow-wrap: anywhere; max-width: 100%; }
+.plaza-chip { background: var(--neo-surface); color: var(--neo-ink); }
+.plaza-chip:hover:not(:disabled) { background: var(--neo-surface-soft); }
+.plaza-chip-active { background: var(--neo-accent); color: var(--neo-accent-ink); box-shadow: 2px 2px 0 var(--neo-shadow-color); }
+.plaza-filters .chip-tinted-active { box-shadow: 2px 2px 0 var(--neo-shadow-color); }
+@media (max-width: 480px) { .plaza-filters { padding: 16px; } }
 /* 平台/分组 chip 的配色统一从 --chip-accent(平台主色)派生,新增平台无需扩展样式。
    激活态与非激活态在模板上互斥挂载,避免选择器优先级互相覆盖。 */
 .chip-tinted {

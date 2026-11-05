@@ -1,133 +1,70 @@
 /** @type {import('tailwindcss').Config} */
+const shades = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]
+const primary = Object.fromEntries(
+  shades.map(shade => [shade, `rgb(var(--neo-primary-${shade}) / <alpha-value>)`])
+)
+const gray = {
+  50: '#fff9e9', 100: '#f6f1e6', 200: '#e3ddcf', 300: '#cfc7b7',
+  400: '#867f70', 500: '#6d6657', 600: '#575145', 700: '#403c33',
+  800: '#292720', 900: '#111111', 950: '#090909'
+}
+const dark = {
+  50: '#fff9e9', 100: '#eee8d8', 200: '#ddd7c9', 300: '#ccc6b8',
+  400: '#bcb7a9', 500: '#969185', 600: '#666258', 700: '#49473f',
+  800: '#303030', 900: '#252525', 950: '#191919'
+}
+
 export default {
   content: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
-      colors: {
-        // 主色调 - Teal/Cyan 青色系
-        primary: {
-          50: '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
-          950: '#042f2e'
-        },
-        // 辅助色 - 深蓝灰
-        accent: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
-          600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#020617'
-        },
-        // 深色模式背景
-        dark: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
-          600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#020617'
-        }
-      },
+      colors: { primary, gray, dark, accent: dark },
       fontFamily: {
         sans: [
-          'system-ui',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          'Segoe UI',
-          'Roboto',
-          'Helvetica Neue',
-          'Arial',
-          'PingFang SC',
-          'Hiragino Sans GB',
-          'Microsoft YaHei',
-          'sans-serif'
+          '"Avenir Next"', 'Avenir', '"Segoe UI"', '"PingFang SC"',
+          '"Hiragino Sans GB"', '"Microsoft YaHei"', 'system-ui', 'sans-serif'
         ],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
       },
       boxShadow: {
-        glass: '0 8px 32px rgba(0, 0, 0, 0.08)',
-        'glass-sm': '0 4px 16px rgba(0, 0, 0, 0.06)',
-        glow: '0 0 20px rgba(20, 184, 166, 0.25)',
-        'glow-lg': '0 0 40px rgba(20, 184, 166, 0.35)',
-        card: '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06)',
-        'card-hover': '0 10px 40px rgba(0, 0, 0, 0.08)',
-        'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+        glass: 'var(--neo-shadow)',
+        'glass-sm': 'var(--neo-shadow-sm)',
+        glow: 'var(--neo-shadow-sm)',
+        'glow-lg': 'var(--neo-shadow)',
+        card: 'var(--neo-shadow)',
+        'card-hover': '5px 5px 0 var(--neo-shadow-color)',
+        'inner-glow': 'inset 0 1px 0 rgb(255 255 255 / .08)',
+        neo: 'var(--neo-shadow)'
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
-        'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        'gradient-glass':
-          'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
-        'mesh-gradient':
-          'radial-gradient(at 40% 20%, rgba(20, 184, 166, 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(6, 182, 212, 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(20, 184, 166, 0.08) 0px, transparent 50%)'
+        // Retain legacy utility names without reintroducing teal gradients.
+        'gradient-primary': 'linear-gradient(var(--neo-accent), var(--neo-accent))',
+        'gradient-dark': 'linear-gradient(var(--neo-canvas), var(--neo-canvas))',
+        'gradient-glass': 'linear-gradient(var(--neo-surface), var(--neo-surface))',
+        'mesh-gradient': 'radial-gradient(circle, rgb(128 119 95 / .15) .7px, transparent .7px)'
       },
       animation: {
-        'fade-in': 'fadeIn 0.3s ease-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-        'slide-down': 'slideDown 0.3s ease-out',
-        'slide-in-right': 'slideInRight 0.3s ease-out',
-        'scale-in': 'scaleIn 0.2s ease-out',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'fade-in': 'fadeIn 240ms var(--neo-ease) both',
+        'slide-up': 'slideUp 280ms var(--neo-ease) both',
+        'slide-down': 'slideDown 220ms var(--neo-ease) both',
+        'slide-in-right': 'slideInRight 240ms var(--neo-ease) both',
+        'scale-in': 'scaleIn 180ms var(--neo-ease) both',
+        'pulse-slow': 'pulse 3s cubic-bezier(.4, 0, .6, 1) infinite',
         shimmer: 'shimmer 2s linear infinite',
-        glow: 'glow 2s ease-in-out infinite alternate'
+        glow: 'fadeIn 240ms ease-out both'
       },
       keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' }
-        },
-        slideUp: {
-          '0%': { opacity: '0', transform: 'translateY(10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' }
-        },
-        slideDown: {
-          '0%': { opacity: '0', transform: 'translateY(-10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' }
-        },
-        slideInRight: {
-          '0%': { opacity: '0', transform: 'translateX(20px)' },
-          '100%': { opacity: '1', transform: 'translateX(0)' }
-        },
-        scaleIn: {
-          '0%': { opacity: '0', transform: 'scale(0.95)' },
-          '100%': { opacity: '1', transform: 'scale(1)' }
-        },
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' }
-        },
-        glow: {
-          '0%': { boxShadow: '0 0 20px rgba(20, 184, 166, 0.25)' },
-          '100%': { boxShadow: '0 0 30px rgba(20, 184, 166, 0.4)' }
-        }
+        fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+        slideUp: { '0%': { opacity: '0', transform: 'translateY(6px)' }, '100%': { opacity: '1', transform: 'none' } },
+        slideDown: { '0%': { opacity: '0', transform: 'translateY(-6px)' }, '100%': { opacity: '1', transform: 'none' } },
+        slideInRight: { '0%': { opacity: '0', transform: 'translateX(12px)' }, '100%': { opacity: '1', transform: 'none' } },
+        scaleIn: { '0%': { opacity: '0', transform: 'translate(3px, 3px) scale(.99)' }, '100%': { opacity: '1', transform: 'none' } },
+        shimmer: { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } }
       },
-      backdropBlur: {
-        xs: '2px'
-      },
-      borderRadius: {
-        '4xl': '2rem'
-      }
+      backdropBlur: { xs: '2px' },
+      borderRadius: { '4xl': '1rem' }
     }
   },
   plugins: []

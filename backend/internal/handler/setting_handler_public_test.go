@@ -53,6 +53,45 @@ func (s *settingHandlerPublicRepoStub) Delete(ctx context.Context, key string) e
 	panic("unexpected Delete call")
 }
 
+func TestSettingHandler_GetPublicSettings_AppearanceMatchesInjection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stored := range []string{
+		"", `{"theme":"dark","accent":"blue","motion":"off","density":"compact","allow_user_override":false}`,
+		`{"theme":"dark","private_field":"not-public"}`,
+	} {
+		t.Run(stored, func(t *testing.T) {
+			svc := service.NewSettingService(&settingHandlerPublicRepoStub{values: map[string]string{
+				service.SettingKeyAppearance: stored,
+			}}, &config.Config{})
+			h := NewSettingHandler(svc, "test-version")
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+			h.GetPublicSettings(c)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			var resp struct {
+				Data struct {
+					Appearance json.RawMessage `json:"appearance"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+			injection, err := svc.GetPublicSettingsForInjection(context.Background())
+			require.NoError(t, err)
+			payload := injection.(*service.PublicSettingsInjectionPayload)
+			want, err := json.Marshal(payload.Appearance)
+			require.NoError(t, err)
+			require.JSONEq(t, string(want), string(resp.Data.Appearance))
+			var fields map[string]any
+			require.NoError(t, json.Unmarshal(resp.Data.Appearance, &fields))
+			require.Len(t, fields, 5)
+			for _, key := range []string{"theme", "accent", "motion", "density", "allow_user_override"} {
+				require.Contains(t, fields, key)
+			}
+			require.NotContains(t, recorder.Body.String(), "not-public")
+		})
+	}
+}
+
 func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

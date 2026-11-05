@@ -1,6 +1,6 @@
 <template>
   <header
-    class="glass sticky top-0 z-30 border-b border-gray-200/50 dark:border-dark-700/50"
+    class="plaza-nav sticky top-0 z-30"
   >
     <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
       <!-- 左:站点 logo + 名称 -->
@@ -11,7 +11,7 @@
           >
             <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </span>
-          <span class="truncate text-base font-semibold text-gray-950 dark:text-white">
+          <span class="min-w-0 text-base font-extrabold text-gray-950 [overflow-wrap:anywhere] dark:text-white">
             {{ siteName }}
           </span>
         </template>
@@ -25,14 +25,14 @@
       <RouterLink
         v-if="isAuthenticated"
         :to="backTarget"
-        class="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
+        class="btn btn-primary flex-shrink-0 text-center"
       >
         {{ t('modelPlaza.nav.backToDashboard') }}
       </RouterLink>
       <RouterLink
         v-else
         :to="{ path: '/login', query: { redirect: '/model-plaza' } }"
-        class="inline-flex flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
+        class="btn btn-primary flex-shrink-0 text-center"
       >
         {{ t('modelPlaza.nav.login') }}
       </RouterLink>
@@ -59,3 +59,9 @@ const siteLogo = computed(() =>
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const backTarget = computed(() => (authStore.isAdmin ? '/admin/dashboard' : '/dashboard'))
 </script>
+
+<style scoped>
+.plaza-nav { background: var(--neo-surface); color: var(--neo-ink); border-bottom: 2px solid var(--neo-border); }
+.plaza-nav > div > div > span:first-child { border: 2px solid var(--neo-border); box-shadow: var(--neo-shadow-sm); background: #fff; --tw-ring-shadow: 0 0 #0000; }
+@media (max-width: 480px) { .plaza-nav > div { gap: 14px; flex-wrap: wrap; } .plaza-nav > div > div { flex: 1 1 180px; } }
+</style>

@@ -99,6 +99,11 @@ func (s *SettingService) refreshCachedSettingsAfterWrite(ctx context.Context, se
 }
 
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+	if settings.Appearance != nil {
+		if err := settings.Appearance.validate(); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_APPEARANCE", err.Error())
+		}
+	}
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -160,6 +165,13 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 
 	updates := make(map[string]string)
+	if settings.Appearance != nil {
+		appearanceJSON, err := json.Marshal(settings.Appearance)
+		if err != nil {
+			return nil, fmt.Errorf("marshal appearance: %w", err)
+		}
+		updates[SettingKeyAppearance] = string(appearanceJSON)
+	}
 
 	// 注册设置
 	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)

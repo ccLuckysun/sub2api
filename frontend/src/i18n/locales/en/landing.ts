@@ -5,6 +5,11 @@ export default {
   },
   // Home Page
   home: {
+    demo: {
+      title: 'Request illustration', note: 'Example only. No network requests or credits used.',
+      run: 'Run example', reset: 'Reset example', request: 'Request', response: 'Sample response',
+      ready: 'Run the example to reveal a sample response.', prompt: 'Say hello to the world', reply: 'Hello, world!', replay: 'Run again'
+    },
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
     docs: 'Docs',

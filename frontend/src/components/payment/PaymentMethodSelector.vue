@@ -10,11 +10,12 @@
       <button
         v-for="method in sortedMethods"
         :key="method.type"
+        :aria-pressed="selected === method.type"
         type="button"
         :title="methodLabel(method)"
         :disabled="!method.available"
         :class="[
-          'relative flex h-[60px] min-w-0 flex-col items-center justify-center rounded-lg border px-3 transition-all',
+          'console-choice relative flex h-[60px] min-w-0 flex-col items-center justify-center rounded-lg border px-3 transition-all',
           !method.available
             ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50 dark:border-dark-700 dark:bg-dark-800/50'
             : selected === method.type
@@ -106,3 +107,5 @@ function methodSelectedClass(type: string): string {
   return 'border-primary-500 bg-primary-50 text-gray-900 shadow-sm dark:bg-primary-950 dark:text-gray-100'
 }
 </script>
+
+<style scoped src="../../views/admin/console-pages.css"></style>

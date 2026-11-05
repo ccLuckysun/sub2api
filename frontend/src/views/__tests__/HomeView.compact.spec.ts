@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, RouterLinkStub } from '@vue/test-utils'
 
 import HomeView from '../HomeView.vue'
+import { configureAppearance, initializeAppearance } from '@/composables/useAppearance'
 
 const { appStore, authStore } = vi.hoisted(() => ({
   appStore: {
@@ -75,6 +76,7 @@ describe('HomeView compact mode', () => {
     appStore.fetchPublicSettings.mockClear()
     localStorage.clear()
     vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
+    initializeAppearance({ theme: 'light', allow_user_override: true })
   })
 
   it('renders custom HTML ahead of compact mode', () => {
@@ -170,6 +172,44 @@ describe('HomeView compact mode', () => {
     })
 
     expect(modelPlazaDestination(wrapper)).toBe('/model-plaza')
+  })
+
+  it('reveals and resets an explicitly labeled local request illustration without network calls', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const wrapper = mountHome()
+    expect(wrapper.get('.demo-note').text()).toBe('home.demo.note')
+    expect(wrapper.find('.demo-result').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="demo-run"]').trigger('click')
+    expect(wrapper.get('.demo-result').text()).toContain('home.demo.reply')
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    await wrapper.get('.demo-controls .btn-secondary').trigger('click')
+    expect(wrapper.find('.demo-result').exists()).toBe(false)
+    expect(wrapper.get('.demo-ready').text()).toBe('home.demo.ready')
+    fetchSpy.mockRestore()
+  })
+
+  it('switches between cURL and JSON examples', async () => {
+    const wrapper = mountHome()
+    expect(wrapper.get('.demo-code').text()).toContain('curl /v1/messages')
+    await wrapper.get('.demo-formats button:last-child').trigger('click')
+    expect(wrapper.get('.demo-formats button:last-child').attributes('aria-pressed')).toBe('true')
+    expect(JSON.parse(wrapper.get('.demo-code').text()).messages[0].content).toBe('home.demo.prompt')
+  })
+
+  it.each([true, false])('hides the theme control when administrator overrides are disabled (compact=%s)', (compact) => {
+    configureAppearance({ theme: 'dark', allow_user_override: false })
+    const wrapper = mountHome({ compact_home_enabled: compact })
+    expect(wrapper.find('button[title="home.switchToLight"]').exists()).toBe(false)
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+  })
+
+  it('uses the shared appearance state for theme changes', async () => {
+    const wrapper = mountHome()
+    await wrapper.get('button[title="home.switchToDark"]').trigger('click')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(wrapper.get('button[title="home.switchToLight"]').exists()).toBe(true)
   })
 
   it('hides the model plaza link when the feature is disabled', () => {

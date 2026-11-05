@@ -1,0 +1,49 @@
+/* Page-local auth styling. Imported only by public authentication routes. */
+.public-auth {
+  color: var(--neo-ink);
+  overflow-wrap: anywhere;
+}
+.public-auth:not(.auth-layout) {
+  background: var(--neo-canvas);
+}
+.public-auth .auth-page-content > .text-center:first-child {
+  text-align: left;
+  border-bottom: 2px solid var(--neo-border);
+  padding-bottom: 22px;
+}
+.public-auth .auth-page-content > .text-center:first-child h2 {
+  font-size: 27px;
+  line-height: 1.3;
+  font-weight: 900;
+  letter-spacing: -.04em;
+}
+.public-auth .auth-page-content > .text-center:first-child p {
+  line-height: 1.8;
+  color: var(--neo-muted);
+}
+.public-auth .auth-page-content .border-gray-200,
+.public-auth > .card .border-gray-200 {
+  border: 2px solid var(--neo-border);
+}
+.public-auth .auth-page-content .bg-gray-50 {
+  background: var(--neo-surface-soft);
+}
+.public-auth .auth-page-content form,
+.public-auth .auth-page-content fieldset,
+.public-auth .auth-page-content .relative {
+  min-width: 0;
+}
+.public-auth .auth-page-content .btn-primary svg.text-white {
+  color: inherit;
+}
+.public-auth .card h1 {
+  font-weight: 900;
+  letter-spacing: -.035em;
+}
+.public-auth .card {
+  min-width: 0;
+}
+@media (max-width: 420px) {
+  .public-auth .auth-page-content > .text-center:first-child h2 { font-size: 24px; }
+  .public-auth .auth-page-content > .text-center:first-child { padding-bottom: 18px; }
+}

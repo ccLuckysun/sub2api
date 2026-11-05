@@ -1,5 +1,5 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8 dark:bg-dark-950 sm:py-12">
+  <main class="public-auth min-h-screen bg-gray-50 px-4 py-8 dark:bg-dark-950 sm:py-12">
     <section class="card mx-auto max-w-2xl p-5 sm:p-8" aria-labelledby="mcp-consent-title" :aria-busy="loading || submitting">
       <div class="mb-6 flex items-start gap-3">
         <div class="rounded-xl bg-primary-50 p-3 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400"><Icon name="mcp" size="lg" /></div>
@@ -68,6 +68,7 @@
 </template>
 
 <script setup lang="ts">
+import './auth-pages.css'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'

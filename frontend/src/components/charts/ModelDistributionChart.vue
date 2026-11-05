@@ -243,6 +243,7 @@
 </template>
 
 <script setup lang="ts">
+import { useChartTheme } from '@/composables/useChartTheme'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
@@ -251,6 +252,8 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
+
+const chartTheme = useChartTheme()
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -375,7 +378,8 @@ const chartData = computed(() => {
       {
         data: displayModelStats.value.map((m) => toFiniteNumber(props.metric === 'actual_cost' ? m.actual_cost : m.total_tokens)),
         backgroundColor: chartColors.slice(0, displayModelStats.value.length),
-        borderWidth: 0
+        borderWidth: 2,
+        borderColor: chartTheme.colors.value.surface
       }
     ]
   }
@@ -400,7 +404,8 @@ const rankingChartData = computed(() => {
       {
         data,
         backgroundColor,
-        borderWidth: 0
+        borderWidth: 2,
+        borderColor: chartTheme.colors.value.surface
       }
     ]
   }
@@ -440,11 +445,13 @@ const rankingDisplayItems = computed<RankingDisplayItem[]>(() => {
 const doughnutOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: chartTheme.animation.value,
   plugins: {
     legend: {
       display: false
     },
     tooltip: {
+      ...chartTheme.tooltip.value,
       callbacks: {
         label: (context: any) => {
           const value = context.raw as number
@@ -463,11 +470,13 @@ const doughnutOptions = computed(() => ({
 const rankingDoughnutOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  animation: chartTheme.animation.value,
   plugins: {
     legend: {
       display: false
     },
     tooltip: {
+      ...chartTheme.tooltip.value,
       callbacks: {
         label: (context: any) => {
           const value = context.raw as number

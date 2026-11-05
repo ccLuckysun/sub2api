@@ -1,6 +1,6 @@
 <template>
-  <AuthLayout>
-    <div class="space-y-6">
+  <AuthLayout class="public-auth">
+    <div class="auth-page-content space-y-6">
       <div class="text-center">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.dingtalk.createAccountTitle') }}
@@ -23,6 +23,7 @@
 </template>
 
 <script setup lang="ts">
+import './auth-pages.css'
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'

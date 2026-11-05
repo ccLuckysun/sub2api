@@ -2,6 +2,15 @@
 
 FRONTEND_CRITICAL_VITEST := \
 	src/i18n/__tests__/localeKeyCompleteness.spec.ts \
+	src/composables/__tests__/useAppearance.spec.ts \
+	src/composables/__tests__/useChartTheme.spec.ts \
+	src/components/common/__tests__/neoTheme.spec.ts \
+	src/components/common/__tests__/AppearancePreferences.spec.ts \
+	src/components/common/__tests__/Toast.motion.spec.ts \
+	src/components/common/__tests__/DataTable.spec.ts \
+	src/components/common/__tests__/AnnouncementPopup.spec.ts \
+	src/components/payment/__tests__/useStripeAppearance.spec.ts \
+	src/views/__tests__/HomeView.compact.spec.ts \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/keys.bulkUpdate.spec.ts \

@@ -1,6 +1,6 @@
 <template>
-  <AuthLayout>
-    <div class="space-y-6">
+  <AuthLayout class="public-auth">
+    <div class="auth-page-content space-y-6">
       <!-- Title -->
       <div class="text-center">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -222,6 +222,7 @@
 </template>
 
 <script setup lang="ts">
+import './auth-pages.css'
 import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'

@@ -1,13 +1,13 @@
 <template>
   <div
-    class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 dark:border-dark-700 dark:bg-dark-800 sm:px-6"
+    class="neo-pagination flex items-center justify-between px-4 py-3 sm:px-5"
   >
     <div class="flex flex-1 items-center justify-between sm:hidden">
       <!-- Mobile pagination -->
       <button
         @click="goToPage(page - 1)"
         :disabled="page === 1"
-        class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
+        class="neo-pagination-button"
       >
         {{ t('pagination.previous') }}
       </button>
@@ -17,7 +17,7 @@
       <button
         @click="goToPage(page + 1)"
         :disabled="page === totalPages"
-        class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
+        class="neo-pagination-button"
       >
         {{ t('pagination.next') }}
       </button>
@@ -69,14 +69,14 @@
 
       <!-- Desktop pagination buttons -->
       <nav
-        class="relative z-0 inline-flex -space-x-px rounded-md shadow-sm"
+        class="neo-pagination-pages relative inline-flex"
         aria-label="Pagination"
       >
         <!-- Previous button -->
         <button
           @click="goToPage(page - 1)"
           :disabled="page === 1"
-          class="relative inline-flex items-center rounded-l-md border border-gray-300 bg-white px-2 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600"
+          class="neo-pagination-button"
           :aria-label="t('pagination.previous')"
         >
           <Icon name="chevronLeft" size="md" />
@@ -89,10 +89,10 @@
           @click="typeof pageNum === 'number' && goToPage(pageNum)"
           :disabled="typeof pageNum !== 'number'"
           :class="[
-            'relative inline-flex items-center border px-4 py-2 text-sm font-medium',
+            'neo-pagination-button',
             pageNum === page
-              ? 'z-10 border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400'
-              : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600',
+              ? 'neo-pagination-current'
+              : '',
             typeof pageNum !== 'number' && 'cursor-default'
           ]"
           :aria-label="
@@ -107,7 +107,7 @@
         <button
           @click="goToPage(page + 1)"
           :disabled="page === totalPages"
-          class="relative inline-flex items-center rounded-r-md border border-gray-300 bg-white px-2 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600"
+          class="neo-pagination-button"
           :aria-label="t('pagination.next')"
         >
           <Icon name="chevronRight" size="md" />
@@ -241,6 +241,20 @@ const submitJump = () => {
 </script>
 
 <style scoped>
+.neo-pagination { border-top: 2px solid var(--neo-border); background: var(--neo-surface); border-radius: 0 0 10px 10px; gap: 12px; }
+.neo-pagination-pages { border: 2px solid var(--neo-border); border-radius: 8px; box-shadow: 2px 2px 0 var(--neo-shadow-color); }
+.neo-pagination-button { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; min-height: 34px; padding: 6px 10px; border: 1px solid var(--neo-divider); border-radius: 6px; background: var(--neo-surface); color: var(--neo-ink); font-size: 13px; font-weight: 750; }
+.neo-pagination-pages .neo-pagination-button { border: 0; border-right: 1px solid var(--neo-divider); border-radius: 0; }
+.neo-pagination-pages .neo-pagination-button:first-child { border-radius: 6px 0 0 6px; }
+.neo-pagination-pages .neo-pagination-button:last-child { border-right: 0; border-radius: 0 6px 6px 0; }
+.neo-pagination-button:hover:not(:disabled) { background: var(--neo-surface-soft); }
+.neo-pagination-button.neo-pagination-current { background: var(--neo-accent); color: var(--neo-accent-ink); }
+.neo-pagination-button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 1279px) {
+  .neo-pagination > div { flex-wrap: wrap; gap: 12px; }
+  .neo-pagination > div > div { flex-wrap: wrap; gap: 10px; }
+}
+
 .page-size-select :deep(.select-trigger) {
   @apply px-3 py-1.5 text-sm;
 }

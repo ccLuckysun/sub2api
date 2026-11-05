@@ -338,6 +338,23 @@ describe('DataTable', () => {
     viewport.remove()
   })
 
+  it('keeps mobile selected rows visually distinct after applying D surfaces', async () => {
+    stubMobileMatchMedia()
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [{ id: 1, name: 'One' }, { id: 2, name: 'Two' }],
+        rowKey: 'id', selectable: true, selectedKeys: [1]
+      }
+    })
+    expect(wrapper.findAll('.neo-mobile-row-selected')).toHaveLength(1)
+    expect(wrapper.get('.neo-mobile-row-selected').text()).toContain('One')
+    await wrapper.setProps({ selectedKeys: [2] })
+    expect(wrapper.findAll('.neo-mobile-row-selected')).toHaveLength(1)
+    expect(wrapper.get('.neo-mobile-row-selected').text()).toContain('Two')
+    wrapper.unmount()
+  })
+
   it('offers current-page select all in the mobile card layout', async () => {
     stubMobileMatchMedia()
     const wrapper = mount(DataTable, {

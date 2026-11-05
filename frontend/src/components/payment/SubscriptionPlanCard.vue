@@ -1,8 +1,7 @@
 <template>
   <div
     :class="[
-      'group relative flex flex-col overflow-hidden rounded-2xl border transition-all',
-      'hover:shadow-xl hover:-translate-y-0.5',
+      'console-plan-card group relative flex flex-col overflow-hidden',
       borderClass,
       'bg-white dark:bg-dark-800',
     ]"
@@ -95,7 +94,7 @@
       <!-- Subscribe Button -->
       <button
         type="button"
-        :class="['w-full rounded-xl py-2.5 text-sm font-semibold transition-all active:scale-[0.98]', btnClass]"
+        :class="['btn w-full py-2.5 text-sm font-semibold', btnClass]"
         @click="emit('select', plan)"
       >
         {{ isRenewal ? t('payment.renewNow') : t('payment.subscribeNow') }}
@@ -178,3 +177,5 @@ const modelScopeLabels = computed(() => {
 
 const validitySuffix = computed(() => planValiditySuffix(props.plan, t))
 </script>
+
+<style scoped src="../../views/admin/console-pages.css"></style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-5">
+  <div class="model-plaza-content space-y-5">
     <!-- 页头(独立形态下展示标题;后台形态 AppHeader 已有页面标题) -->
     <div v-if="!embedded">
       <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">{{ t('modelPlaza.title') }}</h1>
@@ -154,6 +154,10 @@ const filteredGroups = computed(() => {
 </script>
 
 <style scoped>
+.model-plaza-content { min-width: 0; overflow-wrap: anywhere; }
+.model-plaza-content > div:first-child h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 950; letter-spacing: -.055em; }
+.model-plaza-content > div:first-child:not(.plaza-description) { padding-top: 10px; padding-bottom: 12px; }
+.plaza-description { background: var(--neo-surface); border: 2px solid var(--neo-border); border-radius: 12px; box-shadow: var(--neo-shadow); }
 .plaza-description {
   line-height: 1.7;
   overflow-wrap: anywhere;

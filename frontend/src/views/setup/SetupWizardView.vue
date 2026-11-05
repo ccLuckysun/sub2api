@@ -1,14 +1,14 @@
 <template>
   <div
-    class="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-4 dark:from-dark-900 dark:to-dark-800"
+    class="setup-page flex min-h-screen items-center justify-center p-4"
   >
     <div class="w-full max-w-2xl">
       <!-- Logo & Title -->
       <div class="mb-8 text-center">
         <div
-          class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg"
+          class="setup-mark mb-4 inline-flex h-16 w-16 items-center justify-center"
         >
-          <Icon name="cog" size="xl" class="text-white" />
+          <Icon name="cog" size="xl" />
         </div>
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ t('setup.title') }}</h1>
         <p class="mt-2 text-gray-500 dark:text-dark-400">{{ t('setup.description') }}</p>
@@ -20,6 +20,8 @@
           <template v-for="(step, index) in steps" :key="step.id">
             <div class="flex items-center">
               <div
+                class="setup-step"
+                :aria-current="currentStep === index ? 'step' : undefined"
                 :class="[
                   'flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold transition-all',
                   currentStep > index
@@ -58,7 +60,7 @@
       </div>
 
       <!-- Step Content -->
-      <div class="rounded-2xl bg-white p-8 shadow-xl dark:bg-dark-800">
+      <div class="setup-card card p-5 sm:p-8">
         <!-- Step 1: Database -->
         <div v-if="currentStep === 0" class="space-y-6">
           <div class="mb-6 text-center">
@@ -684,3 +686,17 @@ async function waitForServiceRestart() {
   errorMessage.value = t('setup.status.timeout')
 }
 </script>
+
+<style scoped>
+.setup-page { background: var(--neo-canvas); color: var(--neo-ink); padding-top: 40px; padding-bottom: 40px; overflow-wrap: anywhere; }
+.setup-mark { background: var(--neo-accent); color: var(--neo-accent-ink); border: 2px solid var(--neo-border); border-radius: 12px; box-shadow: 5px 5px 0 var(--neo-shadow-color); }
+.setup-page h1 { font-weight: 950; letter-spacing: -.05em; }
+.setup-page h2 { font-weight: 900; letter-spacing: -.025em; }
+.setup-step { border: 2px solid var(--neo-border); border-radius: 8px; }
+.setup-step.bg-primary-500 { background: var(--neo-accent); color: var(--neo-accent-ink); }
+.setup-step[aria-current='step'] { box-shadow: 3px 3px 0 var(--neo-shadow-color); --tw-ring-shadow: 0 0 #0000; }
+.setup-card { min-width: 0; }
+.setup-card .border-gray-200 { border: 2px solid var(--neo-border); }
+.setup-card input { min-width: 0; }
+.setup-page > div { min-width: 0; }
+</style>
