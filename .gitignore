@@ -2,6 +2,9 @@
 /docs-local/
 .codex
 
+# 本地一键部署脚本（含服务器别名/容器名，不入库）
+/deploy-us1.sh
+
 # ===================
 # Go 后端
 # ===================
@@ -134,6 +137,7 @@ deploy/docker-compose.override.yml
 vite.config.js
 docs/*
 !docs/agent-resource-safety.md
+!docs/moego-json-batching.md
 !docs/admin-api-keys.md
 !docs/mcp.md
 !docs/PAYMENT.md
