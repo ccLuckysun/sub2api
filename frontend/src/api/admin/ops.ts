@@ -6,6 +6,34 @@
 
 import { apiClient, buildGatewayUrl } from '../client'
 import type { PaginatedResponse } from '@/types'
+import type {
+  RequestTimingGroupsResponse,
+  RequestTimingSlowTopResponse,
+  RequestTimingTrendResponse,
+  SlowTimingSortKey,
+} from '@/types/requestTiming'
+
+export type {
+  RequestTiming,
+  RequestTimingDetail,
+  RequestTimingGroupsResponse,
+  RequestTimingSlowTopResponse,
+  RequestTimingTrendResponse,
+  TimingBounds,
+  TimingQuality,
+  TimingQuantiles,
+} from '@/types/requestTiming'
+
+/** ops 分组曲线/慢 TOP 统一时间过滤参数（与既有 ops 端点一致）。 */
+export interface OpsTimingQueryParams {
+  time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
+  start_time?: string
+  end_time?: string
+  platform?: string
+  group_id?: number | null
+  bucket_seconds?: 60 | 300 | 900
+  query_mode?: OpsQueryMode
+}
 
 export type OpsQueryMode = 'auto' | 'raw' | 'preagg'
 
@@ -697,7 +725,31 @@ export type MetricType =
   | 'account_error_ratio'
   | 'account_temp_unscheduled_count'
   | 'overload_account_count'
+  // 请求耗时三段（一期，逐闭合分钟桶判定）
+  | 'upload_ms_p90'
+  | 'upload_kbps_p50'
+  | 'large_body_ratio'
+  | 'real_ttfb_ms_p95'
+
+export {
+  REQUEST_TIMING_METRIC_TYPES,
+  REQUEST_TIMING_BUDGET_EXCEEDED,
+  isRequestTimingBudgetExceeded,
+  isRequestTimingMetric,
+  type RequestTimingMetricType,
+} from '@/utils/requestTimingMetricTypes'
 export type Operator = '>' | '>=' | '<' | '<=' | '==' | '!='
+
+// Persisted evaluation snapshot of a request-timing alert rule. Additive and
+// read-only: absent means "not evaluated yet", never "healthy".
+export interface AlertRuleEvaluation {
+  state: string
+  reason?: string
+  last_evaluated_at?: string | null
+  metric_value?: number | null
+  sample_count?: number
+  coverage?: number | null
+}
 
 export interface AlertRule {
   id?: number
@@ -716,6 +768,7 @@ export interface AlertRule {
   created_at?: string
   updated_at?: string
   last_triggered_at?: string | null
+  evaluation?: AlertRuleEvaluation | null
 }
 
 export interface AlertEvent {
@@ -1183,6 +1236,55 @@ export async function listRequestDetails(params: OpsRequestDetailsParams): Promi
   return data
 }
 
+// ==================== 请求耗时三段（一期） ====================
+
+export async function getRequestTimingTrend(
+  params: OpsTimingQueryParams,
+  options: OpsRequestOptions = {}
+): Promise<RequestTimingTrendResponse> {
+  const { data } = await apiClient.get<RequestTimingTrendResponse>(
+    '/admin/ops/dashboard/request-timing-trend',
+    { params, signal: options.signal }
+  )
+  return data
+}
+
+export interface OpsTimingGroupsParams extends OpsTimingQueryParams {
+  dimension: 'account' | 'model'
+  top?: number
+  /** 逗号分隔的 account id 或 model 名；服务端最多 10 个 */
+  entities?: string
+}
+
+export async function getRequestTimingGroups(
+  params: OpsTimingGroupsParams,
+  options: OpsRequestOptions = {}
+): Promise<RequestTimingGroupsResponse> {
+  const { data } = await apiClient.get<RequestTimingGroupsResponse>(
+    '/admin/ops/dashboard/request-timing-groups',
+    { params, signal: options.signal }
+  )
+  return data
+}
+
+export interface OpsSlowTimingParams extends OpsTimingQueryParams {
+  sort: SlowTimingSortKey
+  body_bytes_min?: number
+  account_id?: number | null
+  model?: string
+}
+
+export async function listSlowTimingRequests(
+  params: OpsSlowTimingParams,
+  options: OpsRequestOptions = {}
+): Promise<RequestTimingSlowTopResponse> {
+  const { data } = await apiClient.get<RequestTimingSlowTopResponse>(
+    '/admin/ops/requests/slow-timing',
+    { params, signal: options.signal }
+  )
+  return data
+}
+
 // Alert rules
 export async function listAlertRules(): Promise<AlertRule[]> {
   const { data } = await apiClient.get<AlertRule[]>('/admin/ops/alert-rules')
@@ -1345,6 +1447,9 @@ export const opsAPI = {
   listRequestErrorUpstreamErrors,
 
   listRequestDetails,
+  getRequestTimingTrend,
+  getRequestTimingGroups,
+  listSlowTimingRequests,
   listAlertRules,
   createAlertRule,
   updateAlertRule,

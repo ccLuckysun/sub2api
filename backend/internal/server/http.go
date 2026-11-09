@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -25,6 +26,7 @@ import (
 var ProviderSet = wire.NewSet(
 	ProvideRouter,
 	ProvideHTTPServer,
+	ProvideRequestTimingEnricher,
 )
 
 // ProvideRouter 提供路由器
@@ -43,6 +45,7 @@ func ProvideRouter(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	redisClient *redis.Client,
+	timingEnricher *requesttiming.Enricher,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -51,6 +54,15 @@ func ProvideRouter(
 	r := gin.New()
 	r.Use(middleware2.Recovery())
 	configureTrustedProxies(r, cfg.Server)
+	handlers.Admin.Usage.SetTimingQueryEnabled(cfg.RequestTiming.QueryEnabled)
+	opsService.SetRequestTimingCollector(func() map[string]any {
+		st := timingEnricher.Stats()
+		result := map[string]any{"queue_depth": timingEnricher.QueueDepth(), "enqueued": st.Enqueued, "applied": st.PatchesApplied, "dropped_queue_full": st.DroppedQueueFull, "dropped_stopped": st.DroppedStopped, "patch_misses": st.PatchMisses, "failed_batches": st.FailedBatches, "exhausted_batches": st.ExhaustedBatches, "latency_overflow": requesttiming.LatencyOverflowCount()}
+		for key, count := range requesttiming.ProcessCounters() {
+			result[key] = count
+		}
+		return result
+	})
 
 	// Wire up websearch Manager builder so it initializes on startup and rebuilds on config save.
 	settingService.SetWebSearchManagerBuilder(context.Background(), func(cfg *service.WebSearchEmulationConfig, proxyURLs map[int64]string) {
@@ -88,7 +100,7 @@ func ProvideRouter(
 		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
 	})
 
-	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
+	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, timingEnricher)
 }
 
 func configureTrustedProxies(r *gin.Engine, cfg config.ServerConfig) {

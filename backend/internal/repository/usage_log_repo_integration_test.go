@@ -437,7 +437,7 @@ func TestUsageLogRepositoryCreate_BatchPathCanceledAfterQueueMarksNotPersisted(t
 			TotalCost:    0.5,
 			ActualCost:   0.5,
 			CreatedAt:    time.Now().UTC(),
-		})
+		}, nil)
 		errCh <- err
 	}()
 

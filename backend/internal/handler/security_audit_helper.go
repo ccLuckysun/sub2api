@@ -106,7 +106,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 					return &decision
 				}
 			}
-			logSecurityAuditStart(reqLog, request, len(body), false)
+			logSecurityAuditStart(c, reqLog, request, len(body), false)
 			decision := coordinator.Check(c.Request.Context(), request)
 			if decision.Kind == securityaudit.DecisionAllow {
 				c.Set(securityAuditWSDedupeContextKey, securityAuditWSDedupeEntry{
@@ -117,7 +117,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 			return &decision
 		}
 	}
-	logSecurityAuditStart(reqLog, request, len(body), false)
+	logSecurityAuditStart(c, reqLog, request, len(body), false)
 	decision := coordinator.Check(c.Request.Context(), request)
 	if decision.AllowNextStage && cacheCompletion {
 		c.Set(securityAuditCompletedContextKey, true)
@@ -126,16 +126,33 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 	return &decision
 }
 
-func logSecurityAuditStart(reqLog *zap.Logger, request securityaudit.Request, bodyBytes int, cached bool) {
+func logSecurityAuditStart(c *gin.Context, reqLog *zap.Logger, request securityaudit.Request, bodyBytes int, cached bool) {
 	if reqLog == nil {
 		return
 	}
-	reqLog.Info("security_audit.gateway_check_start",
+	fields := []zap.Field{
 		zap.String("request_id", request.RequestID), zap.Int64("user_id", request.UserID),
 		zap.Int64("api_key_id", request.APIKeyID), zap.Int64p("group_id", request.GroupID),
 		zap.String("endpoint", request.Endpoint), zap.String("provider", request.Provider),
 		zap.String("protocol", request.Protocol), zap.String("model", request.Model), zap.String("stage", request.Stage),
-		zap.Int("body_bytes", bodyBytes), zap.Bool("cached", cached))
+		// Keep the historical field name/semantics unchanged for log consumers.
+		zap.Int("body_bytes", bodyBytes), zap.Bool("cached", cached),
+	}
+	// Add the canonical decoded-before-normalize size as metadata only; it is
+	// never used to backfill usage_logs.body_bytes from the audit path.
+	if timing := usageRequestTiming(c); timing != nil {
+		if decoded := timing.BodyBytes(); decoded != nil {
+			fields = append(fields,
+				zap.Int64("body_bytes_decoded", *decoded),
+				zap.String("body_bytes_source", "timing_snapshot"),
+			)
+		} else {
+			fields = append(fields, zap.String("body_bytes_source", "timing_snapshot_unavailable"))
+		}
+	} else {
+		fields = append(fields, zap.String("body_bytes_source", "audit_input_only"))
+	}
+	reqLog.Info("security_audit.gateway_check_start", fields...)
 }
 
 func logSecurityAuditDone(reqLog *zap.Logger, request securityaudit.Request, decision securityaudit.Decision, cached bool) {

@@ -461,6 +461,17 @@ describe('admin UsageView distribution metric toggles', () => {
   })
 })
 
+
+// 列设置弹层已 Teleport 到 body（避开表格层叠上下文），开关不在 wrapper 子树里。
+const clickTeleportedColumnToggle = (label: string) => {
+  const panels = document.querySelectorAll('[data-testid="usage-column-panel"]')
+  const panel = panels[panels.length - 1]
+  expect(panel, 'column settings panel should be teleported into document.body').toBeTruthy()
+  const toggle = Array.from(panel.querySelectorAll('button')).find((button) => button.textContent?.trim() === label)
+  expect(toggle, `column toggle ${label} should be rendered`).toBeTruthy()
+  ;(toggle as HTMLElement).click()
+}
+
 describe('admin UsageView request ID column visibility', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -511,16 +522,16 @@ describe('admin UsageView request ID column visibility', () => {
     )
 
     await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
-    const requestIdToggle = wrapper.findAll('button').find((button) => button.text() === 'Request ID')
-    expect(requestIdToggle).toBeDefined()
-    await requestIdToggle!.trigger('click')
+    await wrapper.vm.$nextTick()
+    clickTeleportedColumnToggle('Request ID')
+    await wrapper.vm.$nextTick()
 
     expect(usageTable.props('columns')).toEqual(
       expect.arrayContaining([expect.objectContaining({ key: 'request_id', label: 'Request ID' })]),
     )
     expect(localStorage.setItem).toHaveBeenCalledWith(
       'usage-hidden-columns-version',
-      'upstream-request-id-hidden-by-default',
+      'timing-hidden-by-default',
     )
   })
 
@@ -556,9 +567,9 @@ describe('admin UsageView request ID column visibility', () => {
     )
 
     await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
-    const upstreamToggle = wrapper.findAll('button').find((button) => button.text() === 'Upstream ID')
-    expect(upstreamToggle).toBeDefined()
-    await upstreamToggle!.trigger('click')
+    await wrapper.vm.$nextTick()
+    clickTeleportedColumnToggle('Upstream ID')
+    await wrapper.vm.$nextTick()
 
     expect(usageTable.props('columns')).toEqual(
       expect.arrayContaining([expect.objectContaining({ key: 'upstream_request_id', label: 'Upstream ID' })]),

@@ -6,6 +6,9 @@
 import { apiClient } from '../client'
 import type { AdminUsageLog, UsageQueryParams, PaginatedResponse, UsageRequestType } from '@/types'
 import type { EndpointStat } from '@/types'
+import type { RequestTimingDetail } from '@/types/requestTiming'
+
+export type { RequestTimingDetail } from '@/types/requestTiming'
 
 // ==================== Types ====================
 
@@ -207,6 +210,22 @@ export async function cancelCleanupTask(taskId: number): Promise<{ id: number; s
   return data
 }
 
+/**
+ * 取单条 usage 的完整耗时详情（plan §6.2 抽屉按需拉取）。
+ * created_at 为行的 created_at，用于让查询命中时间分区/复合索引。
+ */
+export async function getTiming(
+  id: number,
+  createdAt?: string | null,
+  options: { signal?: AbortSignal } = {}
+): Promise<RequestTimingDetail> {
+  const { data } = await apiClient.get<RequestTimingDetail>(`/admin/usage/${id}/timing`, {
+    params: createdAt ? { created_at: createdAt } : undefined,
+    signal: options.signal
+  })
+  return data
+}
+
 export const adminUsageAPI = {
   list,
   getStats,
@@ -214,7 +233,8 @@ export const adminUsageAPI = {
   searchApiKeys,
   listCleanupTasks,
   createCleanupTask,
-  cancelCleanupTask
+  cancelCleanupTask,
+  getTiming
 }
 
 export default adminUsageAPI

@@ -132,6 +132,15 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int("first_token_ms").
 			Optional().
 			Nillable(),
+		// Request timing raw facts. gateway_latency_ms is the server-side span
+		// finalized by the HTTP logger; body_bytes is the decoded body size
+		// before lenient JSON normalization. Both are NULL when unavailable.
+		field.Int("gateway_latency_ms").
+			Optional().
+			Nillable(),
+		field.Int64("body_bytes").
+			Optional().
+			Nillable(),
 		field.String("user_agent").
 			MaxLen(512).
 			Optional().

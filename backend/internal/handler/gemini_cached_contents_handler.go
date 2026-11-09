@@ -213,6 +213,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 		mappedModel := account.GetMappedModel(modelName)
 		usageFields := clientRequestedUsageFields(c, channelMapping, reqModel, mappedModel)
 		if !h.gatewayService.CacheStoragePriced(c.Request.Context(), &service.RecordUsageInput{
+			Timing:             usageRequestTiming(c),
 			Result:             &service.ForwardResult{Model: modelName, UpstreamModel: mappedModel, CacheStorageTokenHours: 1},
 			APIKey:             apiKey,
 			ChannelUsageFields: usageFields,
@@ -272,6 +273,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 		tokens := upstream.TotalTokenCount
 		storageTokenHours := service.GeminiCachedContentStorageTokenHours(tokens, ttl)
 		amount := h.gatewayService.QuoteUsageCost(c.Request.Context(), &service.RecordUsageInput{
+			Timing: usageRequestTiming(c),
 			Result: &service.ForwardResult{
 				Model: modelName, UpstreamModel: mappedModel,
 				Usage: service.ClaudeUsage{InputTokens: int(tokens)}, CacheStorageTokenHours: storageTokenHours,
@@ -434,6 +436,7 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 	subscription, _ := middleware.GetSubscriptionFromContext(c)
 	if extension := svc.Now().Add(ttl).Sub(record.ExpireTime); extension > 0 {
 		usage := &service.RecordUsageInput{
+			Timing: usageRequestTiming(c),
 			Result: &service.ForwardResult{
 				Model: record.Model, UpstreamModel: record.UpstreamModelID(),
 				CacheStorageTokenHours: service.GeminiCachedContentStorageTokenHours(record.TotalTokenCount, extension),
@@ -690,8 +693,11 @@ func (h *GatewayHandler) submitGeminiCachedContentUsage(
 	clientIP := ip.GetClientIP(c)
 	requestPayloadHash := service.HashUsageRequestPayload(payload)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+	markUsageTimingEligible(c)
+	usageTiming1 := usageRequestTiming(c)
 	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+			Timing:             usageTiming1,
 			Result:             result,
 			APIKey:             apiKey,
 			User:               apiKey.User,

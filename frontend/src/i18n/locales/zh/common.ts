@@ -26,6 +26,7 @@ export default {
     peakRateTooltip: '高峰倍率：{window}',
     peakRateImageNote: '；token 计费的图片 token 同样适用，图片按次计费不受高峰影响',
     save: '保存',
+    retry: '重试',
     saved: '保存成功',
     deleted: '删除成功',
     cancel: '取消',

@@ -263,6 +263,9 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 		// Request drilldown (success + error)
 		ops.GET("/requests", h.Admin.Ops.ListRequestDetails)
+		ops.GET("/requests/slow-timing", h.Admin.Ops.GetRequestTimingSlow)
+		ops.GET("/dashboard/request-timing-trend", h.Admin.Ops.GetRequestTimingTrend)
+		ops.GET("/dashboard/request-timing-groups", h.Admin.Ops.GetRequestTimingGroups)
 
 		// Indexed system logs
 		ops.GET("/system-logs", h.Admin.Ops.ListSystemLogs)
@@ -714,6 +717,7 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		usage.GET("", h.Admin.Usage.List)
 		usage.GET("/stats", h.Admin.Usage.Stats)
+		usage.GET("/:id/timing", h.Admin.Usage.GetTiming)
 		usage.GET("/search-users", h.Admin.Usage.SearchUsers)
 		usage.GET("/search-api-keys", h.Admin.Usage.SearchAPIKeys)
 		usage.GET("/cleanup-tasks", h.Admin.Usage.ListCleanupTasks)

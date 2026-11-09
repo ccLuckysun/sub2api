@@ -845,8 +845,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 			channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel)
+			usageTiming1 := usageRequestTiming(c)
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+					Timing:             usageTiming1,
 					Result:             res,
 					APIKey:             apiKey,
 					User:               apiKey.User,
@@ -1014,6 +1016,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+		markUsageTimingEligible(c)
 		submitResponsesUsage(result)
 		reqLog.Debug("openai.request_completed",
 			zap.Int64("account_id", account.ID),
@@ -1440,8 +1443,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 			channelUsageFields := clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel)
+			usageTiming2 := usageRequestTiming(c)
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+					Timing:             usageTiming2,
 					Result:             res,
 					APIKey:             apiKey,
 					User:               apiKey.User,
@@ -1567,6 +1572,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, nil)
 		}
 
+		markUsageTimingEligible(c)
 		submitMessagesUsage(result)
 		reqLog.Debug("openai_messages.request_completed",
 			zap.Int64("account_id", account.ID),
@@ -3210,8 +3216,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				turnRecordPricingAt := turnPricing.currentOr(turnStart)
 				turnBillingAPIKey := turnBillingAPIKeys.forTurn(turn, apiKey)
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
+				usageTiming3 := usageRequestTiming(c)
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
+						Timing:             usageTiming3,
 						Result:             result,
 						APIKey:             turnBillingAPIKey,
 						User:               apiKey.User,

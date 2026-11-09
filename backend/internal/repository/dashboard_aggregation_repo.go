@@ -15,8 +15,9 @@ import (
 )
 
 type dashboardAggregationRepository struct {
-	sql   sqlExecutor
-	clock func() time.Time
+	sql                  sqlExecutor
+	clock                func() time.Time
+	timingRetentionGuard bool
 }
 
 const usageLogsCleanupBatchSize = 10000
@@ -31,7 +32,9 @@ func NewDashboardAggregationRepository(sqlDB *sql.DB) service.DashboardAggregati
 		log.Printf("[DashboardAggregation] 检测到非 PostgreSQL 驱动，已自动禁用预聚合")
 		return nil
 	}
-	return newDashboardAggregationRepositoryWithSQL(sqlDB)
+	repo := newDashboardAggregationRepositoryWithSQL(sqlDB)
+	repo.timingRetentionGuard = true
+	return repo
 }
 
 func newDashboardAggregationRepositoryWithSQL(sqlq sqlExecutor) *dashboardAggregationRepository {
@@ -231,6 +234,13 @@ func (r *dashboardAggregationRepository) CleanupAggregates(ctx context.Context, 
 }
 
 func (r *dashboardAggregationRepository) CleanupUsageLogs(ctx context.Context, cutoff time.Time) error {
+	if r.timingRetentionGuard {
+		if db, ok := r.sql.(*sql.DB); ok {
+			if err := protectRequestTimingRetention(ctx, db, cutoff); err != nil {
+				return err
+			}
+		}
+	}
 	isPartitioned, err := r.isUsageLogsPartitioned(ctx)
 	if err != nil {
 		return err

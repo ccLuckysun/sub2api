@@ -225,6 +225,16 @@ func FirstTokenMs(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldFirstTokenMs, v))
 }
 
+// GatewayLatencyMs applies equality check predicate on the "gateway_latency_ms" field. It's identical to GatewayLatencyMsEQ.
+func GatewayLatencyMs(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldGatewayLatencyMs, v))
+}
+
+// BodyBytes applies equality check predicate on the "body_bytes" field. It's identical to BodyBytesEQ.
+func BodyBytes(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBodyBytes, v))
+}
+
 // UserAgent applies equality check predicate on the "user_agent" field. It's identical to UserAgentEQ.
 func UserAgent(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUserAgent, v))
@@ -1783,6 +1793,106 @@ func FirstTokenMsIsNil() predicate.UsageLog {
 // FirstTokenMsNotNil applies the NotNil predicate on the "first_token_ms" field.
 func FirstTokenMsNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldFirstTokenMs))
+}
+
+// GatewayLatencyMsEQ applies the EQ predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldGatewayLatencyMs, v))
+}
+
+// GatewayLatencyMsNEQ applies the NEQ predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldGatewayLatencyMs, v))
+}
+
+// GatewayLatencyMsIn applies the In predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldGatewayLatencyMs, vs...))
+}
+
+// GatewayLatencyMsNotIn applies the NotIn predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldGatewayLatencyMs, vs...))
+}
+
+// GatewayLatencyMsGT applies the GT predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldGatewayLatencyMs, v))
+}
+
+// GatewayLatencyMsGTE applies the GTE predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldGatewayLatencyMs, v))
+}
+
+// GatewayLatencyMsLT applies the LT predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldGatewayLatencyMs, v))
+}
+
+// GatewayLatencyMsLTE applies the LTE predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldGatewayLatencyMs, v))
+}
+
+// GatewayLatencyMsIsNil applies the IsNil predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldGatewayLatencyMs))
+}
+
+// GatewayLatencyMsNotNil applies the NotNil predicate on the "gateway_latency_ms" field.
+func GatewayLatencyMsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldGatewayLatencyMs))
+}
+
+// BodyBytesEQ applies the EQ predicate on the "body_bytes" field.
+func BodyBytesEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBodyBytes, v))
+}
+
+// BodyBytesNEQ applies the NEQ predicate on the "body_bytes" field.
+func BodyBytesNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBodyBytes, v))
+}
+
+// BodyBytesIn applies the In predicate on the "body_bytes" field.
+func BodyBytesIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBodyBytes, vs...))
+}
+
+// BodyBytesNotIn applies the NotIn predicate on the "body_bytes" field.
+func BodyBytesNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBodyBytes, vs...))
+}
+
+// BodyBytesGT applies the GT predicate on the "body_bytes" field.
+func BodyBytesGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBodyBytes, v))
+}
+
+// BodyBytesGTE applies the GTE predicate on the "body_bytes" field.
+func BodyBytesGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBodyBytes, v))
+}
+
+// BodyBytesLT applies the LT predicate on the "body_bytes" field.
+func BodyBytesLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBodyBytes, v))
+}
+
+// BodyBytesLTE applies the LTE predicate on the "body_bytes" field.
+func BodyBytesLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBodyBytes, v))
+}
+
+// BodyBytesIsNil applies the IsNil predicate on the "body_bytes" field.
+func BodyBytesIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldBodyBytes))
+}
+
+// BodyBytesNotNil applies the NotNil predicate on the "body_bytes" field.
+func BodyBytesNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldBodyBytes))
 }
 
 // UserAgentEQ applies the EQ predicate on the "user_agent" field.

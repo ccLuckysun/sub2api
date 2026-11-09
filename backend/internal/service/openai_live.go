@@ -850,5 +850,5 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 		InboundEndpoint:  &inboundEndpoint,
 		UpstreamEndpoint: &upstreamEndpoint,
 		CreatedAt:        record.CreatedAt,
-	}, "service.openai_live")
+	}, nil, "service.openai_live")
 }

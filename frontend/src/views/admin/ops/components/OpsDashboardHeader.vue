@@ -915,6 +915,7 @@ function handleToolbarRefresh() {
             :model-value="timeRange"
             :options="timeRangeOptions"
             class="relative w-full sm:w-[150px]"
+            data-testid="ops-time-range-select"
             @update:model-value="handleTimeRangeChange"
           />
         </template>
@@ -1614,6 +1615,7 @@ function handleToolbarRefresh() {
           <input
             v-model="customStartTimeInput"
             type="datetime-local"
+            data-testid="ops-custom-range-start"
             class="w-full rounded-lg border border-ui bg-ui-surface px-3 py-2 text-sm text-ui-ink focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-ui dark:bg-ui-surface dark:text-ui-ink"
           />
         </div>
@@ -1624,6 +1626,7 @@ function handleToolbarRefresh() {
           <input
             v-model="customEndTimeInput"
             type="datetime-local"
+            data-testid="ops-custom-range-end"
             class="w-full rounded-lg border border-ui bg-ui-surface px-3 py-2 text-sm text-ui-ink focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-ui dark:bg-ui-surface dark:text-ui-ink"
           />
         </div>

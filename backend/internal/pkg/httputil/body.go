@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -93,7 +94,9 @@ func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 		return requestBodyBuffer{}, err
 	}
 	if preread, ok := req.Body.(*PrereadBody); ok {
-		return requestBodyBuffer{data: preread.Bytes()}, nil
+		data := preread.Bytes()
+		snapshotDecodedBodyBytes(req, len(data))
+		return requestBodyBuffer{data: data}, nil
 	}
 
 	capHint := requestBodyReadInitCap
@@ -120,6 +123,7 @@ func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 
 	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
 	if enc == "" || enc == "identity" {
+		snapshotDecodedBodyBytes(req, len(raw.data))
 		return raw, nil
 	}
 
@@ -132,8 +136,22 @@ func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 	req.Header.Del("Content-Encoding")
 	req.Header.Del("Content-Length")
 	req.ContentLength = int64(len(decoded.data))
+	snapshotDecodedBodyBytes(req, len(decoded.data))
 
 	return decoded, nil
+}
+
+// snapshotDecodedBodyBytes records the canonical body size at the first
+// successful decoded-body return point, before lenient JSON normalization.
+// The handle keeps the first observation only, so middleware pre-reads and
+// handler re-reads cannot double count.
+func snapshotDecodedBodyBytes(req *http.Request, n int) {
+	if req == nil {
+		return
+	}
+	if h := requesttiming.FromContext(req.Context()); h != nil {
+		h.RecordBodyBytes(int64(n))
+	}
 }
 
 // Read bounded chunks as bytes arrive, then assemble the exact-size result.

@@ -189,6 +189,9 @@ func runMainServer() {
 
 	if err := app.Server.Shutdown(ctx); err != nil {
 		log.Printf("Server forced to shutdown: %v", err)
+		// Cancel blocked ordinary HTTP reads before the producer barrier. Hijacked
+		// gateway connections are canceled/awaited by RequestLifecycle in Cleanup.
+		_ = app.Server.Close()
 	}
 
 	log.Println("Server exited")

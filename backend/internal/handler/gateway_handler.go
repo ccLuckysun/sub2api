@@ -600,8 +600,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel)
+			markUsageTimingEligible(c)
+			usageTiming1 := usageRequestTiming(c)
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+					Timing:             usageTiming1,
 					Result:             result,
 					QuotaPlatform:      quotaPlatform,
 					APIKey:             apiKey,
@@ -964,8 +967,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
 				sessionID := service.ExtractClientSessionID(c)
 				channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel)
+				usageTiming2 := usageRequestTiming(c)
 				h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 					if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+						Timing:             usageTiming2,
 						Result:             result,
 						QuotaPlatform:      quotaPlatform,
 						APIKey:             currentAPIKey,
@@ -1132,6 +1137,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 
+			markUsageTimingEligible(c)
 			submitForwardUsage(result)
 			// 转发成功，会话槽保持既有空闲超时语义
 			upstreamServedSession = true

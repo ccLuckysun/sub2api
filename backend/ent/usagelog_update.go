@@ -712,6 +712,60 @@ func (_u *UsageLogUpdate) ClearFirstTokenMs() *UsageLogUpdate {
 	return _u
 }
 
+// SetGatewayLatencyMs sets the "gateway_latency_ms" field.
+func (_u *UsageLogUpdate) SetGatewayLatencyMs(v int) *UsageLogUpdate {
+	_u.mutation.ResetGatewayLatencyMs()
+	_u.mutation.SetGatewayLatencyMs(v)
+	return _u
+}
+
+// SetNillableGatewayLatencyMs sets the "gateway_latency_ms" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableGatewayLatencyMs(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetGatewayLatencyMs(*v)
+	}
+	return _u
+}
+
+// AddGatewayLatencyMs adds value to the "gateway_latency_ms" field.
+func (_u *UsageLogUpdate) AddGatewayLatencyMs(v int) *UsageLogUpdate {
+	_u.mutation.AddGatewayLatencyMs(v)
+	return _u
+}
+
+// ClearGatewayLatencyMs clears the value of the "gateway_latency_ms" field.
+func (_u *UsageLogUpdate) ClearGatewayLatencyMs() *UsageLogUpdate {
+	_u.mutation.ClearGatewayLatencyMs()
+	return _u
+}
+
+// SetBodyBytes sets the "body_bytes" field.
+func (_u *UsageLogUpdate) SetBodyBytes(v int64) *UsageLogUpdate {
+	_u.mutation.ResetBodyBytes()
+	_u.mutation.SetBodyBytes(v)
+	return _u
+}
+
+// SetNillableBodyBytes sets the "body_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBodyBytes(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBodyBytes(*v)
+	}
+	return _u
+}
+
+// AddBodyBytes adds value to the "body_bytes" field.
+func (_u *UsageLogUpdate) AddBodyBytes(v int64) *UsageLogUpdate {
+	_u.mutation.AddBodyBytes(v)
+	return _u
+}
+
+// ClearBodyBytes clears the value of the "body_bytes" field.
+func (_u *UsageLogUpdate) ClearBodyBytes() *UsageLogUpdate {
+	_u.mutation.ClearBodyBytes()
+	return _u
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_u *UsageLogUpdate) SetUserAgent(v string) *UsageLogUpdate {
 	_u.mutation.SetUserAgent(v)
@@ -1308,6 +1362,24 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FirstTokenMsCleared() {
 		_spec.ClearField(usagelog.FieldFirstTokenMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.GatewayLatencyMs(); ok {
+		_spec.SetField(usagelog.FieldGatewayLatencyMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedGatewayLatencyMs(); ok {
+		_spec.AddField(usagelog.FieldGatewayLatencyMs, field.TypeInt, value)
+	}
+	if _u.mutation.GatewayLatencyMsCleared() {
+		_spec.ClearField(usagelog.FieldGatewayLatencyMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.BodyBytes(); ok {
+		_spec.SetField(usagelog.FieldBodyBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedBodyBytes(); ok {
+		_spec.AddField(usagelog.FieldBodyBytes, field.TypeInt64, value)
+	}
+	if _u.mutation.BodyBytesCleared() {
+		_spec.ClearField(usagelog.FieldBodyBytes, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
@@ -2226,6 +2298,60 @@ func (_u *UsageLogUpdateOne) ClearFirstTokenMs() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetGatewayLatencyMs sets the "gateway_latency_ms" field.
+func (_u *UsageLogUpdateOne) SetGatewayLatencyMs(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetGatewayLatencyMs()
+	_u.mutation.SetGatewayLatencyMs(v)
+	return _u
+}
+
+// SetNillableGatewayLatencyMs sets the "gateway_latency_ms" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableGatewayLatencyMs(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetGatewayLatencyMs(*v)
+	}
+	return _u
+}
+
+// AddGatewayLatencyMs adds value to the "gateway_latency_ms" field.
+func (_u *UsageLogUpdateOne) AddGatewayLatencyMs(v int) *UsageLogUpdateOne {
+	_u.mutation.AddGatewayLatencyMs(v)
+	return _u
+}
+
+// ClearGatewayLatencyMs clears the value of the "gateway_latency_ms" field.
+func (_u *UsageLogUpdateOne) ClearGatewayLatencyMs() *UsageLogUpdateOne {
+	_u.mutation.ClearGatewayLatencyMs()
+	return _u
+}
+
+// SetBodyBytes sets the "body_bytes" field.
+func (_u *UsageLogUpdateOne) SetBodyBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetBodyBytes()
+	_u.mutation.SetBodyBytes(v)
+	return _u
+}
+
+// SetNillableBodyBytes sets the "body_bytes" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBodyBytes(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBodyBytes(*v)
+	}
+	return _u
+}
+
+// AddBodyBytes adds value to the "body_bytes" field.
+func (_u *UsageLogUpdateOne) AddBodyBytes(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddBodyBytes(v)
+	return _u
+}
+
+// ClearBodyBytes clears the value of the "body_bytes" field.
+func (_u *UsageLogUpdateOne) ClearBodyBytes() *UsageLogUpdateOne {
+	_u.mutation.ClearBodyBytes()
+	return _u
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_u *UsageLogUpdateOne) SetUserAgent(v string) *UsageLogUpdateOne {
 	_u.mutation.SetUserAgent(v)
@@ -2852,6 +2978,24 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.FirstTokenMsCleared() {
 		_spec.ClearField(usagelog.FieldFirstTokenMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.GatewayLatencyMs(); ok {
+		_spec.SetField(usagelog.FieldGatewayLatencyMs, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedGatewayLatencyMs(); ok {
+		_spec.AddField(usagelog.FieldGatewayLatencyMs, field.TypeInt, value)
+	}
+	if _u.mutation.GatewayLatencyMsCleared() {
+		_spec.ClearField(usagelog.FieldGatewayLatencyMs, field.TypeInt)
+	}
+	if value, ok := _u.mutation.BodyBytes(); ok {
+		_spec.SetField(usagelog.FieldBodyBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedBodyBytes(); ok {
+		_spec.AddField(usagelog.FieldBodyBytes, field.TypeInt64, value)
+	}
+	if _u.mutation.BodyBytesCleared() {
+		_spec.ClearField(usagelog.FieldBodyBytes, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)

@@ -16,12 +16,15 @@ import (
 )
 
 type usageCleanupRepository struct {
-	client *dbent.Client
-	sql    sqlExecutor
+	client             *dbent.Client
+	sql                sqlExecutor
+	timingInvalidation bool
 }
 
 func NewUsageCleanupRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageCleanupRepository {
-	return newUsageCleanupRepositoryWithSQL(client, sqlDB)
+	repo := newUsageCleanupRepositoryWithSQL(client, sqlDB)
+	repo.timingInvalidation = true
+	return repo
 }
 
 func newUsageCleanupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usageCleanupRepository {
@@ -355,6 +358,7 @@ func (r *usageCleanupRepository) deleteUsageLogsBatchWithRollupInvalidation(ctx 
 
 	var deleted int64
 	var earliestDeletedAt time.Time
+	deletedMinutes := make(map[time.Time]bool)
 	for rows.Next() {
 		var deletedAt time.Time
 		if err := rows.Scan(&deletedAt); err != nil {
@@ -362,6 +366,7 @@ func (r *usageCleanupRepository) deleteUsageLogsBatchWithRollupInvalidation(ctx 
 			return rollback(err)
 		}
 		deleted++
+		deletedMinutes[deletedAt.UTC().Truncate(time.Minute)] = true
 		if earliestDeletedAt.IsZero() || deletedAt.Before(earliestDeletedAt) {
 			earliestDeletedAt = deletedAt
 		}
@@ -375,6 +380,11 @@ func (r *usageCleanupRepository) deleteUsageLogsBatchWithRollupInvalidation(ctx 
 	}
 
 	if deleted > 0 {
+		if r.timingInvalidation {
+			if err := invalidateRequestTimingMinutes(ctx, tx, deletedMinutes); err != nil {
+				return rollback(err)
+			}
+		}
 		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt); err != nil {
 			return rollback(err)
 		}

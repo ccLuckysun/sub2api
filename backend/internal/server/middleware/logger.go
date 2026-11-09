@@ -1,17 +1,29 @@
 package middleware
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
+// TimingOptions controls request-timing collection in the access logger.
+type TimingOptions struct {
+	Enabled bool
+	Sink    requesttiming.Sink
+}
+
 // Logger 请求日志中间件
-func Logger() gin.HandlerFunc {
+func Logger(timingOptions ...TimingOptions) gin.HandlerFunc {
+	var timing TimingOptions
+	if len(timingOptions) > 0 {
+		timing = timingOptions[0]
+	}
 	return func(c *gin.Context) {
 		// 开始时间
 		startTime := time.Now()
@@ -19,15 +31,52 @@ func Logger() gin.HandlerFunc {
 		// 请求路径
 		path := c.Request.URL.Path
 
-		// 处理请求
-		c.Next()
+		// Timing handle is created before any route middleware/handler can read
+		// the body, then finalized with the same clock reading as access-log
+		// latency. A defer keeps panic/early-abort paths finalized; Recovery is
+		// registered outside this middleware.
+		var (
+			timingHandle *requesttiming.Handle
+			endTime      time.Time
+		)
+		if timing.Enabled && shouldCollectRequestTiming(path) {
+			timingHandle = requesttiming.New(startTime, timing.Sink)
+			c.Request = c.Request.WithContext(requesttiming.WithContext(c.Request.Context(), timingHandle))
+			encoding := strings.ToLower(strings.TrimSpace(c.Request.Header.Get("Content-Encoding")))
+			if encoding == "" || encoding == "identity" {
+				c.Request.Body = requesttiming.ObserveIdentityBody(c.Request.Body, timingHandle)
+			}
+			defer func() {
+				if endTime.IsZero() {
+					endTime = time.Now()
+				}
+				if c.Writer.Status() < 200 || c.Writer.Status() >= 300 || c.Request.Context().Err() != nil {
+					timingHandle.Invalidate()
+				}
+				timingHandle.Finalize(endTime)
+			}()
+		}
+
+		// 处理请求。若下游 panic，先撤销本请求的 timing 补写资格，再由外层
+		// Recovery 处理；本中间件注册的 deferred Finalize 仍会固定总耗时。
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					if timingHandle != nil {
+						timingHandle.Invalidate()
+					}
+					panic(recovered)
+				}
+			}()
+			c.Next()
+		}()
 
 		// 跳过健康检查等高频探针路径的日志
 		if path == "/health" || path == "/setup/status" {
 			return
 		}
 
-		endTime := time.Now()
+		endTime = time.Now()
 		latency := endTime.Sub(startTime)
 
 		method := c.Request.Method
@@ -85,4 +134,13 @@ func Logger() gin.HandlerFunc {
 			l.Warn("http request contains gin errors", zap.String("errors", c.Errors.String()))
 		}
 	}
+}
+
+// shouldCollectRequestTiming limits the timing handle to gateway/public paths.
+// Management APIs, probes and embedded frontend traffic never create one.
+func shouldCollectRequestTiming(path string) bool {
+	if path == "" || path == "/health" || path == "/setup/status" {
+		return false
+	}
+	return !strings.HasPrefix(path, "/api/")
 }

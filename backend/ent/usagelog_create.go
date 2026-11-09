@@ -463,6 +463,34 @@ func (_c *UsageLogCreate) SetNillableFirstTokenMs(v *int) *UsageLogCreate {
 	return _c
 }
 
+// SetGatewayLatencyMs sets the "gateway_latency_ms" field.
+func (_c *UsageLogCreate) SetGatewayLatencyMs(v int) *UsageLogCreate {
+	_c.mutation.SetGatewayLatencyMs(v)
+	return _c
+}
+
+// SetNillableGatewayLatencyMs sets the "gateway_latency_ms" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableGatewayLatencyMs(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetGatewayLatencyMs(*v)
+	}
+	return _c
+}
+
+// SetBodyBytes sets the "body_bytes" field.
+func (_c *UsageLogCreate) SetBodyBytes(v int64) *UsageLogCreate {
+	_c.mutation.SetBodyBytes(v)
+	return _c
+}
+
+// SetNillableBodyBytes sets the "body_bytes" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableBodyBytes(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetBodyBytes(*v)
+	}
+	return _c
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_c *UsageLogCreate) SetUserAgent(v string) *UsageLogCreate {
 	_c.mutation.SetUserAgent(v)
@@ -1082,6 +1110,14 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FirstTokenMs(); ok {
 		_spec.SetField(usagelog.FieldFirstTokenMs, field.TypeInt, value)
 		_node.FirstTokenMs = &value
+	}
+	if value, ok := _c.mutation.GatewayLatencyMs(); ok {
+		_spec.SetField(usagelog.FieldGatewayLatencyMs, field.TypeInt, value)
+		_node.GatewayLatencyMs = &value
+	}
+	if value, ok := _c.mutation.BodyBytes(); ok {
+		_spec.SetField(usagelog.FieldBodyBytes, field.TypeInt64, value)
+		_node.BodyBytes = &value
 	}
 	if value, ok := _c.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
@@ -1863,6 +1899,54 @@ func (u *UsageLogUpsert) AddFirstTokenMs(v int) *UsageLogUpsert {
 // ClearFirstTokenMs clears the value of the "first_token_ms" field.
 func (u *UsageLogUpsert) ClearFirstTokenMs() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldFirstTokenMs)
+	return u
+}
+
+// SetGatewayLatencyMs sets the "gateway_latency_ms" field.
+func (u *UsageLogUpsert) SetGatewayLatencyMs(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldGatewayLatencyMs, v)
+	return u
+}
+
+// UpdateGatewayLatencyMs sets the "gateway_latency_ms" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateGatewayLatencyMs() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldGatewayLatencyMs)
+	return u
+}
+
+// AddGatewayLatencyMs adds v to the "gateway_latency_ms" field.
+func (u *UsageLogUpsert) AddGatewayLatencyMs(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldGatewayLatencyMs, v)
+	return u
+}
+
+// ClearGatewayLatencyMs clears the value of the "gateway_latency_ms" field.
+func (u *UsageLogUpsert) ClearGatewayLatencyMs() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldGatewayLatencyMs)
+	return u
+}
+
+// SetBodyBytes sets the "body_bytes" field.
+func (u *UsageLogUpsert) SetBodyBytes(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldBodyBytes, v)
+	return u
+}
+
+// UpdateBodyBytes sets the "body_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateBodyBytes() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldBodyBytes)
+	return u
+}
+
+// AddBodyBytes adds v to the "body_bytes" field.
+func (u *UsageLogUpsert) AddBodyBytes(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldBodyBytes, v)
+	return u
+}
+
+// ClearBodyBytes clears the value of the "body_bytes" field.
+func (u *UsageLogUpsert) ClearBodyBytes() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldBodyBytes)
 	return u
 }
 
@@ -2817,6 +2901,62 @@ func (u *UsageLogUpsertOne) UpdateFirstTokenMs() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearFirstTokenMs() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
+	})
+}
+
+// SetGatewayLatencyMs sets the "gateway_latency_ms" field.
+func (u *UsageLogUpsertOne) SetGatewayLatencyMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetGatewayLatencyMs(v)
+	})
+}
+
+// AddGatewayLatencyMs adds v to the "gateway_latency_ms" field.
+func (u *UsageLogUpsertOne) AddGatewayLatencyMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddGatewayLatencyMs(v)
+	})
+}
+
+// UpdateGatewayLatencyMs sets the "gateway_latency_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateGatewayLatencyMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateGatewayLatencyMs()
+	})
+}
+
+// ClearGatewayLatencyMs clears the value of the "gateway_latency_ms" field.
+func (u *UsageLogUpsertOne) ClearGatewayLatencyMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearGatewayLatencyMs()
+	})
+}
+
+// SetBodyBytes sets the "body_bytes" field.
+func (u *UsageLogUpsertOne) SetBodyBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBodyBytes(v)
+	})
+}
+
+// AddBodyBytes adds v to the "body_bytes" field.
+func (u *UsageLogUpsertOne) AddBodyBytes(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddBodyBytes(v)
+	})
+}
+
+// UpdateBodyBytes sets the "body_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateBodyBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBodyBytes()
+	})
+}
+
+// ClearBodyBytes clears the value of the "body_bytes" field.
+func (u *UsageLogUpsertOne) ClearBodyBytes() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBodyBytes()
 	})
 }
 
@@ -3973,6 +4113,62 @@ func (u *UsageLogUpsertBulk) UpdateFirstTokenMs() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearFirstTokenMs() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
+	})
+}
+
+// SetGatewayLatencyMs sets the "gateway_latency_ms" field.
+func (u *UsageLogUpsertBulk) SetGatewayLatencyMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetGatewayLatencyMs(v)
+	})
+}
+
+// AddGatewayLatencyMs adds v to the "gateway_latency_ms" field.
+func (u *UsageLogUpsertBulk) AddGatewayLatencyMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddGatewayLatencyMs(v)
+	})
+}
+
+// UpdateGatewayLatencyMs sets the "gateway_latency_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateGatewayLatencyMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateGatewayLatencyMs()
+	})
+}
+
+// ClearGatewayLatencyMs clears the value of the "gateway_latency_ms" field.
+func (u *UsageLogUpsertBulk) ClearGatewayLatencyMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearGatewayLatencyMs()
+	})
+}
+
+// SetBodyBytes sets the "body_bytes" field.
+func (u *UsageLogUpsertBulk) SetBodyBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetBodyBytes(v)
+	})
+}
+
+// AddBodyBytes adds v to the "body_bytes" field.
+func (u *UsageLogUpsertBulk) AddBodyBytes(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddBodyBytes(v)
+	})
+}
+
+// UpdateBodyBytes sets the "body_bytes" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateBodyBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateBodyBytes()
+	})
+}
+
+// ClearBodyBytes clears the value of the "body_bytes" field.
+func (u *UsageLogUpsertBulk) ClearBodyBytes() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearBodyBytes()
 	})
 }
 

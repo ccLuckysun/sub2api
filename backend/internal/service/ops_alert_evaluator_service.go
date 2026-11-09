@@ -32,10 +32,13 @@ return 0
 `)
 
 type OpsAlertEvaluatorService struct {
-	opsService   *OpsService
-	opsRepo      OpsRepository
-	emailService *EmailService
-	proxyRepo    ProxyRepository
+	opsService *OpsService
+	opsRepo    OpsRepository
+	// timingAlertRepo is an optional override; production leaves it nil and the timing
+	// alert path type-asserts opsRepo, so no existing OpsRepository mock has to change.
+	timingAlertRepo RequestTimingAlertRepository
+	emailService    *EmailService
+	proxyRepo       ProxyRepository
 
 	redisClient *redis.Client
 	cfg         *config.Config
@@ -226,6 +229,33 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 		windowStart := safeEnd.Add(-time.Duration(windowMinutes) * time.Minute)
 		windowEnd := safeEnd
 
+		if IsRequestTimingMetric(rule.MetricType) {
+			// request_timing.alert_enabled gates the new metric family explicitly:
+			// shipping the code must not start notifying before an operator opts in.
+			// Legacy rules are untouched by this switch.
+			if !s.requestTimingAlertsEnabled() {
+				continue
+			}
+			// Request-timing alerts aggregate in closed minute buckets; sustained and
+			// recovery streaks are counted in buckets, not evaluator polls.
+			outcome := s.evaluateRequestTimingRule(ctx, rule, runtimeCfg, now)
+			if outcome.State == "" || outcome.State == TimingAlertStateQueryError {
+				s.resetRuleState(rule.ID, now)
+				continue
+			}
+			rulesEvaluated++
+			if outcome.Fired {
+				eventsCreated++
+			}
+			if outcome.Resolved {
+				eventsResolved++
+			}
+			if outcome.Emailed {
+				emailsSent++
+			}
+			continue
+		}
+
 		metricValue, ok := s.computeRuleMetric(ctx, rule, systemMetrics, windowStart, windowEnd, scopePlatform, scopeGroupID)
 		if !ok {
 			s.resetRuleState(rule.ID, now)
@@ -329,6 +359,13 @@ func (s *OpsAlertEvaluatorService) pruneRuleStates(rules []*OpsAlertRule) {
 			delete(s.ruleStates, id)
 		}
 	}
+}
+
+// requestTimingAlertsEnabled reports whether the new request-timing metric family may be
+// evaluated. A nil config means the service was built without one (unit tests), where the
+// switch is treated as on; production always carries a config, so the flag decides.
+func (s *OpsAlertEvaluatorService) requestTimingAlertsEnabled() bool {
+	return s.cfg == nil || s.cfg.RequestTiming.AlertEnabled
 }
 
 func (s *OpsAlertEvaluatorService) resetRuleState(ruleID int64, now time.Time) {

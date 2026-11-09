@@ -87,8 +87,12 @@
           <template #after-reset>
             <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
+                ref="columnSettingsButtonRef"
                 data-testid="usage-column-settings"
-                @click="showColumnDropdown = !showColumnDropdown"
+                type="button"
+                aria-haspopup="menu"
+                :aria-expanded="showColumnDropdown ? 'true' : 'false'"
+                @click="toggleColumnDropdown"
                 class="btn btn-secondary px-2 md:px-3"
                 :title="t('admin.users.columnSettings')"
               >
@@ -97,27 +101,41 @@
                 </svg>
                 <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
               </button>
-              <div
-                v-if="showColumnDropdown"
-                class="console-popover absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto py-1"
-              >
-                <button
-                  v-for="col in currentToggleableColumns"
-                  :key="col.key"
-                  :data-testid="`usage-column-toggle-${col.key}`"
-                  @click="toggleCurrentColumn(col.key)"
-                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-ui-ink hover:bg-gray-100 dark:text-ui-ink dark:hover:bg-dark-700"
+              <!--
+                传送出工具栏：弹层原先嵌在筛选栏的层叠上下文里，表格（含空态）会盖在上面，
+                elementFromPoint 命中的是单元格，真实用户点不动新增的列开关。
+                Teleport 到 body + fixed 定位后 z-index 在根层叠上下文生效，窄屏也不会撑破布局。
+              -->
+              <Teleport to="body">
+                <div
+                  v-if="showColumnDropdown"
+                  ref="columnPanelRef"
+                  role="menu"
+                  data-testid="usage-column-panel"
+                  class="console-popover fixed z-[80] overflow-y-auto py-1"
+                  :style="columnPanelStyle"
                 >
-                  <span>{{ col.label }}</span>
-                  <Icon
-                    v-if="isCurrentColumnVisible(col.key)"
-                    name="check"
-                    size="sm"
-                    class="text-primary-500"
-                    :stroke-width="2"
-                  />
-                </button>
-              </div>
+                  <button
+                    v-for="col in currentToggleableColumns"
+                    :key="col.key"
+                    type="button"
+                    role="menuitemcheckbox"
+                    :aria-checked="isCurrentColumnVisible(col.key) ? 'true' : 'false'"
+                    :data-testid="`usage-column-toggle-${col.key}`"
+                    @click="toggleCurrentColumn(col.key)"
+                    class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-ui-ink hover:bg-gray-100 dark:text-ui-ink dark:hover:bg-dark-700"
+                  >
+                    <span>{{ col.label }}</span>
+                    <Icon
+                      v-if="isCurrentColumnVisible(col.key)"
+                      name="check"
+                      size="sm"
+                      class="text-primary-500"
+                      :stroke-width="2"
+                    />
+                  </button>
+                </div>
+              </Teleport>
             </div>
           </template>
         </UsageFilters>
@@ -134,6 +152,7 @@
             @sort="handleSort"
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
+            @timingClick="openTimingDrawer"
           />
           <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
         </div>
@@ -174,6 +193,12 @@
     :end-date="endDate"
     @close="cleanupDialogVisible = false"
   />
+  <RequestTimingDrawer
+    :show="timingDrawerVisible"
+    :log="timingDrawerRow"
+    source="usage"
+    @close="timingDrawerVisible = false; timingDrawerRow = null"
+  />
   <!-- Balance history modal triggered from usage table user click -->
   <UserBalanceHistoryModal
     :show="showBalanceHistoryModal"
@@ -184,7 +209,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import { useRoute } from 'vue-router'
@@ -197,6 +222,8 @@ import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; impo
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
+import RequestTimingDrawer from '@/components/admin/usage/RequestTimingDrawer.vue'
+import { normalizeRequestTiming } from '@/types/requestTiming'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
 import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
@@ -235,6 +262,13 @@ let statsReqSeq = 0
 let modelStatsReqSeq = 0
 const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' })
 const cleanupDialogVisible = ref(false)
+// 请求耗时详情抽屉（按需拉取 /usage/:id/timing）
+const timingDrawerVisible = ref(false)
+const timingDrawerRow = ref<AdminUsageLog | null>(null)
+const openTimingDrawer = (row: AdminUsageLog) => {
+  timingDrawerRow.value = row
+  timingDrawerVisible.value = true
+}
 // Balance history modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
@@ -589,6 +623,8 @@ const exportToExcel = async () => {
       t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
       t('usage.rate'), t('usage.accountMultiplier'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
       t('usage.firstToken'), t('usage.duration'),
+      t('usage.timing.exportUpload'), t('usage.timing.exportRate'), t('usage.timing.exportBody'),
+      t('usage.timing.exportUpstreamTtft'), t('usage.timing.exportStream'), t('usage.timing.exportRealTtfb'),
       t('admin.usage.requestId'), t('admin.usage.upstreamRequestId'), t('usage.userAgent'), t('admin.usage.ipAddress')
     ]
     const ws = XLSX.utils.aoa_to_sheet([headers])
@@ -598,7 +634,9 @@ const exportToExcel = async () => {
         { signal: c.signal }
       )
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total }
-      const rows = (res.items || []).map((log: AdminUsageLog) => [
+      const rows = (res.items || []).map((log: AdminUsageLog) => {
+        const timing = normalizeRequestTiming((log as { timing?: unknown }).timing)
+        return [
         log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
         log.upstream_model || log.model, log.upstream_response_model || '', log.upstream_model_mismatch == null ? '' : t(log.upstream_model_mismatch ? 'common.yes' : 'common.no'), formatReasoningEffort(log.reasoning_effort), formatReasoningEffort(log.upstream_reasoning_effort || log.reasoning_effort), log.group?.name || '',
         log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log),
@@ -608,8 +646,13 @@ const exportToExcel = async () => {
         log.rate_multiplier?.toPrecision(4) || '1.00', (log.account_rate_multiplier ?? 1).toPrecision(4),
         log.total_cost?.toFixed(6) || '0.000000', log.actual_cost?.toFixed(6) || '0.000000',
         ((log.account_stats_cost ?? log.total_cost) * (log.account_rate_multiplier ?? 1)).toFixed(6), log.first_token_ms ?? '', log.duration_ms,
+        // 六列耗时：空值导出为空单元格（不写 —），单位写进表头
+        timing?.upload_ms ?? '', timing?.upload_kbps ?? '',
+        timing?.body_bytes == null ? '' : Number((timing.body_bytes / (1024 * 1024)).toFixed(2)),
+        timing?.upstream_ttft_ms ?? '', timing?.stream_ms ?? '', timing?.real_ttfb_ms ?? '',
         log.request_id || '', log.upstream_request_id || '', log.user_agent || '', log.ip_address || ''
-      ])
+        ]
+      })
       if (rows.length) {
         XLSX.utils.sheet_add_aoa(ws, rows, { origin: -1 })
       }
@@ -630,12 +673,21 @@ const exportToExcel = async () => {
 
 // Column visibility
 const ALWAYS_VISIBLE = ['user', 'created_at']
-const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'request_id', 'upstream_request_id', 'user_agent']
+// 六列请求耗时（一期）：默认隐藏，避免把全窗口派生排序/渲染成本强加给所有用户
+const TIMING_HIDDEN_COLUMNS = [
+  'upload_ms',
+  'upload_rate',
+  'body_bytes',
+  'upstream_ttft_ms',
+  'stream_ms',
+  'real_ttfb_ms'
+]
+const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'request_id', 'upstream_request_id', 'user_agent', ...TIMING_HIDDEN_COLUMNS]
 const HIDDEN_COLUMNS_KEY = 'usage-hidden-columns'
 const HIDDEN_COLUMNS_VERSION_KEY = 'usage-hidden-columns-version'
 // 隐藏列版本链：每级只把当级新增列加入隐藏集，不重置用户已显式打开的列。
-const HIDDEN_COLUMNS_PREV_VERSION = 'request-id-hidden-by-default'
-const HIDDEN_COLUMNS_CURRENT_VERSION = 'upstream-request-id-hidden-by-default'
+const HIDDEN_COLUMNS_PREV_VERSION = 'upstream-request-id-hidden-by-default'
+const HIDDEN_COLUMNS_CURRENT_VERSION = 'timing-hidden-by-default'
 
 const allColumns = computed(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false },
@@ -650,6 +702,12 @@ const allColumns = computed(() => [
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'latency', label: t('usage.latency'), sortable: false },
+  { key: 'upload_ms', label: t('usage.timing.columnUpload'), sortable: false },
+  { key: 'upload_rate', label: t('usage.timing.columnRate'), sortable: false },
+  { key: 'body_bytes', label: t('usage.timing.columnBody'), sortable: false },
+  { key: 'upstream_ttft_ms', label: t('usage.timing.columnUpstreamTtft'), sortable: false },
+  { key: 'stream_ms', label: t('usage.timing.columnStream'), sortable: false },
+  { key: 'real_ttfb_ms', label: t('usage.timing.columnRealTtfb'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'request_id', label: t('admin.usage.requestId'), sortable: false },
   { key: 'upstream_request_id', label: t('admin.usage.upstreamRequestId'), sortable: false },
@@ -763,9 +821,12 @@ const loadSavedColumns = () => {
       const savedVersion = localStorage.getItem(HIDDEN_COLUMNS_VERSION_KEY)
       if (savedVersion !== HIDDEN_COLUMNS_CURRENT_VERSION) {
         if (savedVersion !== HIDDEN_COLUMNS_PREV_VERSION) {
+          // v1 → v2：request_id/upstream_request_id 改为默认隐藏
           hiddenColumns.add('request_id')
+          hiddenColumns.add('upstream_request_id')
         }
-        hiddenColumns.add('upstream_request_id')
+        // v2 → v3：请求耗时六列默认隐藏（用户此前显式打开的列保持不变）
+        TIMING_HIDDEN_COLUMNS.forEach((key) => hiddenColumns.add(key))
         localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
         localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
       }
@@ -857,11 +918,66 @@ const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.v
 
 const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)
+const columnSettingsButtonRef = ref<HTMLButtonElement | null>(null)
+const columnPanelRef = ref<HTMLElement | null>(null)
+const columnPanelPosition = ref({ top: 0, left: 0, maxHeight: 320 })
+
+const COLUMN_PANEL_WIDTH = 192
+const COLUMN_PANEL_MIN_HEIGHT = 160
+const COLUMN_PANEL_MARGIN = 8
+
+// 弹层是 fixed 定位，所以位置在打开时按按钮矩形现算：优先向下、空间不足则向上，
+// 左右都夹在视口内（窄屏右对齐不会跑出屏幕）。
+const updateColumnPanelPosition = () => {
+  const button = columnSettingsButtonRef.value
+  if (!button || typeof window === 'undefined') return
+  const rect = button.getBoundingClientRect()
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+  const spaceBelow = viewportHeight - rect.bottom - COLUMN_PANEL_MARGIN
+  const spaceAbove = rect.top - COLUMN_PANEL_MARGIN
+  const openUp = spaceBelow < COLUMN_PANEL_MIN_HEIGHT && spaceAbove > spaceBelow
+  const maxHeight = Math.max(COLUMN_PANEL_MIN_HEIGHT, Math.min(320, openUp ? spaceAbove : spaceBelow))
+  const left = Math.min(
+    Math.max(COLUMN_PANEL_MARGIN, rect.right - COLUMN_PANEL_WIDTH),
+    Math.max(COLUMN_PANEL_MARGIN, viewportWidth - COLUMN_PANEL_WIDTH - COLUMN_PANEL_MARGIN),
+  )
+  columnPanelPosition.value = {
+    top: openUp ? Math.max(COLUMN_PANEL_MARGIN, rect.top - Math.min(320, maxHeight) - 4) : rect.bottom + 4,
+    left,
+    maxHeight,
+  }
+}
+
+const columnPanelStyle = computed(() => ({
+  top: `${columnPanelPosition.value.top}px`,
+  left: `${columnPanelPosition.value.left}px`,
+  width: `${COLUMN_PANEL_WIDTH}px`,
+  maxHeight: `${columnPanelPosition.value.maxHeight}px`,
+}))
+
+const toggleColumnDropdown = () => {
+  showColumnDropdown.value = !showColumnDropdown.value
+  if (!showColumnDropdown.value) return
+  updateColumnPanelPosition()
+  void nextTick(updateColumnPanelPosition)
+}
 
 const handleColumnClickOutside = (event: MouseEvent) => {
-  if (columnDropdownRef.value && !columnDropdownRef.value.contains(event.target as HTMLElement)) {
-    showColumnDropdown.value = false
-  }
+  if (!showColumnDropdown.value) return
+  const target = event.target as Node | null
+  if (!target) return
+  if (columnSettingsButtonRef.value?.contains(target)) return
+  if (columnPanelRef.value?.contains(target)) return
+  showColumnDropdown.value = false
+}
+
+const handleColumnKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && showColumnDropdown.value) showColumnDropdown.value = false
+}
+
+const handleColumnViewportChange = () => {
+  if (showColumnDropdown.value) updateColumnPanelPosition()
 }
 
 onMounted(() => {
@@ -876,8 +992,18 @@ onMounted(() => {
   loadSavedColumns()
   loadSavedErrColumns()
   document.addEventListener('click', handleColumnClickOutside)
+  document.addEventListener('keydown', handleColumnKeydown)
+  window.addEventListener('resize', handleColumnViewportChange)
+  window.addEventListener('scroll', handleColumnViewportChange, true)
 })
-onUnmounted(() => { abortController?.abort(); exportAbortController?.abort(); document.removeEventListener('click', handleColumnClickOutside) })
+onUnmounted(() => {
+  abortController?.abort()
+  exportAbortController?.abort()
+  document.removeEventListener('click', handleColumnClickOutside)
+  document.removeEventListener('keydown', handleColumnKeydown)
+  window.removeEventListener('resize', handleColumnViewportChange)
+  window.removeEventListener('scroll', handleColumnViewportChange, true)
+})
 
 watch(modelDistributionSource, (source) => {
   void loadModelStats(source)

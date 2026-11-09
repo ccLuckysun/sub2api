@@ -60,9 +60,12 @@ type OpsAggregationService struct {
 	redisClient *redis.Client
 	instanceID  string
 
-	stopCh    chan struct{}
-	startOnce sync.Once
-	stopOnce  sync.Once
+	stopCh       chan struct{}
+	startOnce    sync.Once
+	stopOnce     sync.Once
+	timingWG     sync.WaitGroup
+	timingMu     sync.Mutex
+	timingCancel context.CancelFunc
 
 	hourlyMu sync.Mutex
 	dailyMu  sync.Mutex
@@ -98,6 +101,7 @@ func (s *OpsAggregationService) Start() {
 		}
 		go s.hourlyLoop()
 		go s.dailyLoop()
+		s.startTimingAggregation()
 	})
 }
 
@@ -110,6 +114,12 @@ func (s *OpsAggregationService) Stop() {
 			close(s.stopCh)
 		}
 	})
+	s.timingMu.Lock()
+	if s.timingCancel != nil {
+		s.timingCancel()
+	}
+	s.timingMu.Unlock()
+	s.timingWG.Wait()
 }
 
 func (s *OpsAggregationService) hourlyLoop() {

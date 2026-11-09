@@ -2,6 +2,10 @@
  * Core Type Definitions for Sub2API Frontend
  */
 
+import type { RequestTiming } from './requestTiming'
+
+export type { RequestTiming } from './requestTiming'
+
 // ==================== Common Types ====================
 
 export interface SelectOption {
@@ -1858,6 +1862,10 @@ export interface UsageLog {
   duration_ms: number | null
   first_token_ms: number | null
 
+  // 请求耗时三段拆解（一期，plan §3.2）：先有原始列，派生值在 row.timing
+  gateway_latency_ms: number | null
+  body_bytes: number | null
+
   // 图片生成字段
   image_count: number
   image_size: string | null
@@ -1912,6 +1920,9 @@ export interface AdminUsageLog extends UsageLog {
 
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary
+
+  // 请求耗时派生投影（admin 行内嵌，见 /tmp/sub2api-request-timing-api.md）
+  timing?: RequestTiming | null
 }
 
 export interface UsageCleanupFilters {

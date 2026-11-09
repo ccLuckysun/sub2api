@@ -44772,6 +44772,10 @@ type UsageLogMutation struct {
 	addduration_ms               *int
 	first_token_ms               *int
 	addfirst_token_ms            *int
+	gateway_latency_ms           *int
+	addgateway_latency_ms        *int
+	body_bytes                   *int64
+	addbody_bytes                *int64
 	user_agent                   *string
 	ip_address                   *string
 	image_count                  *int
@@ -46659,6 +46663,146 @@ func (m *UsageLogMutation) ResetFirstTokenMs() {
 	delete(m.clearedFields, usagelog.FieldFirstTokenMs)
 }
 
+// SetGatewayLatencyMs sets the "gateway_latency_ms" field.
+func (m *UsageLogMutation) SetGatewayLatencyMs(i int) {
+	m.gateway_latency_ms = &i
+	m.addgateway_latency_ms = nil
+}
+
+// GatewayLatencyMs returns the value of the "gateway_latency_ms" field in the mutation.
+func (m *UsageLogMutation) GatewayLatencyMs() (r int, exists bool) {
+	v := m.gateway_latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayLatencyMs returns the old "gateway_latency_ms" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldGatewayLatencyMs(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayLatencyMs: %w", err)
+	}
+	return oldValue.GatewayLatencyMs, nil
+}
+
+// AddGatewayLatencyMs adds i to the "gateway_latency_ms" field.
+func (m *UsageLogMutation) AddGatewayLatencyMs(i int) {
+	if m.addgateway_latency_ms != nil {
+		*m.addgateway_latency_ms += i
+	} else {
+		m.addgateway_latency_ms = &i
+	}
+}
+
+// AddedGatewayLatencyMs returns the value that was added to the "gateway_latency_ms" field in this mutation.
+func (m *UsageLogMutation) AddedGatewayLatencyMs() (r int, exists bool) {
+	v := m.addgateway_latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGatewayLatencyMs clears the value of the "gateway_latency_ms" field.
+func (m *UsageLogMutation) ClearGatewayLatencyMs() {
+	m.gateway_latency_ms = nil
+	m.addgateway_latency_ms = nil
+	m.clearedFields[usagelog.FieldGatewayLatencyMs] = struct{}{}
+}
+
+// GatewayLatencyMsCleared returns if the "gateway_latency_ms" field was cleared in this mutation.
+func (m *UsageLogMutation) GatewayLatencyMsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldGatewayLatencyMs]
+	return ok
+}
+
+// ResetGatewayLatencyMs resets all changes to the "gateway_latency_ms" field.
+func (m *UsageLogMutation) ResetGatewayLatencyMs() {
+	m.gateway_latency_ms = nil
+	m.addgateway_latency_ms = nil
+	delete(m.clearedFields, usagelog.FieldGatewayLatencyMs)
+}
+
+// SetBodyBytes sets the "body_bytes" field.
+func (m *UsageLogMutation) SetBodyBytes(i int64) {
+	m.body_bytes = &i
+	m.addbody_bytes = nil
+}
+
+// BodyBytes returns the value of the "body_bytes" field in the mutation.
+func (m *UsageLogMutation) BodyBytes() (r int64, exists bool) {
+	v := m.body_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBodyBytes returns the old "body_bytes" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldBodyBytes(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBodyBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBodyBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBodyBytes: %w", err)
+	}
+	return oldValue.BodyBytes, nil
+}
+
+// AddBodyBytes adds i to the "body_bytes" field.
+func (m *UsageLogMutation) AddBodyBytes(i int64) {
+	if m.addbody_bytes != nil {
+		*m.addbody_bytes += i
+	} else {
+		m.addbody_bytes = &i
+	}
+}
+
+// AddedBodyBytes returns the value that was added to the "body_bytes" field in this mutation.
+func (m *UsageLogMutation) AddedBodyBytes() (r int64, exists bool) {
+	v := m.addbody_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearBodyBytes clears the value of the "body_bytes" field.
+func (m *UsageLogMutation) ClearBodyBytes() {
+	m.body_bytes = nil
+	m.addbody_bytes = nil
+	m.clearedFields[usagelog.FieldBodyBytes] = struct{}{}
+}
+
+// BodyBytesCleared returns if the "body_bytes" field was cleared in this mutation.
+func (m *UsageLogMutation) BodyBytesCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldBodyBytes]
+	return ok
+}
+
+// ResetBodyBytes resets all changes to the "body_bytes" field.
+func (m *UsageLogMutation) ResetBodyBytes() {
+	m.body_bytes = nil
+	m.addbody_bytes = nil
+	delete(m.clearedFields, usagelog.FieldBodyBytes)
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (m *UsageLogMutation) SetUserAgent(s string) {
 	m.user_agent = &s
@@ -47474,7 +47618,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 49)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47576,6 +47720,12 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.first_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
+	}
+	if m.gateway_latency_ms != nil {
+		fields = append(fields, usagelog.FieldGatewayLatencyMs)
+	}
+	if m.body_bytes != nil {
+		fields = append(fields, usagelog.FieldBodyBytes)
 	}
 	if m.user_agent != nil {
 		fields = append(fields, usagelog.FieldUserAgent)
@@ -47692,6 +47842,10 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.DurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.FirstTokenMs()
+	case usagelog.FieldGatewayLatencyMs:
+		return m.GatewayLatencyMs()
+	case usagelog.FieldBodyBytes:
+		return m.BodyBytes()
 	case usagelog.FieldUserAgent:
 		return m.UserAgent()
 	case usagelog.FieldIPAddress:
@@ -47795,6 +47949,10 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldDurationMs(ctx)
 	case usagelog.FieldFirstTokenMs:
 		return m.OldFirstTokenMs(ctx)
+	case usagelog.FieldGatewayLatencyMs:
+		return m.OldGatewayLatencyMs(ctx)
+	case usagelog.FieldBodyBytes:
+		return m.OldBodyBytes(ctx)
 	case usagelog.FieldUserAgent:
 		return m.OldUserAgent(ctx)
 	case usagelog.FieldIPAddress:
@@ -48068,6 +48226,20 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFirstTokenMs(v)
 		return nil
+	case usagelog.FieldGatewayLatencyMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayLatencyMs(v)
+		return nil
+	case usagelog.FieldBodyBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBodyBytes(v)
+		return nil
 	case usagelog.FieldUserAgent:
 		v, ok := value.(string)
 		if !ok {
@@ -48221,6 +48393,12 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addfirst_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
 	}
+	if m.addgateway_latency_ms != nil {
+		fields = append(fields, usagelog.FieldGatewayLatencyMs)
+	}
+	if m.addbody_bytes != nil {
+		fields = append(fields, usagelog.FieldBodyBytes)
+	}
 	if m.addimage_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
@@ -48274,6 +48452,10 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedDurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.AddedFirstTokenMs()
+	case usagelog.FieldGatewayLatencyMs:
+		return m.AddedGatewayLatencyMs()
+	case usagelog.FieldBodyBytes:
+		return m.AddedBodyBytes()
 	case usagelog.FieldImageCount:
 		return m.AddedImageCount()
 	case usagelog.FieldVideoCount:
@@ -48415,6 +48597,20 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddFirstTokenMs(v)
 		return nil
+	case usagelog.FieldGatewayLatencyMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGatewayLatencyMs(v)
+		return nil
+	case usagelog.FieldBodyBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBodyBytes(v)
+		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
 		if !ok {
@@ -48482,6 +48678,12 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldFirstTokenMs) {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
+	}
+	if m.FieldCleared(usagelog.FieldGatewayLatencyMs) {
+		fields = append(fields, usagelog.FieldGatewayLatencyMs)
+	}
+	if m.FieldCleared(usagelog.FieldBodyBytes) {
+		fields = append(fields, usagelog.FieldBodyBytes)
 	}
 	if m.FieldCleared(usagelog.FieldUserAgent) {
 		fields = append(fields, usagelog.FieldUserAgent)
@@ -48562,6 +48764,12 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldFirstTokenMs:
 		m.ClearFirstTokenMs()
+		return nil
+	case usagelog.FieldGatewayLatencyMs:
+		m.ClearGatewayLatencyMs()
+		return nil
+	case usagelog.FieldBodyBytes:
+		m.ClearBodyBytes()
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ClearUserAgent()
@@ -48699,6 +48907,12 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldFirstTokenMs:
 		m.ResetFirstTokenMs()
+		return nil
+	case usagelog.FieldGatewayLatencyMs:
+		m.ResetGatewayLatencyMs()
+		return nil
+	case usagelog.FieldBodyBytes:
+		m.ResetBodyBytes()
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ResetUserAgent()

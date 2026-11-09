@@ -316,8 +316,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			sessionID := service.ExtractClientSessionID(c)
 			stampForwardRequestedReasoningEffort(result, service.RequestedReasoningEffortFromContext(c.Request.Context()))
 			channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel)
+			usageTiming1 := usageRequestTiming(c)
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+					Timing:             usageTiming1,
 					Result:             result,
 					QuotaPlatform:      quotaPlatform,
 					APIKey:             apiKey,
@@ -380,6 +382,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 
 		// 6. Record usage
+		markUsageTimingEligible(c)
 		submitForwardUsage(result)
 		return
 	}

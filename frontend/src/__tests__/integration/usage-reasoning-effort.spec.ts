@@ -217,6 +217,22 @@ function reasoningCellText(wrapper: ReturnType<typeof mount>): string {
   return wrapper.get('[data-testid="reasoning-effort-cell"]').text()
 }
 
+
+// 列设置弹层已 Teleport 到 body（避开表格的层叠上下文），因此开关不在 wrapper 子树里。
+const clickColumnToggle = async (key: string) => {
+  const panels = document.querySelectorAll('[data-testid="usage-column-panel"]')
+  const panel = panels[panels.length - 1]
+  const el = panel?.querySelector(`[data-testid="usage-column-toggle-${key}"]`) as HTMLElement | null
+  expect(el, `column toggle ${key} should be rendered in the teleported panel`).not.toBeNull()
+  el?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await flushPromises()
+}
+
+// Teleport 目标在 wrapper 之外，未卸载的组件会把弹层留在 body 里污染下一个用例。
+afterEach(() => {
+  document.querySelectorAll('[data-testid="usage-column-panel"]').forEach((panel) => panel.remove())
+})
+
 describe('usage reasoning effort page display', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -279,13 +295,14 @@ describe('usage reasoning effort page display', () => {
     expect(wrapper.find('[data-testid="reasoning-effort-cell"]').exists()).toBe(false)
 
     await wrapper.get('[data-testid="usage-column-settings"]').trigger('click')
-    await wrapper.get('[data-testid="usage-column-toggle-reasoning_effort"]').trigger('click')
-    await flushPromises()
+    await clickColumnToggle('reasoning_effort')
 
     const cell = reasoningCellText(wrapper)
     expect(cell).toContain('Max')
     expect(cell).toContain('XHigh')
     expect(cell).toContain('↳')
+    // 卸载组件才会移除 Teleport 到 body 的弹层，避免污染下一个用例。
+    wrapper.unmount()
   })
 
   it('admin usage page shows a single value when reasoning effort was not mapped', async () => {
@@ -312,11 +329,11 @@ describe('usage reasoning effort page display', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="usage-column-settings"]').trigger('click')
-    await wrapper.get('[data-testid="usage-column-toggle-reasoning_effort"]').trigger('click')
-    await flushPromises()
+    await clickColumnToggle('reasoning_effort')
 
     const cell = reasoningCellText(wrapper)
     expect(cell).toContain('High')
     expect(cell).not.toContain('↳')
+    wrapper.unmount()
   })
 })

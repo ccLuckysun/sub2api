@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
@@ -54,6 +55,9 @@ type RecordUsageInput struct {
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
+	// Timing is the request-level timing handle. It must be passed explicitly:
+	// the usage worker context intentionally only copies two ctx keys.
+	Timing *requesttiming.Handle
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -70,6 +74,16 @@ type apiKeyAuthCacheInvalidator interface {
 
 type usageLogBestEffortWriter interface {
 	CreateBestEffort(ctx context.Context, log *UsageLog) error
+}
+
+// usageLogReceiptWriter is implemented by repositories that can report the
+// winning row even when the caller's wait expires before the batcher commits.
+type usageLogReceiptWriter interface {
+	CreateWithReceipt(ctx context.Context, log *UsageLog, onInserted func(requesttiming.InsertReceipt)) (bool, error)
+}
+
+type usageLogBestEffortReceiptWriter interface {
+	CreateBestEffortWithReceipt(ctx context.Context, log *UsageLog, onInserted func(requesttiming.InsertReceipt)) error
 }
 
 // postUsageBillingParams 统一扣费所需的参数
@@ -240,6 +254,7 @@ func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string)
 func isForcedUsageBillingRequestID(requestID string) bool {
 	id := strings.TrimSpace(requestID)
 	return strings.HasPrefix(id, "web_search:") ||
+		strings.HasPrefix(id, "x_search:") ||
 		strings.HasPrefix(id, "grok-video:") ||
 		strings.HasPrefix(id, "grok_audio:") ||
 		strings.HasPrefix(id, "grok_realtime:") ||
@@ -621,15 +636,23 @@ func (s *GatewayService) billingDeps() *billingDeps {
 	}
 }
 
-func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
+func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, timing *requesttiming.Handle, logKey string) {
 	if repo == nil || usageLog == nil {
 		return
+	}
+	// Auxiliary billing rows do not represent a unique HTTP request span.
+	// Never let an auxiliary/WS/live/cyber row claim the request's primary row.
+	if isForcedUsageBillingRequestID(usageLog.RequestID) || usageLog.OpenAIWSMode || usageLog.RequestType == RequestTypeWSV2 || usageLog.RequestType == RequestTypeLive || usageLog.RequestType == RequestTypeCyberBlocked {
+		timing = nil
 	}
 	usageCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 
-	if writer, ok := repo.(usageLogBestEffortWriter); ok {
-		if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
+	onInserted := func(receipt requesttiming.InsertReceipt) {
+		timing.RegisterRow(receipt)
+	}
+	if writer, ok := repo.(usageLogBestEffortReceiptWriter); ok {
+		if err := writer.CreateBestEffortWithReceipt(usageCtx, usageLog, onInserted); err != nil {
 			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
 			// 计费已在此前完成，日志必须落库：dropped（批处理队列超时）同样走同步兜底，
 			// 否则会出现“已扣费但无 usage_log”的对账缺口（issue #3656）。
@@ -641,16 +664,42 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 				fallbackCtx, fallbackCancel = detachedBillingContext(context.Background())
 				defer fallbackCancel()
 			}
-			if _, syncErr := repo.Create(fallbackCtx, usageLog); syncErr != nil {
+			if _, syncErr := createUsageLogWithReceipt(fallbackCtx, repo, usageLog, onInserted); syncErr != nil {
+				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
+			}
+		}
+		return
+	}
+	if writer, ok := repo.(usageLogBestEffortWriter); ok {
+		if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
+			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
+			fallbackCtx := usageCtx
+			if usageCtx.Err() != nil {
+				var fallbackCancel context.CancelFunc
+				fallbackCtx, fallbackCancel = detachedBillingContext(context.Background())
+				defer fallbackCancel()
+			}
+			if _, syncErr := createUsageLogWithReceipt(fallbackCtx, repo, usageLog, onInserted); syncErr != nil {
 				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
 			}
 		}
 		return
 	}
 
-	if _, err := repo.Create(usageCtx, usageLog); err != nil {
+	if _, err := createUsageLogWithReceipt(usageCtx, repo, usageLog, onInserted); err != nil {
 		logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
 	}
+}
+
+func createUsageLogWithReceipt(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, onInserted func(requesttiming.InsertReceipt)) (bool, error) {
+	if writer, ok := repo.(usageLogReceiptWriter); ok {
+		return writer.CreateWithReceipt(ctx, usageLog, onInserted)
+	}
+	inserted, err := repo.Create(ctx, usageLog)
+	if err == nil && inserted && onInserted != nil {
+		onInserted(requesttiming.InsertReceipt{Inserted: true, Row: requesttiming.RowRef{ID: usageLog.ID, CreatedAt: usageLog.CreatedAt, APIKeyID: usageLog.APIKeyID, RequestID: usageLog.RequestID}})
+	}
+	return inserted, err
 }
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -671,6 +720,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
+		Timing:             input.Timing,
 		ChannelUsageFields: input.ChannelUsageFields,
 	})
 }
@@ -692,6 +742,7 @@ type recordUsageCoreInput struct {
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
+	Timing             *requesttiming.Handle
 	ChannelUsageFields
 }
 
@@ -772,6 +823,9 @@ func logResponseModelBillingApplied(component string, account *Account, requestI
 // recordUsageCore 是 RecordUsage 的核心实现。
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput) error {
 	result := input.Result
+	if input.Timing != nil && result.ClientDisconnect {
+		input.Timing.Invalidate()
+	}
 	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
@@ -864,7 +918,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, input.Timing, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
@@ -897,10 +951,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	if billingErr != nil {
 		usageLog.ActualCost = 0
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, input.Timing, "service.gateway")
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, input.Timing, "service.gateway")
 
 	return nil
 }
@@ -1369,6 +1423,12 @@ func (s *GatewayService) buildRecordUsageLog(
 		GroupID:                  apiKey.GroupID,
 		SubscriptionID:           optionalSubscriptionID(subscription),
 		CreatedAt:                time.Now(),
+	}
+	if input.Timing != nil {
+		usageLog.BodyBytes = input.Timing.BodyBytes()
+		// Completion may already be known in an asynchronous task, but only the
+		// eligible, committed-row enricher may publish it. Copying it here would
+		// admit failed/partial/panicked requests and WS connection-level totals.
 	}
 	if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier

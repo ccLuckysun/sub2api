@@ -248,9 +248,92 @@
               <span v-else class="text-ui-muted">-</span>
               <span class="text-ui-muted">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
-              <span class="text-ui-muted" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>
-              <span data-testid="output-tps" class="font-medium tabular-nums text-ui-ink">{{ formatUsageOutputRate(row) }}</span>
+              <template v-if="dualTps(row)">
+                <span class="text-ui-muted" :title="t('usage.timing.tpsHint')">{{ t('usage.timing.tpsDualLabel') }}</span>
+                <span data-testid="output-tps" class="font-medium tabular-nums text-ui-ink">
+                  {{ t('usage.timing.tpsDualValue', { total: dualTps(row)?.total, stream: dualTps(row)?.stream }) }}
+                </span>
+              </template>
+              <template v-else>
+                <span class="text-ui-muted" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>
+                <span data-testid="output-tps" class="font-medium tabular-nums text-ui-ink">{{ formatUsageOutputRate(row) }}</span>
+              </template>
             </div>
+          </div>
+        </template>
+
+        <!-- 六列请求耗时三段（一期）：全部默认隐藏、不可排序，避免全窗口派生排序负载 -->
+        <template #cell-upload_ms="{ row }">
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              class="font-medium tabular-nums underline decoration-dashed underline-offset-2"
+              :class="uploadCell(row).className"
+              :title="t('usage.timing.uploadTooltip')"
+              :data-testid="`upload-ms-${row.id}`"
+              @click="emit('timingClick', row)"
+            >{{ uploadCell(row).text }}</button>
+            <span
+              v-if="uploadCell(row).degraded"
+              class="text-[10px] text-amber-600 dark:text-amber-400"
+              :title="t('usage.timing.degradedHint')"
+            >~</span>
+          </div>
+        </template>
+
+        <template #cell-upload_rate="{ row }">
+          <div class="flex items-center gap-1">
+            <span
+              class="font-medium tabular-nums"
+              :class="uploadRateCell(row).className"
+              :title="t('usage.timing.rateTooltip')"
+            >{{ uploadRateCell(row).text }}</span>
+            <span
+              v-if="uploadRateCell(row).degraded"
+              class="text-[10px] text-amber-600 dark:text-amber-400"
+              :title="t('usage.timing.degradedHint')"
+            >~</span>
+          </div>
+        </template>
+
+        <template #cell-body_bytes="{ row }">
+          <div class="flex items-center gap-1">
+            <span
+              class="font-medium tabular-nums"
+              :class="bodyCell(row).className"
+              :title="bodyCellTitle(row)"
+            >{{ bodyCell(row).text }}</span>
+            <span
+              v-if="isLargeBody(row)"
+              class="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold leading-tight bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30"
+              :title="t('usage.timing.largeBodyHint')"
+            >&gt;5MiB</span>
+          </div>
+        </template>
+
+        <template #cell-upstream_ttft_ms="{ row }">
+          <div class="flex items-center gap-1">
+            <span class="font-medium tabular-nums" :class="upstreamTtftCell(row).className">{{ upstreamTtftCell(row).text }}</span>
+            <span
+              v-if="upstreamTtftCell(row).degraded"
+              class="text-[10px] text-amber-600 dark:text-amber-400"
+              :title="t('usage.timing.degradedHint')"
+            >~</span>
+          </div>
+        </template>
+
+        <template #cell-stream_ms="{ row }">
+          <span class="font-medium tabular-nums" :class="streamCell(row).className">{{ streamCell(row).text }}</span>
+        </template>
+
+        <template #cell-real_ttfb_ms="{ row }">
+          <div class="flex items-center gap-1">
+            <span class="font-medium tabular-nums" :class="realTtfbCell(row).className">{{ realTtfbCell(row).text }}</span>
+            <span
+              v-if="realTtfbCell(row).degraded"
+              class="text-[10px] text-amber-600 dark:text-amber-400"
+              :title="t('usage.timing.degradedHint')"
+            >~</span>
           </div>
         </template>
 
@@ -543,6 +626,21 @@ import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
+import type { RequestTiming } from '@/types/requestTiming'
+import { normalizeRequestTiming } from '@/types/requestTiming'
+import {
+  LARGE_BODY_BYTES,
+  TIMING_TEXT_CLASSES,
+  formatBodySize,
+  formatBytesExact,
+  formatBytesPerToken,
+  formatTimingMs,
+  formatTokensPerSecond,
+  formatUploadRate,
+  shouldHintLargeBytesPerToken,
+  uploadRateSeverity,
+  uploadSeverity,
+} from '@/utils/timingMetrics'
 import {
   LATENCY_BAR_CLASSES,
   LATENCY_BAR_FROM_CLASSES,
@@ -616,6 +714,8 @@ const emit = defineEmits<{
   userClick: [userID: number, email?: string]
   sort: [key: string, order: 'asc' | 'desc']
   ipGeoBatchFailed: []
+  /** 三段耗时详情：由父层打开抽屉并按需拉取 /usage/:id/timing */
+  timingClick: [row: AdminUsageLog]
 }>()
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -625,6 +725,90 @@ const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
+
+// ==================== 请求耗时三段（一期，六列默认隐藏） ====================
+
+const rowTiming = (row: AdminUsageLog): RequestTiming | null =>
+  normalizeRequestTiming((row as { timing?: unknown }).timing)
+
+interface TimingCell {
+  text: string
+  className: string
+  /** 值存在但被钳制/不完整（后端 is_valid_* = false），用标记提示而不是隐藏 */
+  degraded: boolean
+}
+
+const cellFor = (
+  row: AdminUsageLog,
+  pick: (timing: RequestTiming) => number | null,
+  format: (value: number | null) => string,
+  severity?: (value: number | null) => 'good' | 'warn' | 'critical' | null,
+  validFlag?: (timing: RequestTiming) => boolean
+): TimingCell => {
+  const timing = rowTiming(row)
+  if (!timing) return { text: '—', className: 'text-ui-muted', degraded: false }
+  const value = pick(timing)
+  if (value === null) return { text: '—', className: 'text-ui-muted', degraded: false }
+  const severityValue = severity ? severity(value) : null
+  return {
+    text: format(value),
+    className: severityValue ? TIMING_TEXT_CLASSES[severityValue] : 'text-ui-ink',
+    degraded: validFlag ? !validFlag(timing) : false,
+  }
+}
+
+const uploadCell = (row: AdminUsageLog): TimingCell =>
+  cellFor(row, (t) => t.upload_ms, formatTimingMs, uploadSeverity, (t) => t.is_valid_upload)
+
+const uploadRateCell = (row: AdminUsageLog): TimingCell =>
+  cellFor(row, (t) => t.upload_kbps, formatUploadRate, uploadRateSeverity, (t) => t.is_valid_rate)
+
+const bodyCell = (row: AdminUsageLog): TimingCell =>
+  cellFor(row, (t) => t.body_bytes, formatBodySize, undefined, (t) => t.is_valid_body)
+
+const isLargeBody = (row: AdminUsageLog): boolean => {
+  const bytes = rowTiming(row)?.body_bytes ?? null
+  return bytes !== null && bytes >= LARGE_BODY_BYTES
+}
+
+const bytesPerTokenHint = (row: AdminUsageLog): boolean =>
+  shouldHintLargeBytesPerToken(rowTiming(row)?.bytes_per_token)
+
+const bodyCellTitle = (row: AdminUsageLog): string => {
+  const timing = rowTiming(row)
+  if (!timing || timing.body_bytes === null) return t('usage.timing.bodyTooltipMissing')
+  const parts = [
+    t('usage.timing.bodyTooltip', {
+      exact: formatBytesExact(timing.body_bytes),
+      mib: formatBodySize(timing.body_bytes)
+    })
+  ]
+  if (timing.bytes_per_token !== null) {
+    parts.push(t('usage.timing.bytesPerTokenValue', { value: formatBytesPerToken(timing.bytes_per_token) }))
+  }
+  if (bytesPerTokenHint(row)) parts.push(t('usage.timing.bytesPerTokenHint'))
+  return parts.join('\n')
+}
+
+const upstreamTtftCell = (row: AdminUsageLog): TimingCell =>
+  cellFor(row, (t) => t.upstream_ttft_ms, formatTimingMs, undefined, (t) => t.is_valid_ttft)
+
+const streamCell = (row: AdminUsageLog): TimingCell =>
+  cellFor(row, (t) => t.stream_ms, formatTimingMs)
+
+const realTtfbCell = (row: AdminUsageLog): TimingCell =>
+  cellFor(row, (t) => t.real_ttfb_ms, formatTimingMs, undefined, (t) => t.is_valid_real)
+
+/** 双 TPS：完整处理（分母 duration）/ 生成（分母 duration − first_token） */
+const dualTps = (row: AdminUsageLog): { total: string; stream: string } | null => {
+  const timing = rowTiming(row)
+  if (!timing) return null
+  if (timing.tps_total === null && timing.tps_stream === null) return null
+  return {
+    total: formatTokensPerSecond(timing.tps_total),
+    stream: formatTokensPerSecond(timing.tps_stream),
+  }
+}
 
 const hasReasoningEffortMapping = (row: AdminUsageLog): boolean => {
   const requested = row.reasoning_effort?.trim() || ''

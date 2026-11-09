@@ -18,6 +18,13 @@ func TestResolveUsageBillingRequestID_ForcedWebSearchBeatsClientID(t *testing.T)
 	require.Equal(t, "web_search:uuid-1", got)
 }
 
+func TestResolveUsageBillingRequestID_ForcedXSearchBeatsClientID(t *testing.T) {
+	t.Parallel()
+	ctx := context.WithValue(context.Background(), ctxkey.ClientRequestID, "client-shared-id")
+	got := resolveUsageBillingRequestID(ctx, "x_search:uuid-1")
+	require.Equal(t, "x_search:uuid-1", got, "独立 x_search 每次调用必须保留唯一计费键")
+}
+
 func TestResolveUsageBillingRequestID_ClientWinsOverPlainUpstream(t *testing.T) {
 	t.Parallel()
 	ctx := context.WithValue(context.Background(), ctxkey.ClientRequestID, "client-shared-id")
@@ -28,6 +35,7 @@ func TestResolveUsageBillingRequestID_ClientWinsOverPlainUpstream(t *testing.T) 
 func TestIsForcedUsageBillingRequestID(t *testing.T) {
 	t.Parallel()
 	require.True(t, isForcedUsageBillingRequestID("web_search:x"))
+	require.True(t, isForcedUsageBillingRequestID("x_search:x"))
 	require.True(t, isForcedUsageBillingRequestID("grok-video:task-1"))
 	require.True(t, isForcedUsageBillingRequestID("grok_audio:up-1"))
 	require.True(t, isForcedUsageBillingRequestID("grok_realtime:sess-1"))

@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/server"
@@ -133,10 +134,19 @@ func provideCleanup(
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
+	usageLogBatchDrainer repository.UsageLogBatchDrainer,
+	timingEnricher *requesttiming.Enricher,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		// Include hijacked gateway connections in the producer barrier. Their
+		// contexts must be canceled before the usage task pool is stopped.
+		if timingEnricher != nil {
+			if err := timingEnricher.Requests.Stop(ctx); err != nil {
+				log.Printf("[Cleanup] request producers did not finish within shutdown budget: %v", err)
+			}
+		}
 
 		type cleanupStep struct {
 			name string
@@ -325,12 +335,6 @@ func provideCleanup(
 				billingCache.Stop()
 				return nil
 			}},
-			{"UsageRecordWorkerPool", func() error {
-				if usageRecordWorkerPool != nil {
-					usageRecordWorkerPool.Stop()
-				}
-				return nil
-			}},
 			{"OAuthService", func() error {
 				oauth.Stop()
 				return nil
@@ -415,6 +419,35 @@ func provideCleanup(
 			}},
 		}
 
+		// Usage producers and their batchers must stop serially before the DB
+		// closes: HTTP Shutdown already ran in main, UsageRecordWorkerPool.Stop
+		// waits for in-flight billing tasks, repo.Drain flushes both usage-log
+		// batch queues, and the timing enricher drains its own bounded queue.
+		serialSteps := []cleanupStep{
+			{"UsageRecordWorkerPool", func() error {
+				if usageRecordWorkerPool != nil {
+					usageRecordWorkerPool.Stop()
+				}
+				return nil
+			}},
+			{"UsageLogBatchDrainer", func() error {
+				if usageLogBatchDrainer == nil {
+					return nil
+				}
+				drainCtx, drainCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer drainCancel()
+				return usageLogBatchDrainer.Drain(drainCtx)
+			}},
+			{"RequestTimingEnricher", func() error {
+				if timingEnricher == nil {
+					return nil
+				}
+				drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer drainCancel()
+				return timingEnricher.Drain(drainCtx)
+			}},
+		}
+
 		infraSteps := []cleanupStep{
 			{"Redis", func() error {
 				if rdb == nil {
@@ -459,6 +492,7 @@ func provideCleanup(
 		}
 
 		runParallel(parallelSteps)
+		runSequential(serialSteps)
 		runSequential(infraSteps)
 
 		// Check if context timed out

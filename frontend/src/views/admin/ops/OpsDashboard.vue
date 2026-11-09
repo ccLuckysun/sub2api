@@ -93,6 +93,58 @@
         />
       </div>
 
+      <!-- Request Timing: upload / upstream ttft / stream split -->
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 xl:grid-cols-4">
+        <div class="xl:col-span-4">
+          <RequestTimingTrendCard
+            :time-range="timeRange"
+            :custom-start-time="customStartTime"
+            :custom-end-time="customEndTime"
+            :platform="platform"
+            :group-id="groupId"
+            :query-mode="queryMode"
+            :refresh-token="dashboardRefreshToken"
+            @aggregation="timingAggregation = $event"
+          />
+        </div>
+        <div class="xl:col-span-2">
+          <RequestTimingGroupsCard
+            :time-range="timeRange"
+            :custom-start-time="customStartTime"
+            :custom-end-time="customEndTime"
+            :platform="platform"
+            :group-id="groupId"
+            :refresh-token="dashboardRefreshToken"
+            :aggregation="timingAggregation"
+            @shorten-range="onShortenTimingRange"
+          />
+        </div>
+        <div class="xl:col-span-2">
+          <RequestTimingQualityCard
+            :time-range="timeRange"
+            :custom-start-time="customStartTime"
+            :custom-end-time="customEndTime"
+            :platform="platform"
+            :group-id="groupId"
+            :query-mode="queryMode"
+            :refresh-token="dashboardRefreshToken"
+            :aggregation="timingAggregation"
+          />
+        </div>
+        <div class="xl:col-span-4">
+          <SlowRequestTopCard
+            :time-range="timeRange"
+            :custom-start-time="customStartTime"
+            :custom-end-time="customEndTime"
+            :platform="platform"
+            :group-id="groupId"
+            :refresh-token="dashboardRefreshToken"
+            :aggregation="timingAggregation"
+            @open-detail="openTimingDetail"
+          />
+        </div>
+      </div>
+
       <!-- Alert Events -->
       <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce)" />
 
@@ -125,6 +177,13 @@
         />
 
         <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" :back-to-list="detailReturnTarget !== null" @back="handleBackToList" />
+
+        <RequestTimingDrawer
+          :show="timingDrawerVisible"
+          :log="timingDrawerRow"
+          source="ops"
+          @close="timingDrawerVisible = false"
+        />
 
         <OpsRequestDetailsModal
           v-model="showRequestDetails"
@@ -173,6 +232,12 @@ import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
 import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
+import RequestTimingTrendCard from './components/RequestTimingTrendCard.vue'
+import RequestTimingGroupsCard from './components/RequestTimingGroupsCard.vue'
+import RequestTimingQualityCard from './components/RequestTimingQualityCard.vue'
+import SlowRequestTopCard from './components/SlowRequestTopCard.vue'
+import RequestTimingDrawer from '@/components/admin/usage/RequestTimingDrawer.vue'
+import type { RequestTimingDetail, TimingAggregation } from '@/types/requestTiming'
 
 const route = useRoute()
 const router = useRouter()
@@ -401,12 +466,57 @@ const autoRefreshCountdown = ref(0)
 // Used to trigger child component refreshes in a single shared cadence.
 const dashboardRefreshToken = ref(0)
 
+// 隐藏标签页时的最慢刷新节流（需求：hidden-tab 每 60 秒一次，而不是跟随 30s 自动刷新）
+const HIDDEN_TAB_REFRESH_MS = 60000
+let lastHiddenRefreshAt = 0
+
+// Request timing 抽屉：ops 慢请求行已内嵌完整 timing，打开时不再请求详情接口
+/**
+ * 聚合健康只由趋势卡（唯一按桶取数的面板）上报，再下发给分组/质量/慢请求卡。
+ * 这样三张卡不会各自猜「聚合是否落后」，也不会互相矛盾。
+ */
+const timingAggregation = ref<TimingAggregation | null>(null)
+
+const timingDrawerVisible = ref(false)
+const timingDrawerRow = ref<RequestTimingDetail | null>(null)
+
+function openTimingDetail(item: RequestTimingDetail) {
+  timingDrawerRow.value = item
+  timingDrawerVisible.value = true
+}
+
+// 分组卡的分位预算超限：缩短时间范围，而不是静默空图或擅自改用户筛选
+function onShortenTimingRange() {
+  // 离开自定义范围时必须清掉残留的绝对时间，否则后端仍按旧窗口取数，
+  // 预算错误永远不会消失（用户会以为“缩短范围”按钮没反应）。
+  customStartTime.value = null
+  customEndTime.value = null
+  if (timeRange.value === 'custom' || timeRange.value === '24h' || timeRange.value === '6h') {
+    timeRange.value = '1h'
+  } else if (timeRange.value === '1h') {
+    timeRange.value = '30m'
+  } else if (timeRange.value === '30m') {
+    timeRange.value = '5m'
+  }
+}
+
 // Countdown timer (drives auto refresh; updates every second)
 const { pause: pauseCountdown, resume: resumeCountdown } = useIntervalFn(
   () => {
     if (!autoRefreshEnabled.value) return
     if (!opsEnabled.value) return
     if (loading.value) return
+
+    // 页面不可见时不做 1s 倒计时：最多每 60s 刷新一次，
+    // 避免后台标签页按自动刷新间隔持续拉取每个 timing 面板。
+    if (typeof document !== 'undefined' && document.hidden) {
+      const now = Date.now()
+      if (now - lastHiddenRefreshAt >= HIDDEN_TAB_REFRESH_MS) {
+        lastHiddenRefreshAt = now
+        fetchData()
+      }
+      return
+    }
 
     if (autoRefreshCountdown.value <= 0) {
       // Fetch immediately when the countdown reaches 0.

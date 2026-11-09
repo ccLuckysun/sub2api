@@ -98,6 +98,7 @@ type Config struct {
 	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
 	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
 	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
+	RequestTiming           RequestTimingConfig           `mapstructure:"request_timing"`
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
 	SimpleMode              SimpleModeConfig              `mapstructure:"simple_mode" yaml:"simple_mode"`
@@ -1872,6 +1873,32 @@ type UsageCleanupConfig struct {
 	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
 }
 
+// RequestTimingConfig controls the request-timing collection, enrichment and
+// read-side features. Collection/enrichment are best-effort telemetry: they
+// must never block or change gateway billing behavior.
+type RequestTimingConfig struct {
+	// CollectEnabled turns on the per-request lightweight timing handle and
+	// decoded-body snapshot. Disabling it keeps usage_logs untouched.
+	CollectEnabled bool `mapstructure:"collect_enabled"`
+	// EnrichEnabled starts the bounded gateway_latency_ms patch worker.
+	EnrichEnabled bool `mapstructure:"enrich_enabled"`
+	// QueryEnabled gates admin request-timing read APIs.
+	QueryEnabled bool `mapstructure:"query_enabled"`
+	// AggregateEnabled gates minute aggregation and histogram persistence.
+	AggregateEnabled bool `mapstructure:"aggregate_enabled"`
+	// AlertEnabled gates timing alert evaluation. Existing alert rules remain
+	// disabled/not-notifying by default.
+	AlertEnabled bool `mapstructure:"alert_enabled"`
+
+	// Optional bounded worker parameters. Zero values use the package defaults.
+	Workers         int `mapstructure:"workers"`
+	QueueSize       int `mapstructure:"queue_size"`
+	BatchSize       int `mapstructure:"batch_size"`
+	FlushIntervalMS int `mapstructure:"flush_interval_ms"`
+	SQLTimeoutMS    int `mapstructure:"sql_timeout_ms"`
+	MaxAttempts     int `mapstructure:"max_attempts"`
+}
+
 func NormalizeRunMode(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
@@ -2104,6 +2131,20 @@ func setDefaults() {
 	viper.SetDefault("gateway.min_output_tokens", 128)
 	viper.SetDefault("simple_mode.auto_create_default_groups", true)
 	viper.SetDefault("simple_mode_key_rate_limit_enabled", false)
+
+	// Request timing telemetry. Reads and aggregation are on by default, but
+	// timing alert rules are still opt-in per rule (and notify_email=false).
+	viper.SetDefault("request_timing.collect_enabled", true)
+	viper.SetDefault("request_timing.enrich_enabled", true)
+	viper.SetDefault("request_timing.query_enabled", true)
+	viper.SetDefault("request_timing.aggregate_enabled", true)
+	viper.SetDefault("request_timing.alert_enabled", true)
+	viper.SetDefault("request_timing.workers", 2)
+	viper.SetDefault("request_timing.queue_size", 8192)
+	viper.SetDefault("request_timing.batch_size", 128)
+	viper.SetDefault("request_timing.flush_interval_ms", 20)
+	viper.SetDefault("request_timing.sql_timeout_ms", 1000)
+	viper.SetDefault("request_timing.max_attempts", 3)
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")

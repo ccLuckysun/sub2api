@@ -26,6 +26,7 @@ export default {
     peakRateTooltip: 'Peak rate: {window}',
     peakRateImageNote: '; image tokens billed as tokens are also affected, per-image billing is unaffected',
     save: 'Save',
+    retry: 'Retry',
     saved: 'Saved successfully',
     deleted: 'Deleted successfully',
     cancel: 'Cancel',

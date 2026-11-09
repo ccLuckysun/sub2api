@@ -13,6 +13,18 @@ const (
 	OpsAlertStatusManualResolved = "manual_resolved"
 )
 
+// OpsAlertRuleEvaluation is the persisted evaluation snapshot of a request-timing
+// alert rule. It is read-only, batched with the rule list, and reported per rule so
+// the UI never presents an unknown/stale evaluation as healthy.
+type OpsAlertRuleEvaluation struct {
+	State           string     `json:"state"`
+	Reason          string     `json:"reason,omitempty"`
+	LastEvaluatedAt *time.Time `json:"last_evaluated_at,omitempty"`
+	MetricValue     *float64   `json:"metric_value,omitempty"`
+	SampleCount     int64      `json:"sample_count,omitempty"`
+	Coverage        *float64   `json:"coverage,omitempty"`
+}
+
 type OpsAlertRule struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
@@ -32,6 +44,9 @@ type OpsAlertRule struct {
 	NotifyEmail bool `json:"notify_email"`
 
 	Filters map[string]any `json:"filters,omitempty"`
+
+	// Evaluation is populated by the list endpoint for request-timing rules only.
+	Evaluation *OpsAlertRuleEvaluation `json:"evaluation,omitempty"`
 
 	LastTriggeredAt *time.Time `json:"last_triggered_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`

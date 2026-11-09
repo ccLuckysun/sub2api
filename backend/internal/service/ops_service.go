@@ -43,9 +43,12 @@ type OpsRuntimeSettingsRefreshHealth struct {
 
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
 type OpsService struct {
-	opsRepo     OpsRepository
-	settingRepo SettingRepository
-	cfg         *config.Config
+	// Initialized by the HTTP server before it accepts requests. Only scalar
+	// telemetry counters are exposed; no request bodies or credentials.
+	requestTimingCollector func() map[string]any
+	opsRepo                OpsRepository
+	settingRepo            SettingRepository
+	cfg                    *config.Config
 
 	accountRepo AccountRepository
 	userRepo    UserRepository

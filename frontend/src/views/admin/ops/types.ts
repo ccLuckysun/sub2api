@@ -6,6 +6,7 @@ export type ChartState = 'loading' | 'empty' | 'ready'
 // while keeping the API contract centralized in `@/api/admin/ops`.
 export type {
   AlertRule,
+  AlertRuleEvaluation,
   AlertEvent,
   AlertSeverity,
   ThresholdMode,

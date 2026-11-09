@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -8,6 +8,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { adminAPI } from '@/api'
 import { opsAPI } from '@/api/admin/ops'
+import { isRequestTimingMetric } from '@/utils/requestTimingMetricTypes'
 import type { AlertRule, MetricType, Operator } from '../types'
 import type { OpsSeverity } from '@/api/admin/ops'
 import { formatDateTime } from '../utils/opsFormatters'
@@ -43,12 +44,55 @@ const sortedRules = computed(() => {
   return [...rules.value].sort((a, b) => (b.id || 0) - (a.id || 0))
 })
 
+// Evaluation states come from the server snapshot. "unknown", "stale" and a missing
+// snapshot must never look healthy, so only an explicit `ok` gets the green style.
+const EVALUATION_BADGE_CLASSES: Record<string, string> = {
+  ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  breached: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  insufficient_data: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  stale: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  query_error: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  unknown: 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-dark-300',
+}
+
+function evaluationKey(row: AlertRule): string {
+  const state = row.evaluation?.state?.trim()
+  return state ? state : 'missing'
+}
+
+function evaluationLabel(row: AlertRule): string {
+  const key = evaluationKey(row)
+  const known = ['ok', 'breached', 'insufficient_data', 'stale', 'query_error', 'unknown']
+  if (known.includes(key)) {
+    return t(`admin.ops.alertRules.evaluationStates.${key}`)
+  }
+  return key === 'missing'
+    ? t('admin.ops.alertRules.evaluationStates.missing')
+    : t('admin.ops.alertRules.evaluationStates.unknown')
+}
+
+function evaluationBadgeClass(row: AlertRule): string {
+  return EVALUATION_BADGE_CLASSES[evaluationKey(row)] ?? EVALUATION_BADGE_CLASSES.unknown
+}
+
+function evaluationTooltip(row: AlertRule): string {
+  const evaluation = row.evaluation
+  if (!evaluation) {
+    return t('admin.ops.alertRules.evaluationMissingHint')
+  }
+  const parts = [evaluationLabel(row)]
+  if (evaluation.reason) {
+    parts.push(t('admin.ops.alertRules.evaluationReason', { reason: evaluation.reason }))
+  }
+  return parts.join(' · ')
+}
+
 const showEditor = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const draft = ref<AlertRule | null>(null)
 
-type MetricGroup = 'system' | 'group' | 'account'
+type MetricGroup = 'system' | 'group' | 'account' | 'request_timing'
 
 interface MetricDefinition {
   type: MetricType
@@ -58,6 +102,8 @@ interface MetricDefinition {
   recommendedOperator: Operator
   recommendedThreshold: number
   unit?: string
+  /** 请求耗时指标：window 固定 1 分钟，sustained 与 filters 有专用默认值 */
+  defaultSustainedMinutes?: number
 }
 
 const groupMetricTypes = new Set<MetricType>([
@@ -240,6 +286,48 @@ const metricDefinitions = computed(() => {
       description: t('admin.ops.alertRules.metricDescriptions.overloadAccountCount'),
       recommendedOperator: '>',
       recommendedThreshold: 0
+    },
+
+    // 请求耗时三段（一期：逐闭合分钟桶判定，window 固定 1 分钟）
+    {
+      type: 'upload_ms_p90',
+      group: 'request_timing',
+      label: t('admin.ops.alertRules.metrics.uploadMsP90'),
+      description: t('admin.ops.alertRules.metricDescriptions.uploadMsP90'),
+      recommendedOperator: '>',
+      recommendedThreshold: 8000,
+      unit: 'ms',
+      defaultSustainedMinutes: 5
+    },
+    {
+      type: 'upload_kbps_p50',
+      group: 'request_timing',
+      label: t('admin.ops.alertRules.metrics.uploadKbpsP50'),
+      description: t('admin.ops.alertRules.metricDescriptions.uploadKbpsP50'),
+      recommendedOperator: '<',
+      recommendedThreshold: 500,
+      unit: 'KiB/s',
+      defaultSustainedMinutes: 10
+    },
+    {
+      type: 'large_body_ratio',
+      group: 'request_timing',
+      label: t('admin.ops.alertRules.metrics.largeBodyRatio'),
+      description: t('admin.ops.alertRules.metricDescriptions.largeBodyRatio'),
+      recommendedOperator: '>',
+      recommendedThreshold: 0.5,
+      unit: '',
+      defaultSustainedMinutes: 5
+    },
+    {
+      type: 'real_ttfb_ms_p95',
+      group: 'request_timing',
+      label: t('admin.ops.alertRules.metrics.realTtfbMsP95'),
+      description: t('admin.ops.alertRules.metricDescriptions.realTtfbMsP95'),
+      recommendedOperator: '>',
+      recommendedThreshold: 20000,
+      unit: 'ms',
+      defaultSustainedMinutes: 5
     }
   ] satisfies MetricDefinition[]
 })
@@ -266,8 +354,73 @@ const metricOptions = computed(() => {
     ]
   }
 
-  return [...buildGroup('system'), ...buildGroup('group'), ...buildGroup('account')]
+  return [...buildGroup('system'), ...buildGroup('group'), ...buildGroup('account'), ...buildGroup('request_timing')]
 })
+
+const isTimingMetricSelected = computed(() => isRequestTimingMetric(draft.value?.metric_type))
+
+// 旧规则里若存有已下线的 metric（如 p95/p99），不进下拉、不允许保存
+const isUnsupportedMetricSelected = computed(() => {
+  const metricType = draft.value?.metric_type
+  if (!metricType) return false
+  return !metricDefinitions.value.some((m) => m.type === metricType)
+})
+
+/** 请求耗时指标专用的 filters（min_samples / min_coverage / recovery_minutes） */
+const timingFilters = computed(() => {
+  const filters = (draft.value?.filters ?? {}) as Record<string, unknown>
+  const num = (value: unknown, fallback: number): number => {
+    const n = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(n) ? n : fallback
+  }
+  return {
+    minSamples: num(filters.min_samples, 30),
+    minCoverage: num(filters.min_coverage, 0.95),
+    recoveryMinutes: num(filters.recovery_minutes, 2)
+  }
+})
+
+function setTimingFilter(key: 'min_samples' | 'min_coverage' | 'recovery_minutes', value: number | string) {
+  if (!draft.value) return
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return
+  if (!draft.value.filters) draft.value.filters = {}
+  draft.value.filters[key] = n
+}
+
+/**
+ * 请求耗时规则的固定约束：window=1、filters 三项必须存在。
+ * 新建（switch metric）与编辑（旧规则可能缺 filters/window=5）都要走同一条路径，
+ * 否则复用编辑器打开旧规则会直接校验失败。
+ */
+function applyTimingDefaults(metricType: string) {
+  if (!draft.value || !isRequestTimingMetric(metricType)) return
+  draft.value.window_minutes = 1
+  if (!draft.value.filters) draft.value.filters = {}
+  const filters = draft.value.filters as Record<string, unknown>
+  if (filters.min_samples === undefined) filters.min_samples = 30
+  if (filters.min_coverage === undefined) filters.min_coverage = 0.95
+  if (filters.recovery_minutes === undefined) filters.recovery_minutes = 2
+}
+
+// 切到请求耗时指标时套用模板默认值（默认不启用、不发邮件）
+watch(
+  () => draft.value?.metric_type,
+  (next) => {
+    if (!draft.value || !next || !isRequestTimingMetric(next)) return
+    const metric = next
+    const def = metricDefinitions.value.find((m) => m.type === metric)
+    draft.value.window_minutes = 1
+    draft.value.sustained_minutes = def?.defaultSustainedMinutes ?? 5
+    if (def) {
+      draft.value.operator = def.recommendedOperator
+      draft.value.threshold = def.recommendedThreshold
+    }
+    applyTimingDefaults(metric)
+    draft.value.enabled = false
+    draft.value.notify_email = false
+  }
+)
 
 const operatorOptions = computed(() => {
   const ops: Operator[] = ['>', '>=', '<', '<=', '==', '!=']
@@ -280,7 +433,8 @@ const severityOptions = computed(() => {
 })
 
 const windowOptions = computed(() => {
-  const windows = [1, 5, 60]
+  // 请求耗时指标只支持逐 1 分钟闭合桶判定（后端同样校验）
+  const windows = isTimingMetricSelected.value ? [1] : [1, 5, 60]
   return windows.map((m) => ({ value: m, label: `${m}m` }))
 })
 
@@ -309,6 +463,9 @@ function openCreate() {
 function openEdit(rule: AlertRule) {
   editingId.value = rule.id ?? null
   draft.value = JSON.parse(JSON.stringify(rule))
+  // Older timing rules may predate the filters block (or carry window=5); normalise
+  // before validation so editing one does not fail on defaults it never had.
+  applyTimingDefaults(draft.value?.metric_type ?? '')
   showEditor.value = true
 }
 
@@ -332,6 +489,32 @@ const editorValidation = computed(() => {
   }
   if (!(typeof r.cooldown_minutes === 'number' && Number.isInteger(r.cooldown_minutes) && r.cooldown_minutes >= 0 && r.cooldown_minutes <= 1440)) {
     errors.push(t('admin.ops.alertRules.validation.cooldownRange'))
+  }
+
+  if (isUnsupportedMetricSelected.value) {
+    errors.push(t('admin.ops.alertRules.validation.metricUnsupported'))
+  }
+
+  if (isRequestTimingMetric(r.metric_type)) {
+    if (r.window_minutes !== 1) {
+      errors.push(t('admin.ops.alertRules.validation.timingWindowFixed'))
+    }
+    if (r.metric_type === 'large_body_ratio' && !(r.threshold >= 0 && r.threshold <= 1)) {
+      errors.push(t('admin.ops.alertRules.validation.ratioRange'))
+    }
+    const filters = (r.filters ?? {}) as Record<string, unknown>
+    const minSamples = Number(filters.min_samples)
+    if (!(Number.isInteger(minSamples) && minSamples >= 1 && minSamples <= 100000)) {
+      errors.push(t('admin.ops.alertRules.validation.minSamplesRange'))
+    }
+    const minCoverage = Number(filters.min_coverage)
+    if (!(Number.isFinite(minCoverage) && minCoverage > 0 && minCoverage <= 1)) {
+      errors.push(t('admin.ops.alertRules.validation.minCoverageRange'))
+    }
+    const recoveryMinutes = Number(filters.recovery_minutes)
+    if (!(Number.isInteger(recoveryMinutes) && recoveryMinutes >= 0 && recoveryMinutes <= 60)) {
+      errors.push(t('admin.ops.alertRules.validation.recoveryRange'))
+    }
   }
   return { valid: errors.length === 0, errors }
 })
@@ -470,6 +653,9 @@ function cancelDelete() {
               <th class="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-ui-muted">
                 {{ t('admin.ops.alertRules.table.enabled') }}
               </th>
+              <th class="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-ui-muted">
+                {{ t('admin.ops.alertRules.table.evaluation') }}
+              </th>
               <th class="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-ui-muted">
                 {{ t('admin.ops.alertRules.table.actions') }}
               </th>
@@ -496,6 +682,19 @@ function cancelDelete() {
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-xs text-ui-ink">
                 {{ row.enabled ? t('common.enabled') : t('common.disabled') }}
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-xs">
+                <span
+                  class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                  :class="evaluationBadgeClass(row)"
+                  :data-testid="`rule-evaluation-${row.id ?? row.name}`"
+                  :title="evaluationTooltip(row)"
+                >
+                  {{ evaluationLabel(row) }}
+                </span>
+                <div v-if="row.evaluation?.last_evaluated_at" class="mt-1 text-[10px] text-ui-muted">
+                  {{ formatDateTime(row.evaluation.last_evaluated_at) }}
+                </div>
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-right text-xs">
                 <button class="btn btn-sm btn-secondary" @click="openEdit(row)">{{ t('common.edit') }}</button>
@@ -535,6 +734,9 @@ function cancelDelete() {
           <div>
             <label class="input-label">{{ t('admin.ops.alertRules.form.metric') }}</label>
             <Select v-model="draft!.metric_type" :options="metricOptions" />
+            <p v-if="isUnsupportedMetricSelected" class="mt-1 text-xs text-rose-600 dark:text-rose-400">
+              {{ t('admin.ops.alertRules.validation.metricUnsupported') }}
+            </p>
             <div v-if="selectedMetricDefinition" class="mt-1 space-y-0.5 text-xs text-ui-muted">
               <p>{{ selectedMetricDefinition.description }}</p>
               <p>
@@ -584,6 +786,9 @@ function cancelDelete() {
           <div>
             <label class="input-label">{{ t('admin.ops.alertRules.form.window') }}</label>
             <Select v-model="draft!.window_minutes" :options="windowOptions" />
+            <p v-if="isTimingMetricSelected" class="mt-1 text-xs text-ui-muted">
+              {{ t('admin.ops.alertRules.hints.timingWindowFixed') }}
+            </p>
           </div>
 
           <div>
@@ -595,6 +800,46 @@ function cancelDelete() {
             <label class="input-label">{{ t('admin.ops.alertRules.form.cooldown') }}</label>
             <input v-model.number="draft!.cooldown_minutes" class="input" type="number" min="0" max="1440" />
           </div>
+
+          <template v-if="isTimingMetricSelected">
+            <div>
+              <label class="input-label">{{ t('admin.ops.alertRules.form.minSamples') }}</label>
+              <input
+                :value="timingFilters.minSamples"
+                class="input"
+                type="number"
+                min="1"
+                step="1"
+                @input="setTimingFilter('min_samples', ($event.target as HTMLInputElement).value)"
+              />
+              <p class="mt-1 text-xs text-ui-muted">{{ t('admin.ops.alertRules.hints.minSamples') }}</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.ops.alertRules.form.minCoverage') }}</label>
+              <input
+                :value="timingFilters.minCoverage"
+                class="input"
+                type="number"
+                min="0.01"
+                max="1"
+                step="0.01"
+                @input="setTimingFilter('min_coverage', ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.ops.alertRules.form.recoveryMinutes') }}</label>
+              <input
+                :value="timingFilters.recoveryMinutes"
+                class="input"
+                type="number"
+                min="0"
+                max="60"
+                step="1"
+                @input="setTimingFilter('recovery_minutes', ($event.target as HTMLInputElement).value)"
+              />
+              <p class="mt-1 text-xs text-ui-muted">{{ t('admin.ops.alertRules.hints.recoveryMinutes') }}</p>
+            </div>
+          </template>
 
           <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-800/50 md:col-span-2">
             <span class="text-xs font-semibold text-ui-ink">{{ t('admin.ops.alertRules.form.enabled') }}</span>

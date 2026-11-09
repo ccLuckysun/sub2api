@@ -180,8 +180,17 @@ type UsageLog struct {
 	NativeCompactionV2 bool
 	DurationMs         *int
 	FirstTokenMs       *int
-	UserAgent          *string
-	IPAddress          *string
+	// GatewayLatencyMs is the server-side span from middleware request start to
+	// the completed response (logger finalize point). It is written either at
+	// insert time when already finalized or asynchronously by the timing
+	// enricher after the row commits. NULL means unavailable/not eligible.
+	GatewayLatencyMs *int
+	// BodyBytes is the canonical decoded request body size after
+	// Content-Encoding decompression and before lenient JSON normalization.
+	// NULL means the body was not observed.
+	BodyBytes *int64
+	UserAgent *string
+	IPAddress *string
 	// SessionID is the explicit client-provided request correlation identifier
 	// (e.g. the session_id / X-Session-Id headers). Nil when the client sent no
 	// valid session header. It is never derived from prompt_cache_key or content.

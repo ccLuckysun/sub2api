@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -33,6 +35,10 @@ var validOpsAlertMetricTypes = []string{
 	"overload_account_count",
 	"proxy_expired_count",
 	"proxy_expiring_soon_count",
+	"upload_ms_p90",
+	"upload_kbps_p50",
+	"large_body_ratio",
+	"real_ttfb_ms_p95",
 }
 
 var validOpsAlertMetricTypeSet = func() map[string]struct{} {
@@ -153,6 +159,12 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 		return nil, fmt.Errorf("threshold must be >= 0")
 	}
 
+	if metricType == "large_body_ratio" {
+		if threshold < 0 || threshold > 1 {
+			return nil, fmt.Errorf("threshold must be between 0 and 1 for metric_type %s", metricType)
+		}
+	}
+
 	validated := &opsAlertRuleValidatedInput{
 		Name:       name,
 		MetricType: metricType,
@@ -234,7 +246,92 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 		validated.CooldownMinutes = 0
 	}
 
+	if err := validateRequestTimingAlertRule(raw, validated); err != nil {
+		return nil, err
+	}
+
 	return validated, nil
+}
+
+// validateRequestTimingAlertRule enforces the request-timing alert contract: a fixed
+// one-minute window (the evaluation unit is a closed minute bucket), a bounded
+// sustained streak, a 0..1 threshold for the ratio metric, and sanity-checked filters.
+func validateRequestTimingAlertRule(raw map[string]json.RawMessage, validated *opsAlertRuleValidatedInput) error {
+	if validated == nil || !service.IsRequestTimingMetric(validated.MetricType) {
+		return nil
+	}
+	if validated.WindowProvided && validated.WindowMinutes != 1 {
+		return fmt.Errorf("window_minutes must be 1 for metric_type %s", validated.MetricType)
+	}
+	validated.WindowMinutes = 1
+	// 新 timing 模板默认停用且不发邮件：直接调 API 建规则时同样如此，
+	// 避免「建好即开始告警」。显式传参优先；旧指标仍沿用通用默认 true/true。
+	if !validated.EnabledProvided {
+		validated.Enabled = false
+	}
+	if !validated.NotifyProvided {
+		validated.NotifyEmail = false
+	}
+	if !validated.SustainedProvided {
+		validated.SustainedMinutes = service.DefaultRequestTimingSustainedMinutes(validated.MetricType)
+	}
+	if validated.SustainedMinutes < 1 || validated.SustainedMinutes > service.TimingAlertMaxSustainedMinutes {
+		return fmt.Errorf("sustained_minutes must be between 1 and %d for metric_type %s", service.TimingAlertMaxSustainedMinutes, validated.MetricType)
+	}
+	filters, err := decodeAlertFilters(raw)
+	if err != nil {
+		return err
+	}
+	if filters == nil {
+		return nil
+	}
+	if v, ok := filters["min_samples"]; ok {
+		n, ok := alertFilterNumber(v)
+		if !ok || n < 1 || n > 100000 || math.Trunc(n) != n {
+			return fmt.Errorf("filters.min_samples must be an integer between 1 and 100000")
+		}
+	}
+	if v, ok := filters["min_coverage"]; ok {
+		n, ok := alertFilterNumber(v)
+		if !ok || n <= 0 || n > 1 {
+			return fmt.Errorf("filters.min_coverage must be greater than 0 and at most 1")
+		}
+	}
+	if v, ok := filters["recovery_minutes"]; ok {
+		n, ok := alertFilterNumber(v)
+		if !ok || n < 0 || n > 60 || math.Trunc(n) != n {
+			return fmt.Errorf("filters.recovery_minutes must be an integer between 0 and 60")
+		}
+	}
+	return nil
+}
+
+func decodeAlertFilters(raw map[string]json.RawMessage) (map[string]any, error) {
+	v, ok := raw["filters"]
+	if !ok || len(v) == 0 || string(v) == "null" {
+		return nil, nil
+	}
+	var filters map[string]any
+	if err := json.Unmarshal(v, &filters); err != nil {
+		return nil, fmt.Errorf("filters must be an object")
+	}
+	return filters, nil
+}
+
+func alertFilterNumber(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		if math.IsNaN(t) || math.IsInf(t, 0) {
+			return 0, false
+		}
+		return t, true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	default:
+		return 0, false
+	}
 }
 
 // ListAlertRules returns all ops alert rules.
@@ -254,7 +351,62 @@ func (h *OpsHandler) ListAlertRules(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.attachRequestTimingEvaluations(c.Request.Context(), rules)
 	response.Success(c, rules)
+}
+
+// attachRequestTimingEvaluations decorates request-timing rules with their persisted
+// evaluation snapshot in one batched read. An evaluation that never ran (or that is
+// unknown/stale/insufficient) is reported as such instead of being omitted, so the UI
+// cannot present a missing evaluation as healthy.
+func (h *OpsHandler) attachRequestTimingEvaluations(ctx context.Context, rules []*service.OpsAlertRule) {
+	if h.opsService == nil || len(rules) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(rules))
+	for _, rule := range rules {
+		if rule == nil || rule.ID <= 0 || !service.IsRequestTimingMetric(rule.MetricType) {
+			continue
+		}
+		ids = append(ids, rule.ID)
+	}
+	if len(ids) == 0 {
+		return
+	}
+	states, err := h.opsService.RequestTimingAlertEvaluations(ctx, ids)
+	if err != nil {
+		// A failed snapshot must not break the rule list; the rules keep no evaluation
+		// and the UI shows "not evaluated yet" rather than a synthetic healthy state.
+		logger.LegacyPrintf("handler.ops_alerts", "[OpsAlerts] load request timing evaluations failed: %v", err)
+		return
+	}
+	for _, rule := range rules {
+		if rule == nil || rule.ID <= 0 || !service.IsRequestTimingMetric(rule.MetricType) {
+			continue
+		}
+		state, ok := states[rule.ID]
+		if !ok || state == nil || strings.TrimSpace(state.State) == "" {
+			continue
+		}
+		// Snapshot decoration downgrades a verdict the evaluator stopped refreshing, so
+		// "the list endpoint read a row" is never mistaken for "the rule is healthy now".
+		rule.Evaluation = service.TimingAlertEvaluationSnapshot(state, time.Now())
+	}
+}
+
+// applyTimingAlertUpdateDefaults keeps the stored switch state for an update that omits
+// enabled/notify_email. Creation still defaults to disabled+silent (see
+// validateOpsAlertRulePayload); only the update path inherits the existing values.
+func applyTimingAlertUpdateDefaults(rule *service.OpsAlertRule, validated *opsAlertRuleValidatedInput, existing *service.OpsAlertRule) {
+	if rule == nil || validated == nil || existing == nil {
+		return
+	}
+	if !validated.EnabledProvided {
+		rule.Enabled = existing.Enabled
+	}
+	if !validated.NotifyProvided {
+		rule.NotifyEmail = existing.NotifyEmail
+	}
 }
 
 // CreateAlertRule creates an ops alert rule.
@@ -351,6 +503,18 @@ func (h *OpsHandler) UpdateAlertRule(c *gin.Context) {
 	rule.Severity = validated.Severity
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail
+	// timing 规则的缺省值是 false（见 validateOpsAlertRulePayload）。更新时若客户端没带
+	// enabled/notify_email，必须沿用库里现值，否则一次 PUT 会把已启用的规则静默关掉。
+	if service.IsRequestTimingMetric(rule.MetricType) && (!validated.EnabledProvided || !validated.NotifyProvided) {
+		if existing, listErr := h.opsService.ListAlertRules(c.Request.Context()); listErr == nil {
+			for _, candidate := range existing {
+				if candidate != nil && candidate.ID == id {
+					applyTimingAlertUpdateDefaults(&rule, validated, candidate)
+					break
+				}
+			}
+		}
+	}
 
 	updated, err := h.opsService.UpdateAlertRule(c.Request.Context(), &rule)
 	if err != nil {

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -148,10 +149,31 @@ type usageLogRepository struct {
 	bestEffortBatchOnce sync.Once
 	bestEffortBatchCh   chan usageLogBestEffortRequest
 	bestEffortRecent    *gocache.Cache
+
+	batchMu        sync.RWMutex
+	drainStarted   bool
+	batchDrainOnce sync.Once
+	batchWG        sync.WaitGroup
 }
 
 func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLogRepository {
 	return newUsageLogRepositoryWithSQL(client, sqlDB)
+}
+
+// UsageLogBatchDrainer flushes the repository's bounded usage-log batchers on
+// shutdown. It is a separate interface so the large UsageLogRepository contract
+// (and its test mocks) does not need a shutdown method.
+type UsageLogBatchDrainer interface {
+	Drain(ctx context.Context) error
+}
+
+// ProvideUsageLogBatchDrainer exposes the concrete repository's Drain method
+// through the wire graph.
+func ProvideUsageLogBatchDrainer(repo service.UsageLogRepository) UsageLogBatchDrainer {
+	if drainer, ok := repo.(UsageLogBatchDrainer); ok {
+		return drainer
+	}
+	return nil
 }
 
 func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usageLogRepository {

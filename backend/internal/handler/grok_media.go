@@ -758,8 +758,11 @@ func recordGrokMediaUsage(
 		}
 	}
 	requestPayloadHash := service.HashUsageRequestPayload(payloadForHash)
+	markUsageTimingEligible(c)
+	usageTiming1 := usageRequestTiming(c)
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+			Timing:             usageTiming1,
 			Result:             result,
 			APIKey:             apiKey,
 			User:               apiKey.User,

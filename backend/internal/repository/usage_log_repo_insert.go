@@ -13,6 +13,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requesttiming"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -59,6 +60,8 @@ var usageLogInsertArgTypes = [...]string{
 	"boolean",     // openai_ws_mode
 	"integer",     // duration_ms
 	"integer",     // first_token_ms
+	"integer",     // gateway_latency_ms
+	"bigint",      // body_bytes
 	"text",        // user_agent
 	"text",        // ip_address
 	"integer",     // image_count
@@ -88,6 +91,8 @@ var usageLogInsertArgTypes = [...]string{
 	"timestamptz", // created_at
 }
 
+var errUsageLogBatchDraining = errors.New("usage log batcher is draining")
+
 const (
 	usageLogCreateBatchMaxSize  = 64
 	usageLogCreateBatchWindow   = 3 * time.Millisecond
@@ -101,10 +106,11 @@ const (
 )
 
 type usageLogCreateRequest struct {
-	log      *service.UsageLog
-	prepared usageLogInsertPrepared
-	shared   *usageLogCreateShared
-	resultCh chan usageLogCreateResult
+	log        *service.UsageLog
+	prepared   usageLogInsertPrepared
+	shared     *usageLogCreateShared
+	resultCh   chan usageLogCreateResult
+	onInserted func(requesttiming.InsertReceipt)
 }
 
 type usageLogCreateResult struct {
@@ -113,14 +119,30 @@ type usageLogCreateResult struct {
 }
 
 type usageLogBestEffortRequest struct {
+	prepared   usageLogInsertPrepared
+	apiKeyID   int64
+	resultCh   chan error
+	onInserted func(requesttiming.InsertReceipt)
+}
+
+type usageLogBestEffortReceipt struct {
+	requestID string
+	apiKeyID  int64
+	id        int64
+	createdAt time.Time
+}
+
+type usageLogBestEffortGroup struct {
 	prepared usageLogInsertPrepared
 	apiKeyID int64
-	resultCh chan error
+	key      string
+	reqs     []usageLogBestEffortRequest
 }
 
 type usageLogInsertPrepared struct {
 	createdAt      time.Time
 	requestID      string
+	apiKeyID       int64
 	rateMultiplier float64
 	requestType    int16
 	args           []any
@@ -151,45 +173,71 @@ const (
 )
 
 func (r *usageLogRepository) Create(ctx context.Context, log *service.UsageLog) (bool, error) {
+	return r.CreateWithReceipt(ctx, log, nil)
+}
+
+// CreateWithReceipt mirrors Create and additionally reports the winning row.
+// onInserted is invoked from the batcher commit path, so it still fires when
+// the caller's wait times out but the batch later commits.
+func (r *usageLogRepository) CreateWithReceipt(ctx context.Context, log *service.UsageLog, onInserted func(requesttiming.InsertReceipt)) (bool, error) {
 	if log == nil {
 		return false, nil
 	}
 
 	if tx := dbent.TxFromContext(ctx); tx != nil {
-		return r.createSingle(ctx, tx.Client(), log)
+		inserted, err := r.createSingle(ctx, tx.Client(), log)
+		if err == nil {
+			notifyUsageAfterCommit(tx, onInserted, log, inserted)
+		}
+		return inserted, err
 	}
 	requestID := strings.TrimSpace(log.RequestID)
 	if requestID == "" {
-		return r.createSingle(ctx, r.sql, log)
+		inserted, err := r.createSingle(ctx, r.sql, log)
+		notifyInsertedUsageLog(onInserted, log, inserted)
+		return inserted, err
 	}
 	log.RequestID = requestID
-	return r.createBatched(ctx, log)
+	return r.createBatched(ctx, log, onInserted)
 }
 
 func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.UsageLog) error {
+	return r.CreateBestEffortWithReceipt(ctx, log, nil)
+}
+
+// CreateBestEffortWithReceipt mirrors CreateBestEffort and reports the winning
+// row from the batcher commit path. Duplicate/recent/conflict results never
+// invoke onInserted.
+func (r *usageLogRepository) CreateBestEffortWithReceipt(ctx context.Context, log *service.UsageLog, onInserted func(requesttiming.InsertReceipt)) error {
 	if log == nil {
 		return nil
 	}
 
 	if tx := dbent.TxFromContext(ctx); tx != nil {
-		_, err := r.createSingle(ctx, tx.Client(), log)
+		inserted, err := r.createSingle(ctx, tx.Client(), log)
+		if err == nil {
+			notifyUsageAfterCommit(tx, onInserted, log, inserted)
+		}
 		return err
 	}
 	if r.db == nil {
-		_, err := r.createSingle(ctx, r.sql, log)
+		inserted, err := r.createSingle(ctx, r.sql, log)
+		notifyInsertedUsageLog(onInserted, log, inserted)
 		return err
 	}
 
 	r.ensureBestEffortBatcher()
 	if r.bestEffortBatchCh == nil {
-		_, err := r.createSingle(ctx, r.sql, log)
+		inserted, err := r.createSingle(ctx, r.sql, log)
+		notifyInsertedUsageLog(onInserted, log, inserted)
 		return err
 	}
 
 	req := usageLogBestEffortRequest{
-		prepared: prepareUsageLogInsert(log),
-		apiKeyID: log.APIKeyID,
-		resultCh: make(chan error, 1),
+		prepared:   prepareUsageLogInsert(log),
+		apiKeyID:   log.APIKeyID,
+		resultCh:   make(chan error, 1),
+		onInserted: onInserted,
 	}
 	if key, ok := r.bestEffortRecentKey(req.prepared.requestID, req.apiKeyID); ok {
 		if _, exists := r.bestEffortRecent.Get(key); exists {
@@ -200,9 +248,16 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 	// 队列满时阻塞等待而非立即丢弃：批处理器持续排空队列，短暂等待即可入队。
 	// 立即丢弃会造成“已扣费但无 usage_log”的永久数据缺口（issue #3656）；
 	// 阻塞上限由调用方 ctx 期限约束，超时后由上层同步兜底。
+	r.batchMu.RLock()
+	if r.drainStarted {
+		r.batchMu.RUnlock()
+		return service.MarkUsageLogCreateDropped(errUsageLogBatchDraining)
+	}
 	select {
 	case r.bestEffortBatchCh <- req:
+		r.batchMu.RUnlock()
 	case <-ctx.Done():
+		r.batchMu.RUnlock()
 		return service.MarkUsageLogCreateDropped(ctx.Err())
 	}
 
@@ -210,8 +265,42 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 	case err := <-req.resultCh:
 		return err
 	case <-ctx.Done():
+		// The request is already queued; the batcher may still commit it. Its
+		// commit path invokes onInserted, which is why we must not cancel it.
 		return service.MarkUsageLogCreateDropped(ctx.Err())
 	}
+}
+
+func notifyInsertedUsageLog(onInserted func(requesttiming.InsertReceipt), log *service.UsageLog, inserted bool) {
+	if !inserted || onInserted == nil || log == nil || log.ID <= 0 || log.CreatedAt.IsZero() {
+		return
+	}
+	onInserted(requesttiming.InsertReceipt{
+		Inserted: true,
+		Row: requesttiming.RowRef{
+			ID:        log.ID,
+			CreatedAt: log.CreatedAt,
+			APIKeyID:  log.APIKeyID,
+			RequestID: log.RequestID,
+		},
+	})
+}
+
+func notifyUsageAfterCommit(tx *dbent.Tx, onInserted func(requesttiming.InsertReceipt), log *service.UsageLog, inserted bool) {
+	if !inserted || onInserted == nil || log == nil {
+		return
+	}
+	// Snapshot scalars: the caller may reuse its UsageLog before Commit.
+	receipt := requesttiming.InsertReceipt{Inserted: true, Row: requesttiming.RowRef{ID: log.ID, CreatedAt: log.CreatedAt, APIKeyID: log.APIKeyID, RequestID: log.RequestID}}
+	tx.OnCommit(func(next dbent.Committer) dbent.Committer {
+		return dbent.CommitFunc(func(ctx context.Context, current *dbent.Tx) error {
+			if err := next.Commit(ctx, current); err != nil {
+				return err
+			}
+			onInserted(receipt)
+			return nil
+		})
+	})
 }
 
 func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor, log *service.UsageLog) (bool, error) {
@@ -260,6 +349,8 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			gateway_latency_ms,
+			body_bytes,
 			user_agent,
 			ip_address,
 			image_count,
@@ -293,7 +384,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$12, $13, $14, $15,
 			$16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -315,27 +406,39 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 	return true, nil
 }
 
-func (r *usageLogRepository) createBatched(ctx context.Context, log *service.UsageLog) (bool, error) {
+func (r *usageLogRepository) createBatched(ctx context.Context, log *service.UsageLog, onInserted func(requesttiming.InsertReceipt)) (bool, error) {
 	if r.db == nil {
-		return r.createSingle(ctx, r.sql, log)
+		inserted, err := r.createSingle(ctx, r.sql, log)
+		notifyInsertedUsageLog(onInserted, log, inserted)
+		return inserted, err
 	}
 	r.ensureCreateBatcher()
 	if r.createBatchCh == nil {
-		return r.createSingle(ctx, r.sql, log)
+		inserted, err := r.createSingle(ctx, r.sql, log)
+		notifyInsertedUsageLog(onInserted, log, inserted)
+		return inserted, err
 	}
 
 	req := usageLogCreateRequest{
-		log:      log,
-		prepared: prepareUsageLogInsert(log),
-		shared:   &usageLogCreateShared{},
-		resultCh: make(chan usageLogCreateResult, 1),
+		log:        log,
+		prepared:   prepareUsageLogInsert(log),
+		shared:     &usageLogCreateShared{},
+		resultCh:   make(chan usageLogCreateResult, 1),
+		onInserted: onInserted,
 	}
 
 	// 队列满时阻塞等待而非立即报错：本路径是 best-effort 丢弃后的最后兜底，
 	// 立即失败会让日志永久丢失；阻塞上限由调用方 ctx 期限约束。
+	r.batchMu.RLock()
+	if r.drainStarted {
+		r.batchMu.RUnlock()
+		return false, service.MarkUsageLogCreateNotPersisted(errUsageLogBatchDraining)
+	}
 	select {
 	case r.createBatchCh <- req:
+		r.batchMu.RUnlock()
 	case <-ctx.Done():
+		r.batchMu.RUnlock()
 		return false, service.MarkUsageLogCreateNotPersisted(ctx.Err())
 	}
 
@@ -363,9 +466,18 @@ func (r *usageLogRepository) ensureCreateBatcher() {
 	}
 	// nil 检查必须在 Once 内部：在外层做无同步快路径读会与 Once 内的写构成数据竞争。
 	r.createBatchOnce.Do(func() {
+		r.batchMu.Lock()
+		defer r.batchMu.Unlock()
+		if r.drainStarted {
+			return
+		}
 		if r.createBatchCh == nil {
 			r.createBatchCh = make(chan usageLogCreateRequest, usageLogCreateBatchQueueCap)
-			go r.runCreateBatcher(r.db)
+			r.batchWG.Add(1)
+			go func() {
+				defer r.batchWG.Done()
+				r.runCreateBatcher(r.db)
+			}()
 		}
 	})
 }
@@ -376,11 +488,53 @@ func (r *usageLogRepository) ensureBestEffortBatcher() {
 	}
 	// 同 ensureCreateBatcher：nil 检查放在 Once 内部以避免数据竞争。
 	r.bestEffortBatchOnce.Do(func() {
+		r.batchMu.Lock()
+		defer r.batchMu.Unlock()
+		if r.drainStarted {
+			return
+		}
 		if r.bestEffortBatchCh == nil {
 			r.bestEffortBatchCh = make(chan usageLogBestEffortRequest, usageLogBestEffortBatchQueueCap)
-			go r.runBestEffortBatcher(r.db)
+			r.batchWG.Add(1)
+			go func() {
+				defer r.batchWG.Done()
+				r.runBestEffortBatcher(r.db)
+			}()
 		}
 	})
+}
+
+// Drain stops accepting new usage writes, closes both batch queues, and waits
+// for the batchers to flush every buffered request. It must run after the HTTP
+// server and usage-record producers have stopped and before the database is
+// closed.
+func (r *usageLogRepository) Drain(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	r.batchDrainOnce.Do(func() {
+		r.batchMu.Lock()
+		r.drainStarted = true
+		if r.createBatchCh != nil {
+			close(r.createBatchCh)
+		}
+		if r.bestEffortBatchCh != nil {
+			close(r.bestEffortBatchCh)
+		}
+		r.batchMu.Unlock()
+	})
+
+	done := make(chan struct{})
+	go func() {
+		r.batchWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (r *usageLogRepository) runCreateBatcher(db *sql.DB) {
@@ -564,15 +718,8 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 		return
 	}
 
-	type bestEffortGroup struct {
-		prepared usageLogInsertPrepared
-		apiKeyID int64
-		key      string
-		reqs     []usageLogBestEffortRequest
-	}
-
-	groupsByKey := make(map[string]*bestEffortGroup, len(batch))
-	groupOrder := make([]*bestEffortGroup, 0, len(batch))
+	groupsByKey := make(map[string]*usageLogBestEffortGroup, len(batch))
+	groupOrder := make([]*usageLogBestEffortGroup, 0, len(batch))
 	preparedList := make([]usageLogInsertPrepared, 0, len(batch))
 
 	for idx, req := range batch {
@@ -583,7 +730,7 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 		}
 		group, exists := groupsByKey[key]
 		if !exists {
-			group = &bestEffortGroup{
+			group = &usageLogBestEffortGroup{
 				prepared: prepared,
 				apiKeyID: req.apiKeyID,
 				key:      key,
@@ -606,29 +753,99 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 	defer cancel()
 
 	query, args := buildUsageLogBestEffortInsertQuery(preparedList)
-	if _, err := db.ExecContext(ctx, query, args...); err != nil {
+	receipts := make(map[string]usageLogBestEffortReceipt, len(groupOrder))
+	if rows, err := db.QueryContext(ctx, query, args...); err != nil {
 		logger.LegacyPrintf("repository.usage_log", "best-effort batch insert failed: %v", err)
 		for _, group := range groupOrder {
-			singleErr := execUsageLogInsertNoResult(ctx, db, group.prepared)
+			receipt, inserted, singleErr := execUsageLogInsertReturning(ctx, db, group.prepared)
 			if singleErr != nil {
 				logger.LegacyPrintf("repository.usage_log", "best-effort single fallback insert failed: %v", singleErr)
-			} else if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
-				r.bestEffortRecent.SetDefault(group.key, struct{}{})
+			} else {
+				if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
+					r.bestEffortRecent.SetDefault(group.key, struct{}{})
+				}
+				if inserted {
+					receipts[group.key] = receipt
+					notifyInsertedBestEffort(group, receipt)
+				}
 			}
 			for _, req := range group.reqs {
 				sendUsageLogBestEffortResult(req.resultCh, singleErr)
 			}
 		}
 		return
+	} else {
+		defer func() { _ = rows.Close() }()
+		var receiptErr error
+		for rows.Next() {
+			var receipt usageLogBestEffortReceipt
+			if err := rows.Scan(&receipt.requestID, &receipt.apiKeyID, &receipt.id, &receipt.createdAt); err != nil {
+				logger.LegacyPrintf("repository.usage_log", "best-effort batch receipt scan failed: %v", err)
+				receiptErr = err
+				break
+			}
+			receipts[usageLogBatchKey(receipt.requestID, receipt.apiKeyID)] = receipt
+		}
+		if err := rows.Err(); err != nil {
+			logger.LegacyPrintf("repository.usage_log", "best-effort batch receipt rows failed: %v", err)
+			receiptErr = err
+		}
+		if err := rows.Close(); err != nil {
+			receiptErr = err
+		}
+		if receiptErr != nil {
+			// SQL commit outcome is uncertain: no timing callbacks or recent-hit
+			// cache. Existing caller fallback safely resolves usage idempotently.
+			for _, req := range batch {
+				sendUsageLogBestEffortResult(req.resultCh, receiptErr)
+			}
+			return
+		}
 	}
 	for _, group := range groupOrder {
 		if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
 			r.bestEffortRecent.SetDefault(group.key, struct{}{})
 		}
+		if receipt, inserted := receipts[group.key]; inserted {
+			notifyInsertedBestEffort(group, receipt)
+		}
 		for _, req := range group.reqs {
 			sendUsageLogBestEffortResult(req.resultCh, nil)
 		}
 	}
+}
+
+func notifyInsertedBestEffort(group *usageLogBestEffortGroup, receipt usageLogBestEffortReceipt) {
+	if group == nil || len(group.reqs) == 0 {
+		return
+	}
+	req := group.reqs[0]
+	if req.onInserted == nil || receipt.id <= 0 || receipt.createdAt.IsZero() {
+		return
+	}
+	req.onInserted(requesttiming.InsertReceipt{
+		Inserted: true,
+		Row: requesttiming.RowRef{
+			ID:        receipt.id,
+			CreatedAt: receipt.createdAt,
+			APIKeyID:  receipt.apiKeyID,
+			RequestID: receipt.requestID,
+		},
+	})
+}
+
+func execUsageLogInsertReturning(ctx context.Context, sqlq sqlExecutor, prepared usageLogInsertPrepared) (usageLogBestEffortReceipt, bool, error) {
+	var receipt usageLogBestEffortReceipt
+	err := scanSingleRow(ctx, sqlq, execUsageLogInsertReturningSQL, prepared.args, &receipt.id, &receipt.createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return receipt, false, nil
+	}
+	if err != nil {
+		return receipt, false, err
+	}
+	receipt.requestID = prepared.requestID
+	receipt.apiKeyID = prepared.apiKeyID
+	return receipt, true, nil
 }
 
 func sendUsageLogBestEffortResult(ch chan error, err error) {
@@ -645,6 +862,7 @@ func completeUsageLogCreateRequest(req usageLogCreateRequest, res usageLogCreate
 	if req.shared != nil {
 		req.shared.state.Store(usageLogCreateStateCompleted)
 	}
+	notifyInsertedUsageLog(req.onInserted, req.log, res.inserted)
 	sendUsageLogCreateResult(req.resultCh, res)
 }
 
@@ -720,6 +938,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			gateway_latency_ms,
+			body_bytes,
 			user_agent,
 			ip_address,
 			image_count,
@@ -749,9 +969,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	// Each batch row prepends the synthetic input_index before the 60
+	// Each batch row prepends the synthetic input_index before the 62
 	// usage-log column values.
-	args := make([]any, 0, len(keys)*61)
+	args := make([]any, 0, len(keys)*63)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -815,6 +1035,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				openai_ws_mode,
 				duration_ms,
 				first_token_ms,
+			gateway_latency_ms,
+			body_bytes,
 				user_agent,
 				ip_address,
 				image_count,
@@ -879,6 +1101,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				openai_ws_mode,
 				duration_ms,
 				first_token_ms,
+			gateway_latency_ms,
+			body_bytes,
 				user_agent,
 				ip_address,
 				image_count,
@@ -983,6 +1207,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			gateway_latency_ms,
+			body_bytes,
 			user_agent,
 			ip_address,
 			image_count,
@@ -1012,7 +1238,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*60)
+	args := make([]any, 0, len(preparedList)*62)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1073,6 +1299,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			gateway_latency_ms,
+			body_bytes,
 			user_agent,
 			ip_address,
 			image_count,
@@ -1137,6 +1365,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			gateway_latency_ms,
+			body_bytes,
 			user_agent,
 			ip_address,
 			image_count,
@@ -1166,13 +1396,13 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
+		RETURNING request_id, api_key_id, id, created_at
 	`)
 
 	return query.String(), args
 }
 
-func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared usageLogInsertPrepared) error {
-	_, err := sqlq.ExecContext(ctx, `
+const execUsageLogInsertNoResultSQL = `
 		INSERT INTO usage_logs (
 			user_id,
 			api_key_id,
@@ -1209,6 +1439,8 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			gateway_latency_ms,
+			body_bytes,
 			user_agent,
 			ip_address,
 			image_count,
@@ -1242,10 +1474,16 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$12, $13, $14, $15,
 			$16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
-	`, prepared.args...)
+	`
+
+const execUsageLogInsertReturningSQL = execUsageLogInsertNoResultSQL + `
+		RETURNING id, created_at`
+
+func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared usageLogInsertPrepared) error {
+	_, err := sqlq.ExecContext(ctx, execUsageLogInsertNoResultSQL, prepared.args...)
 	return err
 }
 
@@ -1266,6 +1504,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	subscriptionID := nullInt64(log.SubscriptionID)
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
+	gatewayLatency := nullInt(log.GatewayLatencyMs)
+	bodyBytes := nullInt64(log.BodyBytes)
 	userAgent := nullString(log.UserAgent)
 	ipAddress := nullString(log.IPAddress)
 	imageSize := nullString(log.ImageSize)
@@ -1302,6 +1542,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	return usageLogInsertPrepared{
 		createdAt:      createdAt,
 		requestID:      requestID,
+		apiKeyID:       log.APIKeyID,
 		rateMultiplier: rateMultiplier,
 		requestType:    requestType,
 		args: []any{
@@ -1340,6 +1581,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.OpenAIWSMode,
 			duration,
 			firstToken,
+			gatewayLatency,
+			bodyBytes,
 			userAgent,
 			ipAddress,
 			log.ImageCount,
