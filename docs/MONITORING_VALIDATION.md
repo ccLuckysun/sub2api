@@ -81,3 +81,15 @@
 - 源码、文档、私有 `monitoring.env`、Grafana/Prometheus 正式本地卷、PostgreSQL/Redis/应用数据和 7 个正在运行的验收服务均保留。
 
 因此上文试验容器、卷和临时夹具名称只是历史验证记录，不再是仍然存在的资源；需要重跑时应创建新的隔离环境。下一次完整镜像构建可能需要重新下载依赖并重建缓存。
+
+## 7. 复审修复与五容器一键部署验收（2026-11-14）
+
+本节更新前述初始验收结论：复审发现的网络命名空间及 `/bin/sh` 兼容性问题已修复，默认部署调整为五个核心常驻容器；Node Exporter、快照 cron 为可选独立扩展。
+
+- `python3 deploy/tests/monitoring-deploy-test.py`：11 项回归通过。真实 Compose/promtool 校验覆盖默认五容器、扩展配置、密码与业务环境文件保留、渲染失败不覆盖；本地 Docker 桩覆盖远程项目/多配置文件/自定义环境文件保留、备份失败中止、健康检查失败回滚指令。测试不连接 SSH。
+- 三个原有 shell 测试（Compose security、gateway env、simple mode env）通过；Bash/POSIX shell 语法检查与 `git diff --check` 通过。
+- `python3 deploy/tests/monitoring-stack-smoke.py --image deploy-sub2api:latest --extensions`：使用本机已有监控应用镜像，通过真正的 `docker-deploy.sh --monitoring` 在新目录启动独立项目；确认只有 sub2api/postgres/redis/grafana/prometheus 五个常驻容器，两个抓取目标均为 1，Grafana 自动加载 16 面板看板。
+- 随后在同一隔离项目开启两个扩展：Prometheus 自动应用新的采集配置，三个目标均为 1；Node Exporter 的 host 网络计数 `eth0=1163082109`，对应宿主 `/proc/1/net/dev` 为 `1163091343`，差异来自采样时刻，未再采到 bridge 容器网卡流量。
+- 独立 backup 容器运行原版 snapshot.sh 成功生成 tar.gz；本轮未重复跨日定时等待及完整恢复演练。
+- 测试使用随机项目名称、独立容器名/数据卷和回环随机端口；完成后已删除这些隔离容器、网络和卷。原有本地业务/监控环境未重启或删除。
+- 本轮仅实现与验证部署能力，**未连接或部署 us1，也未提交 Git commit**。操作入口、可选扩展和密码位置见 `deploy/MONITORING_LOCAL.md`。

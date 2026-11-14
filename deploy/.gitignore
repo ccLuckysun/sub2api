@@ -29,3 +29,12 @@ monitoring.env
 
 # 备份产物目录（运行时生成）
 monitoring/backup-data/
+
+# Generated deployment command and application image override
+sub2api-compose
+docker-compose.release.yml
+*.tmp.*
+
+# Python bytecode from deploy/tests
+__pycache__/
+*.pyc

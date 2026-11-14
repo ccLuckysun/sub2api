@@ -1,8 +1,10 @@
 # Sub2API 监控系统开发计划
 
-- 文档状态：开发计划 v1（基于需求文档 `docs/MONITORING_REQUIREMENTS.md`）
+- 文档状态：开发计划 v1，已补充五容器部署与复审修正（基于需求文档 `docs/MONITORING_REQUIREMENTS.md`）
 - 编写日期：2026-11-14
 - 配套接口文档：`docs/MONITORING_API.md`（指标字典与端点定义）
+
+当前入口：`deploy-us1.sh VERSION` 默认远程部署五个核心服务；`deploy/docker-deploy.sh --monitoring` 一键准备并启动独立五容器栈。原构建/上传/数据库备份/回滚保留，Node Exporter 与快照 cron 为可选独立容器。实际操作以 `deploy/MONITORING_LOCAL.md` 为准；下文容量预算包含可选扩展，不代表默认常驻数量。
 
 ## 1. 输入与变更说明
 
@@ -38,7 +40,7 @@
 | 全局中间件链 | `backend/internal/server/router.go:59-71` | 埋点不插入该链，改在 http.go 包裹（见上） |
 | 已有自研 DB 侧监控：`ops_metrics_collector` 每分钟聚合业务口径（QPS/TPS/耗时分位/TTFT/CPU/内存）入 `ops_system_metrics`，小时/日预聚合表 + cron retention 清理 | `backend/internal/service/ops_metrics_collector.go`、`ops_aggregation_service.go`、`ops_cleanup_service.go` | Prometheus 方案与其**互补**：有界标签的实时 HTTP 指标 + 整机指标归 Prometheus；业务口径（usage_logs / ops_error_logs 样本，按 DB 记录）保留在 ops 体系，两者**概念重叠但不可对账**（口径差异见 MONITORING_API.md 指标字典"与 ops 体系关系"列）。新增 Prometheus 开关与现有 OpsMonitoringEnabled 独立命名、互不隐式依赖；scrape 时不查询 DB 聚合表 |
 | `/health`、`/setup/status` 已被日志排除；`POST /api/event_logging/batch` 为直接 200 的假端点 | `internal/server/middleware/logger.go:26`、`routes/common.go:17` | 同样从指标中排除 |
-| 生产部署：`deploy-us1.sh` 只重建 sub2api 容器，compose 目录从容器 label 读取 | `deploy-us1.sh:144-153` | 监控栈以叠加文件部署，不改动业务 compose。注意不能绝对承诺"业务容器零重建"：**首次**启用监控需为 sub2api 注入 `MONITORING_METRICS_ENABLED` 环境变量并上线含埋点的新镜像，必然要重建 sub2api；此后仅更新监控/看板配置才无需动业务容器 |
+| 生产部署：`deploy-us1.sh` 构建上传，`deploy/remote-deploy.sh` 读取 Compose labels 中项目名、配置与环境文件 | `deploy-us1.sh` / `deploy/remote-deploy.sh` | 默认更新 sub2api 并部署 Grafana/Prometheus，数据库和 Redis 不重建；保留 pg_dump、运行中旧镜像和应用回滚脚本，业务 Compose 不做正则改写 |
 | Docker 网络：`sub2api-network`（bridge） | `deploy/docker-compose.yml:331-333` | 同项目 `-f` 叠加模式下监控容器自然加入该网络（叠加文件复用网络声明，不标 external）；若生产采用独立监控项目部署，才用 `external: true` 且填写运行时实际网络名（带 compose 项目前缀，逻辑 key ≠ 运行时名） |
 
 ## 3. 总体架构（一期）
@@ -49,7 +51,7 @@ sub2api:9091 /metrics ◄───┤ 业务端口 8080（不动）          │
 （不映射宿主机端口）        └──────────────────────────────┘
         ▲ 拉取(15s)                ▲ 拉取
 ┌───────┴────────┐   ┌────────────┴───┐
-│  Prometheus    │   │  Node Exporter │ bridge 网络 + 只读挂载宿主
+│  Prometheus    │   │  Node Exporter │ 可选 host 网络 + 私有网关监听
 │  TSDB 持久化卷   │   │  9100          │ /proc /sys /rootfs
 └───────┬────────┘   └────────────────┘
         │ PromQL
@@ -68,11 +70,11 @@ sub2api:9091 /metrics ◄───┤ 业务端口 8080（不动）          │
 | Registry | 自建 `prometheus.Registry`，显式注册，`promauto.With(registry)` | 避免默认全局 registry 与 go/process collector 重复注册 |
 | 流式口径 | `response_mode ∈ {sse, other}`，响应结束后按最终 Content-Type 判定 `text/event-stream`；duration 记请求全生命周期 | 不缓冲 writer、不改 Flush/Hijack/Unwrap；SSE ≠ 全部流式，文档明示 |
 | 指标基数 | 所有标签均为**有界有限集**（路由模板、有限 method 集、有限 status 来源、sse/other），绝不引入高基数无界标签 | 需求文档 6.4 |
-| Node Exporter | 纳入一期，**bridge 网络** + 只读挂载宿主 `/proc` `/sys` `/`（rootfs 只读），显式 `--path.procfs=/host/proc --path.sysfs=/host/sys --path.rootfs=/host`，不挂 Docker Socket，非 privileged；Prometheus 抓 `node-exporter:9100`（服务名解析依赖 bridge 网络）。不采用 host 网络：host 模式无服务 DNS、且 exporter 监听 `0.0.0.0:9100` 会直接暴露宿主端口（即使不写 ports），与"不发布即不可达"的安全假设冲突 | 覆盖"常规需求"的服务器 CPU/内存/磁盘/网络；宿主机 namespace 指标正确性（含按 exporter 版本决定是否需要 `pid: host` 等）在生产 Linux 上专项验证；macOS 本地仅验证可采集 |
+| Node Exporter | 可选 `host-metrics` profile；host 网络 + 只读宿主挂载，绑定 Docker bridge 的 RFC1918 私有网关 IPv4:9100。Prometheus 使用同一 IP，不依赖服务 DNS。默认五容器基础栈不启动 Exporter，也不渲染 node job | bridge 网络下 netlink 与 `/proc/net` 读到容器网络；host 网络下限定私有网关监听，保持公网不可达。Desktop 指标属于 Linux VM |
 | Grafana 访问 | 一期不暴露公网；本地/生产均绑 `127.0.0.1`，生产经 SSH 隧道访问 | 需求文档 10.1 |
 | Compose 组合 | **同一 Compose 项目 `-f` 叠加为基线**（叠加文件复用原网络声明，不标 external）；服务器若需要"独立监控项目"方式部署，才用 `external: true` 且写**运行时实际网络名**（通常带 compose 项目前缀，逻辑 key ≠ 运行时名） | external 网络在本地首次启动不存在会直接失败；两种模式择一写清基线，不混用 |
-| Prometheus 配置渲染 | 仓库保存 `prometheus.yml.tmpl` 模板 + 渲染脚本（envsubst）生成实际配置；Prometheus 不会对 bind-mount 的配置文件做环境变量展开，`${VAR}` 直接写不生效。渲染产物不进 Git | promtool 校验渲染后的文件 |
-| 配置变更生效 | 修改 prometheus.yml → SIGHUP 或 restart 生效；**修改环境变量或 compose command 必须重新 `up -d`** 重建相应容器，restart 不会应用新的容器环境 | Compose restart 不重读 env/command |
+| Prometheus 配置渲染 | 仓库保存 `prometheus.yml.tmpl` 模板 + 渲染脚本（POSIX awk，无额外包依赖）生成实际配置；Prometheus 不会对 bind-mount 的配置文件做环境变量展开，`${VAR}` 直接写不生效。渲染产物不进 Git | promtool 校验渲染后的文件 |
+| 配置变更生效 | 渲染内容不变时保留 inode，改变时脚本重建 Prometheus；环境变量/command 变化也需重新 up | 原子替换的单文件 bind mount 可能继续指向旧 inode，不能只 restart/SIGHUP |
 | 备份容器 | 使用固定版本 Alpine 的 crond/wget/tar 工具链；Prometheus 挂完整 `prometheus_data` 卷，备份容器通过 `volume.subpath: snapshots` **只挂同卷的 snapshots 子目录**为 `/snapshots`（可写），无法访问 WAL/活跃块。一次性 init 创建目录并设置属主，不递归更改活跃块。**不能另挂独立 snapshots 卷**，因为已落盘块快照使用硬链接，跨挂载会 EXDEV；不调用不存在的 delete_snapshot API | 本地已验证空卷首次初始化、已有落盘块硬链接（同 device/inode）、完整脚本打包/清源与隔离恢复。最低支持基线 Engine≥26.0 / API≥1.45、Compose≥2.35.0；定时任务明确 UTC |
 | 备份清理 | 快照目录不受 TSDB retention 管理；打包成功与失败路径都要受控清理，防双倍堆积 | 见 1.1 节红线 |
 | 镜像版本 | Prometheus `v3.16.0`、Grafana `13.3.1`、Node Exporter `v1.12.1`、Alpine `3.20`（以 Compose 固定 tag 为准） | 禁止 latest；Grafana 从原先已 EOL 的 11.x 调整为仍维护的版本，已验证 provisioning 与看板兼容 |

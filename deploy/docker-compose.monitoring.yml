@@ -1,32 +1,9 @@
-# =============================================================================
-# Sub2API Docker Compose - Monitoring Stack (Overlay)
-# =============================================================================
-# 监控叠加层：Prometheus + Grafana + Node Exporter + 备份 cron 容器。
-#
-# 用法（与 dev 叠加，同一 Compose 项目，复用 sub2api-network 网络声明）：
-#   cd deploy
-#   cp monitoring.env.example monitoring.env   # 编辑，GRAFANA_ADMIN_PASSWORD 必填
-#   ./monitoring/render-prometheus-config.sh   # 渲染 prometheus.yml（promtool 校验）
-#   docker compose -f docker-compose.dev.yml -f docker-compose.monitoring.yml \
-#     --env-file ./monitoring.env up -d --build
-#
-# 设计要点（见 docs/MONITORING_DEV_PLAN.md 第 3 节决策表）：
-#   - 叠加文件不标 external 网络：同项目 -f 叠加下网络声明与 dev compose 合并，
-#     监控容器自然加入 sub2api-network（bridge）。external 网络在本地首次启动
-#     不存在会直接失败，仅"独立监控项目"部署模式才使用。
-#   - Prometheus 9090 / Node Exporter 9100 / sub2api 9091 均不映射宿主机端口，
-#     安全边界 = 仅容器网内可达；snapshot admin API 依赖此边界。
-#   - Node Exporter 用 bridge 网络（非 host）：host 模式无服务 DNS，且 exporter
-#     监听 0.0.0.0 会直接暴露宿主端口，与"不发布即不可达"假设冲突。
-#   - 镜像 tag 全部写死，禁止 latest。
-#   - 支持基线：Engine >=26.0（API >=1.45）、Compose >=2.35.0；
-#     backup 依赖 named volume 的 subpath 功能，只挂 snapshots 子目录。
-#
-# 临时关闭监控须显式 stop（保留卷，不动业务）；只去掉叠加文件时现有监控
-# 容器会变成 orphan 并继续运行。不要使用 down -v 删除数据。
-# docker compose -f docker-compose.dev.yml -f docker-compose.monitoring.yml \
-#   --env-file ./monitoring.env stop prometheus grafana node-exporter backup
-# =============================================================================
+# Monitoring overlay: the default stack adds only Prometheus and Grafana.
+# Use ./compose-deploy.sh --monitoring to configure and start all five core services.
+# Optional profiles: host-metrics (Node Exporter), backup (snapshot cron + init).
+# Host metrics require Linux host networking and an explicit Docker bridge gateway;
+# compose-deploy.sh --host-metrics discovers and validates that private address.
+# Engine >=26, Compose >=2.35. Keep existing volumes when stopping the stack.
 
 services:
   # ---------------------------------------------------------------
@@ -44,6 +21,7 @@ services:
   # 一次性初始化同卷 snapshots 子目录（Prometheus 镜像以 nobody:65534 运行）
   # ---------------------------------------------------------------
   snapshots-init:
+    profiles: [backup]
     image: alpine:3.20
     user: "0:0"
     network_mode: none
@@ -60,7 +38,6 @@ services:
   # ---------------------------------------------------------------
   prometheus:
     image: prom/prometheus:v3.16.0
-    container_name: sub2api-prometheus
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -82,6 +59,7 @@ services:
     depends_on:
       snapshots-init:
         condition: service_completed_successfully
+        required: false
     # 端口刻意不发布：9090 仅容器网内可达（Grafana / 备份容器）。
     # 本地如需调试 Prometheus UI，取消下行注释（仅绑 127.0.0.1）：
     # ports:
@@ -90,7 +68,7 @@ services:
     networks:
       - sub2api-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:9090/-/healthy"]
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:9090/-/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -101,7 +79,6 @@ services:
   # ---------------------------------------------------------------
   grafana:
     image: grafana/grafana:13.3.1
-    container_name: sub2api-grafana
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -126,7 +103,7 @@ services:
       - grafana_data:/var/lib/grafana
     ports:
       # 本地查看用，仅绑 127.0.0.1；生产部署须收紧（SSH 隧道或防火墙）
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     # Grafana 13.3.1 本地冷启动接近 256MiB，需留页缓存/插件余量。
     # 2GB 生产机器上与业务栈能否共存须部署后实测，不视为容量证明。
     mem_limit: ${GRAFANA_MEMORY_LIMIT:-384m}
@@ -135,31 +112,45 @@ services:
         condition: service_healthy
     networks:
       - sub2api-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   # ---------------------------------------------------------------
   # Node Exporter - 宿主机整机指标
   # ---------------------------------------------------------------
   node-exporter:
+    profiles: [host-metrics]
+    network_mode: host
     image: prom/node-exporter:v1.12.1
-    container_name: sub2api-node-exporter
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     command:
+      # Host networking is necessary for netlink and /proc/net to use host counters.
+      # Bind only to a Docker private gateway, never a public host interface.
+      - --web.listen-address=${NODE_EXPORTER_HOST_IP:-127.0.0.1}:9100
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --path.rootfs=/host
       # macOS Docker Desktop 下 rootfs 挂载可采集但指标语义与 Linux 不同（DEV_PLAN
       # 风险表：本地仅验证"可采集"，数据语义在生产 Linux 复验）
     volumes:
-      # 宿主文件系统全部只读挂载；非 privileged、不挂 Docker Socket、bridge 网络
+      # 宿主文件系统全部只读挂载；非 privileged、不挂 Docker Socket；host 网络仅监听私有网关
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/host:ro
-    # 端口刻意不发布：9100 仅容器网内（Prometheus）可达。
+    # Host networking has no Compose service DNS. Prometheus uses the gateway IP.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://${NODE_EXPORTER_HOST_IP:-127.0.0.1}:9100/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     mem_limit: 64m
-    networks:
-      - sub2api-network
 
   # ---------------------------------------------------------------
   # Backup - 快照 cron 容器（snapshot -> tar.gz -> 清理旧包）
@@ -169,8 +160,8 @@ services:
   # crond、wget、tar、grep/awk 与 date/find，工具链完整且体积极小；
   # prom/prometheus 镜像不自带 cron，也无 curl，不可用作备份容器。
   backup:
+    profiles: [backup]
     image: alpine:3.20
-    container_name: sub2api-backup
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

@@ -107,7 +107,7 @@
 
 ## 3. Prometheus 采集接口
 
-配置以**模板 + 渲染**方式管理：仓库保存 `prometheus.yml.tmpl`，部署/启动前由 `render-prometheus-config.sh`（envsubst）渲染为实际配置文件。原因：Prometheus 不会对配置文件中的 `${VAR}` 做环境变量展开（该语法仅在部分字段有限支持），Compose 也不会替换 bind-mount 的文件内容——直接写 `${PROM_SCRAPE_INTERVAL}` 不生效。渲染产物不进 Git，`promtool check config` 校验渲染后的文件。
+配置以**模板 + 渲染**方式管理：仓库保存 `prometheus.yml.tmpl`，部署/启动前由 `render-prometheus-config.sh`（POSIX awk）渲染为实际配置文件。原因：Prometheus 不会对配置文件中的 `${VAR}` 做环境变量展开（该语法仅在部分字段有限支持），Compose 也不会替换 bind-mount 的文件内容——直接写 `${PROM_SCRAPE_INTERVAL}` 不生效。渲染产物不进 Git，`promtool check config` 校验渲染后的文件。
 
 模板内容（渲染后）：
 
@@ -120,9 +120,10 @@ scrape_configs:
   - job_name: sub2api
     static_configs:
       - targets: ["sub2api:9091"]            # 容器网内服务名，非 localhost
-  - job_name: node
-    static_configs:
-      - targets: ["node-exporter:9100"]      # bridge 网络服务名（Node Exporter 非 host 网络）
+  # 以下 node job 仅在 --host-metrics 启用后渲染，地址由脚本从 Docker bridge 获取：
+  # - job_name: node
+  #   static_configs:
+  #     - targets: ["<Docker 私有网关 IPv4>:9100"]
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]          # 自监控，辅助排障
@@ -132,9 +133,11 @@ scrape_configs:
 
 配置生效规则：
 
-- 修改 prometheus.yml → 向进程发 SIGHUP 或 `docker compose restart prometheus`。
+- 渲染内容不变时保留文件 inode；内容改变时一键部署脚本重建 Prometheus。原子替换的单文件 bind mount 不能仅靠 restart/SIGHUP 更新。
 - **修改环境变量或 compose command → 必须重新 `docker compose up -d prometheus` 重建容器**；restart 不会应用新的容器环境。
 - 发布前 `promtool check config` 校验渲染产物。
+
+基础部署为 sub2api/postgres/redis/grafana/prometheus 五个常驻容器，默认只抓取 sub2api 与 prometheus。`--host-metrics` 添加独立 Node Exporter：使用 host 网络命名空间，绑定 Docker 私有网关的 9100；Prometheus 按该地址采集，不再使用 bridge 容器的网络计数或服务 DNS。`--backup` 添加独立 cron 和一次性卷初始化容器。入口与参数见 `deploy/MONITORING_LOCAL.md`。
 
 ## 4. 备份 snapshot 接口
 

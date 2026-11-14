@@ -1,67 +1,84 @@
 #!/bin/sh
-# 将 prometheus.yml.tmpl 渲染到同目录临时文件，校验后原子替换 prometheus.yml。
-# 失败时保留上次有效配置；本地需 envsubst（macOS: brew install gettext），
-# 无本机 envsubst 时可用 Docker + alpine:3.20 安装 gettext 后渲染；
-# 无本机 promtool 时用 prom/prometheus:v3.16.0 镜像校验。
-# 手工校验命令：
-# docker run --rm -v "$PWD/monitoring/prometheus.yml:/prometheus.yml:ro" \
-#   --entrypoint promtool prom/prometheus:v3.16.0 check config /prometheus.yml
-set -euo pipefail
+# POSIX shell; no envsubst or package installation required.
+# Validate a temporary file with promtool before atomically replacing the config.
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+ENV_FILE="${MONITORING_ENV_FILE:-$SCRIPT_DIR/../monitoring.env}"
 TEMPLATE="$SCRIPT_DIR/prometheus.yml.tmpl"
 OUTPUT="$SCRIPT_DIR/prometheus.yml"
-ENV_FILE="$SCRIPT_DIR/../monitoring.env"
 TMP=""
 cleanup() { [ -z "$TMP" ] || rm -f "$TMP"; }
 trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 
+# Parse only known scalar keys; never source an environment file as shell code.
+# Shell environment takes precedence over the file, just as in Compose.
+read_setting() {
+    [ -f "$ENV_FILE" ] || return 0
+    awk -v key="$1" '
+        index($0, key "=") == 1 {
+            value = substr($0, length(key) + 2)
+            sub(/\r$/, "", value)
+            if (value ~ /^".*"$/ || value ~ /^\047.*\047$/)
+                value = substr(value, 2, length(value) - 2)
+            else sub(/[ \t]+#.*/, "", value)
+            result = value
+        }
+        END { print result }
+    ' "$ENV_FILE"
+}
+PROM_SCRAPE_INTERVAL="${PROM_SCRAPE_INTERVAL:-$(read_setting PROM_SCRAPE_INTERVAL)}"
+PROM_SCRAPE_TIMEOUT="${PROM_SCRAPE_TIMEOUT:-$(read_setting PROM_SCRAPE_TIMEOUT)}"
+MONITORING_HOST_METRICS_ENABLED="${MONITORING_HOST_METRICS_ENABLED:-$(read_setting MONITORING_HOST_METRICS_ENABLED)}"
+NODE_EXPORTER_HOST_IP="${NODE_EXPORTER_HOST_IP:-$(read_setting NODE_EXPORTER_HOST_IP)}"
 : "${PROM_SCRAPE_INTERVAL:=30s}"
 : "${PROM_SCRAPE_TIMEOUT:=10s}"
-# 只从 env 文件读取两个已知键；不执行（source）任意 shell 内容。
-if [ -f "$ENV_FILE" ]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in
-            PROM_SCRAPE_INTERVAL=*) PROM_SCRAPE_INTERVAL="${line#*=}" ;;
-            PROM_SCRAPE_TIMEOUT=*) PROM_SCRAPE_TIMEOUT="${line#*=}" ;;
-        esac
-    done < "$ENV_FILE"
-    echo "[render] loaded scrape settings from $ENV_FILE"
-fi
-export PROM_SCRAPE_INTERVAL PROM_SCRAPE_TIMEOUT
+: "${MONITORING_HOST_METRICS_ENABLED:=false}"
+case "$MONITORING_HOST_METRICS_ENABLED" in
+    true)
+        # Host exporter must listen on an RFC1918 address, not a public interface.
+        awk -v ip="$NODE_EXPORTER_HOST_IP" 'BEGIN {
+            n = split(ip, a, "."); if (n != 4) exit 1
+            for (i=1; i<=4; i++) if (a[i] !~ /^[0-9]+$/ || a[i] > 255) exit 1
+            exit !(a[1] == 10 || (a[1] == 172 && a[2] >= 16 && a[2] <= 31) || (a[1] == 192 && a[2] == 168))
+        }' || { echo '[render] ERROR: host metrics require a private Docker gateway IPv4 address' >&2; exit 1; }
+        ;;
+    false) ;;
+    *) echo '[render] ERROR: MONITORING_HOST_METRICS_ENABLED must be true or false' >&2; exit 1 ;;
+esac
+export PROM_SCRAPE_INTERVAL PROM_SCRAPE_TIMEOUT MONITORING_HOST_METRICS_ENABLED NODE_EXPORTER_HOST_IP
 [ -f "$TEMPLATE" ] || { echo "[render] ERROR: template not found: $TEMPLATE" >&2; exit 1; }
 TMP="$(mktemp "$OUTPUT.tmp.XXXXXX")"
-echo "[render] $TEMPLATE -> $OUTPUT (temporary: $TMP)"
-if command -v envsubst >/dev/null 2>&1; then
-    envsubst '${PROM_SCRAPE_INTERVAL} ${PROM_SCRAPE_TIMEOUT}' < "$TEMPLATE" > "$TMP"
-elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    echo "[render] envsubst unavailable: install gettext in temporary alpine:3.20 container"
-    docker run --rm -i \
-        -e PROM_SCRAPE_INTERVAL -e PROM_SCRAPE_TIMEOUT \
-        --entrypoint /bin/sh alpine:3.20 \
-        -ec 'apk add --no-cache gettext >/dev/null; envsubst '\''${PROM_SCRAPE_INTERVAL} ${PROM_SCRAPE_TIMEOUT}'\''' \
-        < "$TEMPLATE" > "$TMP"
-else
-    echo '[render] ERROR: envsubst unavailable (brew install gettext), Docker fallback unavailable' >&2
-    exit 1
-fi
-
-# Docker 镜像中的 promtool 以 nobody(65534) 运行，mktemp 默认 0600 不可读。
+awk '
+    /# OPTIONAL_NODE_EXPORTER_JOB/ {
+        if (ENVIRON["MONITORING_HOST_METRICS_ENABLED"] == "true") {
+            print "  - job_name: node"
+            print "    static_configs:"
+            print "      - targets: [\"" ENVIRON["NODE_EXPORTER_HOST_IP"] ":9100\"]"
+        }
+        next
+    }
+    {
+        gsub(/\$\{PROM_SCRAPE_INTERVAL\}/, ENVIRON["PROM_SCRAPE_INTERVAL"])
+        gsub(/\$\{PROM_SCRAPE_TIMEOUT\}/, ENVIRON["PROM_SCRAPE_TIMEOUT"])
+        print
+    }
+' "$TEMPLATE" > "$TMP"
 chmod 644 "$TMP"
 if command -v promtool >/dev/null 2>&1; then
-    echo '[render] promtool check config (local)'
     promtool check config "$TMP"
 elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    echo '[render] promtool check config (docker)'
-    docker run --rm -v "$TMP:/prometheus.yml:ro" \
-        --entrypoint promtool prom/prometheus:v3.16.0 \
-        check config /prometheus.yml
+    docker run --rm --network none -v "$TMP:/prometheus.yml:ro" \
+        --entrypoint promtool prom/prometheus:v3.16.0 check config /prometheus.yml
 else
-    echo '[render] ERROR: promtool unavailable and Docker fallback unavailable; configuration NOT replaced' >&2
+    echo '[render] ERROR: promtool and Docker unavailable; configuration NOT replaced' >&2
     exit 1
 fi
-# mktemp 在目标目录内，mv 为同文件系统原子替换。
-chmod 644 "$TMP"
+if [ -f "$OUTPUT" ] && cmp -s "$TMP" "$OUTPUT"; then
+    echo "[render] unchanged: $OUTPUT"
+    exit 0
+fi
 mv -f "$TMP" "$OUTPUT"
 TMP=""
 echo "[render] OK: $OUTPUT"
