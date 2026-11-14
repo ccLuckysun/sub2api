@@ -1,0 +1,20 @@
+# =============================================================================
+# Grafana 看板 provisioning provider
+# =============================================================================
+# 看板 JSON 放 /var/lib/grafana/dashboards（compose 只读挂载
+# deploy/monitoring/grafana/dashboards）；provisioned 看板以 Git 文件为权威，
+# 页面手工改动重启后会被覆盖（迭代流程：本地调 -> 导出 JSON -> 回写仓库）。
+# =============================================================================
+apiVersion: 1
+
+providers:
+  - name: Sub2API
+    orgId: 1
+    folder: Sub2API
+    folderUid: sub2api-folder
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

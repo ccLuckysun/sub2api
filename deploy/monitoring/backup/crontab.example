@@ -1,0 +1,22 @@
+# =============================================================================
+# Sub2API 快照备份 crontab 示例
+# =============================================================================
+# alpine crond 格式（5 字段，无用户列）：
+#   分钟 小时 日 月 周  命令
+#
+# 实际生效的定时行由备份容器 entrypoint 在启动时按 SNAPSHOT_SCHEDULE
+# 环境变量生成（见 docker-compose.monitoring.yml backup 服务），
+# 本文件仅作为格式参考与手动测试样例。
+#
+# 手动触发一次备份（不等定时）：
+#   docker compose -f docker-compose.dev.yml -f docker-compose.monitoring.yml \
+#     exec backup /usr/local/bin/snapshot.sh
+# =============================================================================
+
+# 环境变量示例（容器内已由 compose environment 注入，无需在此重复）
+# SNAPSHOT_KEEP_DAYS=3
+# PROMETHEUS_URL=http://prometheus:9090
+
+# 每日 04:00 UTC（北京时间 12:00）执行快照备份
+# Alpine 不预装 tzdata，容器强制 TZ=UTC（等价 SNAPSHOT_SCHEDULE="0 4 * * *"）
+0 4 * * * /usr/local/bin/snapshot.sh

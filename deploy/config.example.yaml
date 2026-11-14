@@ -967,6 +967,22 @@ ops:
   enabled: true
 
 # =============================================================================
+# Prometheus Metrics (Optional)
+# Prometheus 指标 (可选)
+# =============================================================================
+monitoring:
+  # Expose Prometheus metrics on a dedicated internal port. Independent from ops
+  # above: disabling ops does not disable these HTTP metrics and vice versa.
+  # 在独立内部端口暴露 Prometheus 指标；与上方 ops 配置互相独立，互不影响。
+  # Env: MONITORING_METRICS_ENABLED
+  metrics_enabled: false
+  # Bind address for the /metrics endpoint. Do NOT publish this port to the
+  # host; the intended audience is Prometheus inside the container network.
+  # /metrics 端点监听地址。请勿映射到宿主机端口，仅供容器网络内的 Prometheus 采集。
+  # Env: MONITORING_METRICS_BIND
+  metrics_bind: "0.0.0.0:9091"
+
+# =============================================================================
 # JWT Configuration
 # JWT 配置
 # =============================================================================

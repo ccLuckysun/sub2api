@@ -136,6 +136,10 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/MONITORING_REQUIREMENTS.md
+!docs/MONITORING_DEV_PLAN.md
+!docs/MONITORING_API.md
+!docs/MONITORING_VALIDATION.md
 !docs/agent-resource-safety.md
 !docs/moego-json-batching.md
 !docs/admin-api-keys.md

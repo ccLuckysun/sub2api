@@ -177,6 +177,13 @@ func runMainServer() {
 
 	log.Printf("Server started on %s", app.Server.Addr)
 
+	// 启动 Prometheus /metrics 服务器（monitoring.metrics_enabled=false 时为 no-op）
+	if app.MetricsServer != nil {
+		if err := app.MetricsServer.StartEnabled(); err != nil {
+			log.Fatalf("Failed to start metrics server: %v", err)
+		}
+	}
+
 	// 等待中断信号
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

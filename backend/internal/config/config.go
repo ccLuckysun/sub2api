@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/netip"
 	"net/textproto"
 	"net/url"
@@ -110,9 +111,30 @@ type Config struct {
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	Monitoring              MonitoringConfig              `mapstructure:"monitoring"`
 
 	// Enforce only API-key spending windows in simple mode.
 	SimpleModeKeyRateLimitEnabled bool `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
+}
+
+// DefaultMetricsBind is the default internal bind address for the /metrics
+// endpoint (docs/MONITORING_API.md 1.1). The port is intentionally not
+// published to the host; security boundary = container-network-only reach.
+const DefaultMetricsBind = "0.0.0.0:9091"
+
+// MonitoringConfig controls the Prometheus instrumentation endpoint.
+// It is independent from OpsConfig (ops.enabled): turning off business ops
+// collection must not stop baseline HTTP metrics and vice versa
+// (docs/MONITORING_API.md 2.5).
+//
+// Env mapping: MONITORING_METRICS_ENABLED / MONITORING_METRICS_BIND
+// (viper AutomaticEnv with "." -> "_" replier over the "monitoring." prefix).
+type MonitoringConfig struct {
+	// MetricsEnabled toggles HTTP instrumentation and the /metrics server.
+	// Default false: no listener, no middleware, zero behavior change.
+	MetricsEnabled bool `mapstructure:"metrics_enabled"`
+	// MetricsBind is the address the /metrics server listens on when enabled.
+	MetricsBind string `mapstructure:"metrics_bind"`
 }
 
 // SimpleModeConfig controls startup behavior in simple mode.
@@ -1978,6 +2000,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
+	cfg.Monitoring.MetricsBind = strings.TrimSpace(cfg.Monitoring.MetricsBind)
+	if cfg.Monitoring.MetricsBind == "" {
+		cfg.Monitoring.MetricsBind = DefaultMetricsBind
+	}
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
@@ -2151,6 +2177,10 @@ func setDefaults() {
 	viper.SetDefault("server.h2c.max_read_frame_size", 1<<20)              // 1MB（够用）
 	viper.SetDefault("server.h2c.max_upload_buffer_per_connection", 2<<20) // 2MB
 	viper.SetDefault("server.h2c.max_upload_buffer_per_stream", 512<<10)   // 512KB
+
+	// Monitoring（Prometheus /metrics，默认关闭，向后兼容）
+	viper.SetDefault("monitoring.metrics_enabled", false)
+	viper.SetDefault("monitoring.metrics_bind", DefaultMetricsBind)
 
 	// Log
 	viper.SetDefault("log.level", "info")
@@ -2868,6 +2898,11 @@ func (c *Config) Validate() error {
 	}
 	if c.APIKeyCreate.MaxActivePerUser < 0 {
 		return fmt.Errorf("api_key_create.max_active_per_user must be non-negative")
+	}
+	if c.Monitoring.MetricsEnabled {
+		if _, _, err := net.SplitHostPort(c.Monitoring.MetricsBind); err != nil {
+			return fmt.Errorf("monitoring.metrics_bind must be host:port: %w", err)
+		}
 	}
 	if c.APIKeyCreate.MaxPerUserPerHour < 0 {
 		return fmt.Errorf("api_key_create.max_per_user_per_hour must be non-negative")

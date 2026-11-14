@@ -43,12 +43,17 @@ func ProvideRouter(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	redisClient *redis.Client,
+	metricsMiddleware middleware2.MetricsMiddleware,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	r := gin.New()
+	// Prometheus 指标中间件注册在 Recovery 之前（外层）：panic 场景下内层
+	// Recovery 先写出最终状态码，本中间件的 defer 随后记录正确状态。
+	// metrics_enabled=false 时传入 NoopMetricsMiddleware，行为与现状完全一致。
+	r.Use(gin.HandlerFunc(metricsMiddleware))
 	r.Use(middleware2.Recovery())
 	configureTrustedProxies(r, cfg.Server)
 

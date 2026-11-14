@@ -1,0 +1,224 @@
+# =============================================================================
+# Sub2API Docker Compose - Monitoring Stack (Overlay)
+# =============================================================================
+# 监控叠加层：Prometheus + Grafana + Node Exporter + 备份 cron 容器。
+#
+# 用法（与 dev 叠加，同一 Compose 项目，复用 sub2api-network 网络声明）：
+#   cd deploy
+#   cp monitoring.env.example monitoring.env   # 编辑，GRAFANA_ADMIN_PASSWORD 必填
+#   ./monitoring/render-prometheus-config.sh   # 渲染 prometheus.yml（promtool 校验）
+#   docker compose -f docker-compose.dev.yml -f docker-compose.monitoring.yml \
+#     --env-file ./monitoring.env up -d --build
+#
+# 设计要点（见 docs/MONITORING_DEV_PLAN.md 第 3 节决策表）：
+#   - 叠加文件不标 external 网络：同项目 -f 叠加下网络声明与 dev compose 合并，
+#     监控容器自然加入 sub2api-network（bridge）。external 网络在本地首次启动
+#     不存在会直接失败，仅"独立监控项目"部署模式才使用。
+#   - Prometheus 9090 / Node Exporter 9100 / sub2api 9091 均不映射宿主机端口，
+#     安全边界 = 仅容器网内可达；snapshot admin API 依赖此边界。
+#   - Node Exporter 用 bridge 网络（非 host）：host 模式无服务 DNS，且 exporter
+#     监听 0.0.0.0 会直接暴露宿主端口，与"不发布即不可达"假设冲突。
+#   - 镜像 tag 全部写死，禁止 latest。
+#   - 支持基线：Engine >=26.0（API >=1.45）、Compose >=2.35.0；
+#     backup 依赖 named volume 的 subpath 功能，只挂 snapshots 子目录。
+#
+# 临时关闭监控须显式 stop（保留卷，不动业务）；只去掉叠加文件时现有监控
+# 容器会变成 orphan 并继续运行。不要使用 down -v 删除数据。
+# docker compose -f docker-compose.dev.yml -f docker-compose.monitoring.yml \
+#   --env-file ./monitoring.env stop prometheus grafana node-exporter backup
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------
+  # Sub2API - 叠加注入监控开关（与 dev/local compose 的 sub2api 服务合并，
+  # 只追加环境变量，不覆盖其余定义；去掉本叠加文件后行为完全复原）
+  # ---------------------------------------------------------------
+  sub2api:
+    environment:
+      # 启用 9091 指标端点（backend config: monitoring.metrics_enabled）。
+      # 叠加文件存在即启用，普通业务开发（不带 -f 本文件）不受影响。
+      - MONITORING_METRICS_ENABLED=${MONITORING_METRICS_ENABLED:-true}
+      - MONITORING_METRICS_BIND=${MONITORING_METRICS_BIND:-0.0.0.0:9091}
+
+  # ---------------------------------------------------------------
+  # 一次性初始化同卷 snapshots 子目录（Prometheus 镜像以 nobody:65534 运行）
+  # ---------------------------------------------------------------
+  snapshots-init:
+    image: alpine:3.20
+    user: "0:0"
+    network_mode: none
+    restart: "no"
+    # 仅初始化目录所有权，不递归 chown、不修改已有活跃块。
+    # 空卷根目录也须可写，避免 init 先挂载空卷后留下 root:root 属主。
+    command: ["sh", "-ec", "mkdir -p /prometheus/snapshots && chown 65534:65534 /prometheus /prometheus/snapshots && chmod 0770 /prometheus/snapshots"]
+    volumes:
+      - prometheus_data:/prometheus
+    mem_limit: 32m
+
+  # ---------------------------------------------------------------
+  # Prometheus - 指标采集与 TSDB 存储
+  # ---------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    container_name: sub2api-prometheus
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # retention：time 与 size 先到者生效。注意 size 并非数据目录硬上限，
+      # WAL/head/快照另占空间且删除异步，不能当磁盘配额依赖（DEV_PLAN 5.1）。
+      - --storage.tsdb.retention.time=${PROM_RETENTION_TIME:-15d}
+      - --storage.tsdb.retention.size=${PROM_RETENTION_SIZE:-1GB}
+      # 快照备份 API（POST /api/v1/admin/tsdb/snapshot）依赖此开关；
+      # 端口不映射宿主机，仅容器网内（备份容器）可达。
+      - --web.enable-admin-api
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # snapshots 必须与活跃块位于同一卷：Prometheus 通过 hard link 创建块
+      # 快照，另挂独立 snapshots 卷会在已有持久块时失败（EXDEV）。
+      - prometheus_data:/prometheus
+    depends_on:
+      snapshots-init:
+        condition: service_completed_successfully
+    # 端口刻意不发布：9090 仅容器网内可达（Grafana / 备份容器）。
+    # 本地如需调试 Prometheus UI，取消下行注释（仅绑 127.0.0.1）：
+    # ports:
+    #   - "127.0.0.1:9090:9090"
+    mem_limit: 384m
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------
+  # Grafana - 看板（零手工配置：provisioning 数据源 + 看板）
+  # ---------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:13.3.1
+    container_name: sub2api-grafana
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      # 禁默认 admin；无默认值，未设置时 compose 报错阻断启动
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      # 本地一律绑回环：下方 ports 已用 127.0.0.1 前缀限制宿主侧监听；
+      # Grafana 进程本身须绑容器 0.0.0.0，否则宿主回环端口转发不可达
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # 13.x 默认后台预装/更新多个插件，2GB 小机器上可能在 256m 限额内 OOM；
+      # 本看板仅用内建 Prometheus 数据源和基础面板，无需额外插件。
+      - GF_PLUGINS_PREINSTALL_DISABLED=true
+      - GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
+      # 控制 Go heap，给内建 datasource 插件子进程/页缓存留内存余量。
+      - GOMEMLIMIT=160MiB
+    volumes:
+      # provisioning 目录只读挂载：数据源 + 看板 provider 随容器启动生效
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      # 看板 JSON 目录：dashboards.yml provider 指向 /var/lib/grafana/dashboards
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      # 本地查看用，仅绑 127.0.0.1；生产部署须收紧（SSH 隧道或防火墙）
+      - "127.0.0.1:3000:3000"
+    # Grafana 13.3.1 本地冷启动接近 256MiB，需留页缓存/插件余量。
+    # 2GB 生产机器上与业务栈能否共存须部署后实测，不视为容量证明。
+    mem_limit: ${GRAFANA_MEMORY_LIMIT:-384m}
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - sub2api-network
+
+  # ---------------------------------------------------------------
+  # Node Exporter - 宿主机整机指标
+  # ---------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: sub2api-node-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host
+      # macOS Docker Desktop 下 rootfs 挂载可采集但指标语义与 Linux 不同（DEV_PLAN
+      # 风险表：本地仅验证"可采集"，数据语义在生产 Linux 复验）
+    volumes:
+      # 宿主文件系统全部只读挂载；非 privileged、不挂 Docker Socket、bridge 网络
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro
+    # 端口刻意不发布：9100 仅容器网内（Prometheus）可达。
+    mem_limit: 64m
+    networks:
+      - sub2api-network
+
+  # ---------------------------------------------------------------
+  # Backup - 快照 cron 容器（snapshot -> tar.gz -> 清理旧包）
+  # ---------------------------------------------------------------
+  # 镜像选 alpine:3.20 的理由（DEV_PLAN 决策表"备份容器"行）：需要验证过的完整
+  # 工具链（cron + HTTP 客户端 + JSON 解析 + tar/gzip）。alpine 自带 busybox
+  # crond、wget、tar、grep/awk 与 date/find，工具链完整且体积极小；
+  # prom/prometheus 镜像不自带 cron，也无 curl，不可用作备份容器。
+  backup:
+    image: alpine:3.20
+    container_name: sub2api-backup
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Alpine 不自带 tzdata；明确 UTC，crond 的计划时间及日志均按 UTC。
+      # 默认每日 04:00 UTC（北京时间 12:00），避免把 TZ 当作已安装时区。
+      - TZ=UTC
+      - SNAPSHOT_SCHEDULE=${SNAPSHOT_SCHEDULE:-0 4 * * *}
+      # 备份包保留天数（独立于 TSDB retention）
+      - SNAPSHOT_KEEP_DAYS=${SNAPSHOT_KEEP_DAYS:-3}
+    volumes:
+      # Docker Engine >=26 / 本项目要求 Compose >=2.35 的 volume.subpath：
+      # 仅暴露同卷 snapshots 子树，备份容器不能访问 TSDB 活跃目录。
+      # 子目录由 snapshots-init 预先创建，backup 启动依赖其成功完成。
+      - type: volume
+        source: prometheus_data
+        target: /snapshots
+        volume:
+          subpath: snapshots
+          nocopy: true
+      - ./monitoring/backup-data:/backup
+      - ./monitoring/backup/snapshot.sh:/usr/local/bin/snapshot.sh:ro
+    # crond spool 与宿主 bind 备份目录需要 root 写入；无 Docker socket/privileged。
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -c
+      # 定时行在启动时由 SNAPSHOT_SCHEDULE 生成到 crond 的 spool；
+      # cron 日志及任务日志写到容器 stdout（docker logs 可见）；crond 前台运行。
+      - |
+        echo "$${SNAPSHOT_SCHEDULE} /usr/local/bin/snapshot.sh >> /proc/1/fd/1 2>&1" > /etc/crontabs/root
+        exec crond -f -l 8 -L /dev/stdout
+    mem_limit: 64m
+    depends_on:
+      snapshots-init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_healthy
+    networks:
+      - sub2api-network
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  # 叠加同项目复用 dev compose 的网络声明（bridge），不标 external
+  sub2api-network:
+    driver: bridge

@@ -17,3 +17,15 @@ redis_data/
 # Temporary files
 *.tmp
 *.log
+
+# =============================================================================
+# Monitoring - 渲染产物与本地环境
+# =============================================================================
+# Prometheus 配置渲染产物（由 render-prometheus-config.sh 生成，不入库）
+monitoring/prometheus.yml
+
+# 监控环境文件（含 GRAFANA_ADMIN_PASSWORD）
+monitoring.env
+
+# 备份产物目录（运行时生成）
+monitoring/backup-data/
