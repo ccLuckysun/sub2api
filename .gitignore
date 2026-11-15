@@ -75,6 +75,7 @@ docker-compose.override.yml
 # 操作系统
 # ===================
 .DS_Store
+._*
 Thumbs.db
 Desktop.ini
 

@@ -1,0 +1,1 @@
+# Preserve Grafana's optional alerting provisioning directory in read-only mounts.

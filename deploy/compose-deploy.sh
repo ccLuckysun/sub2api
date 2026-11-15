@@ -50,6 +50,15 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+# Reject damaged source assets before contacting Docker or starting any container.
+# Existing wrappers also preserve monitoring when --monitoring is omitted.
+if [ -f sub2api-compose ] && grep -q docker-compose.monitoring.yml sub2api-compose; then
+  MONITORING=true
+fi
+if $MONITORING; then
+  sh monitoring/grafana/dashboard-preflight.sh --source monitoring/grafana/dashboards
+  sh monitoring/grafana/dashboard-preflight.sh --metadata monitoring/grafana/provisioning
+fi
 command -v docker >/dev/null || fail 'Docker is required'
 docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
 compose_version="$(docker compose version --short)"
@@ -61,10 +70,6 @@ if [ "$compose_major" -lt 2 ] || { [ "$compose_major" -eq 2 ] && [ "$compose_min
 fi
 [ "${#FILES[@]}" -gt 0 ] || FILES=(docker-compose.yml)
 for file in "${FILES[@]}"; do [ -f "$file" ] || fail "missing Compose file: $file"; done
-
-if [ -f sub2api-compose ] && grep -q docker-compose.monitoring.yml sub2api-compose; then
-  MONITORING=true
-fi
 
 # Only controlled, non-secret values are updated here. Never execute .env contents.
 setting() {
@@ -91,10 +96,14 @@ if [ "${#ENV_FILES[@]}" -gt 0 ]; then
   done
 fi
 if $MONITORING; then
+  # A provisioning bind hides the image's optional directories. Create them
+  # for file-by-file installers too, avoiding Grafana's startup read errors.
+  mkdir -p monitoring/grafana/provisioning/plugins monitoring/grafana/provisioning/alerting
   # Installers use umask 077 for secrets. Non-root Grafana/Prometheus must
   # still be able to read the explicitly managed public configuration assets.
   for dir in monitoring monitoring/grafana monitoring/grafana/provisioning \
       monitoring/grafana/provisioning/datasources monitoring/grafana/provisioning/dashboards \
+      monitoring/grafana/provisioning/plugins monitoring/grafana/provisioning/alerting \
       monitoring/grafana/dashboards monitoring/backup monitoring/prometheus \
       monitoring/prometheus/rules monitoring/alertmanager monitoring/alertmanager/templates \
       monitoring/sql; do
@@ -108,6 +117,7 @@ if $MONITORING; then
       monitoring/grafana/provisioning/datasources/prometheus.yml \
       monitoring/grafana/provisioning/datasources/postgres.yml \
       monitoring/grafana/provisioning/dashboards/dashboards.yml \
+      monitoring/grafana/dashboard-preflight.sh \
       monitoring/grafana/dashboards/*.json; do
     [ ! -f "$file" ] || chmod 644 "$file"
   done
@@ -171,7 +181,15 @@ fi
 # would otherwise forget the monitoring overlay on the next application update.
 wrapper="$(mktemp ./sub2api-compose.tmp.XXXXXX)"
 {
-  printf '#!/usr/bin/env bash\nset -euo pipefail\ncd -- %q\nexec ' "$SCRIPT_DIR"
+  printf '#!/usr/bin/env bash\nset -euo pipefail\ncd -- %q\n' "$SCRIPT_DIR"
+  if $MONITORING; then
+    printf '%s\n' 'for arg in "$@"; do' \
+      '  case "$arg" in up|start|restart)' \
+      '    sh monitoring/grafana/dashboard-preflight.sh --source monitoring/grafana/dashboards' \
+      '    sh monitoring/grafana/dashboard-preflight.sh --metadata monitoring/grafana/provisioning; break ;;' \
+      '  esac' 'done'
+  fi
+  printf 'exec '
   printf '%q ' "${COMPOSE[@]}"
   printf '"$@"\n'
 } > "$wrapper"
@@ -181,6 +199,11 @@ if $START; then
   if $MONITORING && $PROM_CONFIG_CHANGED && [ -n "$(./sub2api-compose ps -q prometheus)" ]; then
     # A file bind mount otherwise continues to reference the replaced inode.
     ./sub2api-compose up -d --wait --wait-timeout 180 --force-recreate prometheus
+  fi
+  if $MONITORING; then
+    # Installers/copy tools may replace file inodes. Keep volume data, but rebuild
+    # Grafana's file bind mounts; the provider interval alone cannot refresh them.
+    ./sub2api-compose up -d --wait --wait-timeout 180 --force-recreate grafana
   fi
   ./sub2api-compose up -d --wait --wait-timeout 180
   if $MONITORING; then

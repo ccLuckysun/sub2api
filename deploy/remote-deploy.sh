@@ -60,9 +60,11 @@ SAVED=()
 for path in compose-deploy.sh docker-compose.release.yml sub2api-compose monitoring.env docker-compose.monitoring.yml monitoring/render-prometheus-config.sh monitoring/prometheus.yml.tmpl monitoring/prometheus.yml monitoring/prometheus/rules monitoring/alertmanager monitoring/sql monitoring/backup/snapshot.sh monitoring/grafana; do
   [ ! -e "$path" ] || SAVED+=("$path")
 done
-if [ "${#SAVED[@]}" -gt 0 ]; then tar -czf "$CONFIG_BACKUP" "${SAVED[@]}"; fi
-# The uploaded bundle contains tracked configuration only, no local credentials.
-tar -xzf "$STAGING/monitoring-assets.tar.gz" -C "$WORKDIR"
+if [ "${#SAVED[@]}" -gt 0 ]; then
+  COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$CONFIG_BACKUP" "${SAVED[@]}"
+fi
+# Reject platform metadata on extraction as well, for older uploaded bundles.
+COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -xzf "$STAGING/monitoring-assets.tar.gz" -C "$WORKDIR"
 chmod +x compose-deploy.sh monitoring/render-prometheus-config.sh monitoring/backup/snapshot.sh
 ./compose-deploy.sh "${ARGS[@]}"
 ROLLBACK_SCRIPT="$WORKDIR/sub2api-rollback-${STAMP}.sh"
@@ -93,7 +95,9 @@ if grep -qx prometheus <<< "$ACTIVE_SERVICES"; then
   ./sub2api-compose up -d --no-deps --wait --wait-timeout 180 --force-recreate prometheus
   SERVICES+=(grafana)
 fi
-./sub2api-compose up -d --no-deps --wait --wait-timeout 180 "${SERVICES[@]}"
+# Uploaded dashboard files may have new inodes; a provider rescan cannot repair
+# an existing file bind mount. Recreate Grafana (and the updated app), not volumes.
+./sub2api-compose up -d --no-deps --wait --wait-timeout 180 --force-recreate "${SERVICES[@]}"
 if grep -qx postgres <<< "$ACTIVE_SERVICES"; then
   # First V2 deploy: provision the read-only Grafana role after app migrations complete.
   pg_user="$(./sub2api-compose exec -T postgres printenv POSTGRES_USER 2>/dev/null | tr -d '\r')"

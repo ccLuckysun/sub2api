@@ -92,7 +92,7 @@
         "defaults": {
           "unit": "reqps",
           "decimals": 1,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -177,7 +177,7 @@
         "defaults": {
           "unit": "percentunit",
           "decimals": 2,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -273,7 +273,7 @@
         "defaults": {
           "unit": "s",
           "decimals": 2,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -358,7 +358,7 @@
             "type": "prometheus",
             "uid": "sub2api-prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le)(rate(sub2api_request_phase_seconds_bucket{phase=\"headers_end\"}[10m])))",
+          "expr": "histogram_quantile(0.95, sum by (le)(rate(sub2api_request_phase_seconds_bucket{phase=\"headers_end\"}[$__range])))",
           "legendFormat": "P95 TTFT",
           "range": false,
           "instant": true
@@ -369,7 +369,7 @@
         "defaults": {
           "unit": "s",
           "decimals": 2,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -436,7 +436,7 @@
       "id": 6,
       "title": "入向带宽",
       "type": "stat",
-      "description": "客户端请求体 in_wire 实际读取字节速率；gzip 按压缩后长度计，不使用 Content-Length。",
+      "description": "当前 $__range 内客户端请求体 in_wire 实际读取字节平均速率；gzip 按压缩后长度计，不使用 Content-Length。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
@@ -454,7 +454,7 @@
             "type": "prometheus",
             "uid": "sub2api-prometheus"
           },
-          "expr": "sum(rate(sub2api_transfer_bytes_total{direction=\"in_wire\"}[5m]))",
+          "expr": "sum(rate(sub2api_transfer_bytes_total{direction=\"in_wire\"}[$__range]))",
           "legendFormat": "入向带宽",
           "range": false,
           "instant": true
@@ -465,7 +465,7 @@
         "defaults": {
           "unit": "Bps",
           "decimals": 2,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -521,7 +521,7 @@
       "id": 7,
       "title": "出向带宽",
       "type": "stat",
-      "description": "实际写给客户端的响应体速率。客户端慢读/断开会让该值低于上游返回量。",
+      "description": "当前 $__range 内实际写给客户端的响应体平均速率。客户端慢读/断开会让该值低于上游返回量。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
@@ -539,7 +539,7 @@
             "type": "prometheus",
             "uid": "sub2api-prometheus"
           },
-          "expr": "sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[5m]))",
+          "expr": "sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[$__range]))",
           "legendFormat": "出向带宽",
           "range": false,
           "instant": true
@@ -550,7 +550,7 @@
         "defaults": {
           "unit": "Bps",
           "decimals": 2,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -606,7 +606,7 @@
       "id": 8,
       "title": "上游放大比",
       "type": "stat",
-      "description": "resp_upstream / resp_downstream。>1.2 可能是客户端 abort、协议转换或流式重写；不能单独定性截断。",
+      "description": "当前 $__range 内 resp_upstream / resp_downstream。>1.2 可能是客户端 abort、协议转换或流式重写；不能单独定性截断。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
@@ -624,7 +624,7 @@
             "type": "prometheus",
             "uid": "sub2api-prometheus"
           },
-          "expr": "(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_upstream\"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[10m])), 1)",
+          "expr": "(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_upstream\"}[$__range]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[$__range])), 1)",
           "legendFormat": "上游放大比",
           "range": false,
           "instant": true
@@ -635,7 +635,7 @@
         "defaults": {
           "unit": "x",
           "decimals": 2,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -833,7 +833,7 @@
         "defaults": {
           "unit": "percentunit",
           "decimals": 1,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -1045,7 +1045,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无失败",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -1424,7 +1424,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无异常请求",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -1711,7 +1711,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",

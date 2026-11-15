@@ -1,0 +1,31 @@
+name: Grafana dashboard lint
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  grafana-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Test dashboard linter (stdlib only)
+        run: python -B -m unittest discover -s deploy/monitoring/grafana -p 'test_lint_dashboards.py' -v
+      - name: Lint Grafana JSON and provisioning inventory
+        run: python -B deploy/monitoring/grafana/lint-dashboards.py
+      - name: Check generated dashboard drift (read-only)
+        run: python -B deploy/monitoring/grafana/build-dashboards.py --check
+      - name: Check static dashboard contracts (no Docker or Prometheus)
+        run: python3 -B deploy/tests/monitoring-v2-dashboard-test.py --static-only
+      - name: Check existing variable contracts (no database)
+        run: python3 -B deploy/tests/grafana-variables-test.py --static-only
+      - name: Check disposable database cleanup lifecycle (no daemon)
+        run: python3 -I deploy/tests/grafana-variables-pg18-test.py --lifecycle-tests
+      - name: Check deployment preflight and clean packaging (no daemon)
+        run: python3 -I deploy/tests/monitoring-deploy-test.py MonitoringDeploymentSafety

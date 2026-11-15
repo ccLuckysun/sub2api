@@ -262,7 +262,7 @@
         "defaults": {
           "unit": "percentunit",
           "decimals": 1,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -358,7 +358,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -443,7 +443,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -814,7 +814,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",

@@ -35,6 +35,9 @@ VERSION="$(printf '%s' "$VERSION" | tr -d '[:space:]')"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo 'Invalid version: expected x.y.z[-suffix]' >&2; exit 1; }
 # SSH runs a remote shell: reject shell metacharacters in remotely passed values.
 [[ "$REMOTE_HOST" =~ ^[A-Za-z0-9_][A-Za-z0-9_@.-]*$ && "$IMAGE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9./_:-]*$ && "$APP_CONTAINER" =~ ^[A-Za-z0-9_.-]+$ && "$DB_CONTAINER" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo 'Invalid deployment target' >&2; exit 1; }
+# Validate local dashboards before any image build, SSH or upload.
+sh deploy/monitoring/grafana/dashboard-preflight.sh --source deploy/monitoring/grafana/dashboards
+sh deploy/monitoring/grafana/dashboard-preflight.sh --metadata deploy/monitoring/grafana/provisioning
 docker info >/dev/null 2>&1 || { echo 'Docker daemon is unavailable' >&2; exit 1; }
 # Deployment never needs the LocalForward tunnels in ~/.ssh/config; a developer
 # tunnel that already holds 3000/8080/18765 would make ssh exit 255 and abort here.
@@ -59,12 +62,12 @@ docker buildx build --builder "$BUILDER" --platform linux/amd64 \
 docker save "$FULL_IMAGE" | gzip > "$LOCAL_DIR/image.tar.gz"
 # Enumerated files ensure private monitoring.env, generated config and backup data
 # can never be accidentally uploaded from the developer's workstation.
-tar -czf "$LOCAL_DIR/monitoring-assets.tar.gz" -C deploy \
+COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$LOCAL_DIR/monitoring-assets.tar.gz" -C deploy \
   compose-deploy.sh docker-compose.monitoring.yml monitoring.env.example \
   monitoring/render-prometheus-config.sh monitoring/prometheus.yml.tmpl \
   monitoring/prometheus/rules monitoring/alertmanager monitoring/sql \
   monitoring/backup/snapshot.sh monitoring/backup/crontab.example \
-  monitoring/grafana/provisioning monitoring/grafana/dashboards
+  monitoring/grafana/dashboard-preflight.sh monitoring/grafana/provisioning monitoring/grafana/dashboards
 REMOTE_DIR="$(ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" mktemp -d /tmp/sub2api-deploy.XXXXXX)"
 [[ "$REMOTE_DIR" =~ ^/tmp/sub2api-deploy\.[A-Za-z0-9]+$ ]] || { echo 'Unexpected remote staging path' >&2; exit 1; }
 scp -q -o ClearAllForwardings=yes "$LOCAL_DIR/image.tar.gz" "$LOCAL_DIR/monitoring-assets.tar.gz" deploy/remote-deploy.sh "$REMOTE_HOST:$REMOTE_DIR/"

@@ -274,7 +274,7 @@ PASS: 54 generated PromQL parsed; 11 PromQL regression cases passed
 
 面板数包含导航 text 面板。02 的请求表以 PG samples 为主表，LEFT JOIN usage_logs/users/api_keys/accounts/groups，最新在前 `LIMIT 200`；6 段耗时列和请求体大小在同表展示，详情列进入 06。01 的链路占比使用 PG 宽表 + barchart percent 堆叠，等价于 mockup 的单条堆叠条。
 
-当前 Compose 将上述六个 JSON **逐文件**只读挂载到 `/var/lib/grafana/dashboards/v2/`，provider 的 `path` 保持 `/var/lib/grafana/dashboards/v2` 不变；不整目录挂载，避免 `backup/` 下的旧 V1 JSON 被 provider 扫描加载。旧的 `02-chain.json` 已由 `02-requests.json` 取代，历史输出段落保留仅作记录。provider 的 `updateIntervalSeconds: 30` 表示部署脚本替换挂载文件后最多 30s 生效，无需重启 Grafana；30s 对人工更新足够，故保持该值。
+当前 Compose 将上述六个 JSON **逐文件**只读挂载到 `/var/lib/grafana/dashboards/v2/`，provider 的 `path` 保持 `/var/lib/grafana/dashboards/v2` 不变；不整目录挂载，避免 `backup/` 下的旧 V1 JSON 被 provider 扫描加载。旧的 `02-chain.json` 已由 `02-requests.json` 取代，历史输出段落保留仅作记录。provider 的 `updateIntervalSeconds: 30` 只保证对**同一 inode 原地写入**的内容最多 30s 重载；安装器复制、`sed -i` 或临时文件 rename 等替换 inode 后，已有文件 bind mount 仍可能指向旧文件，必须 `./sub2api-compose up -d --no-deps --force-recreate grafana` 重新建立挂载（不能仅等待 provider 扫描）。不要用 `sed -i` 修改 dashboard JSON，应修改生成器后重新生成并校验；部署脚本会重建 Grafana，保留持久卷。源码/卷侧零字节 JSON 与历史 `02-chain.json` 的只读 preflight 和显式人工清理策略见 `MONITORING_RELEASE.md` 的 Dashboard deployment safety。
 
 本地验收命令：
 

@@ -63,7 +63,7 @@
       "id": 2,
       "title": "窗口内请求",
       "type": "stat",
-      "description": "当前时间窗口内 PG 请求样本数；不是客户端缓冲，当前没有在途指标。无样本显示未采集，表格最多展示最新 200 行。",
+      "description": "当前时间窗口内 PG 请求样本数；不是客户端缓冲，当前没有在途指标。无样本显示无流量，表格最多展示最新 200 行。",
       "datasource": {
         "type": "postgres",
         "uid": "sub2api-pg"
@@ -92,7 +92,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -177,7 +177,7 @@
         "defaults": {
           "unit": "percent",
           "decimals": 1,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -273,7 +273,7 @@
         "defaults": {
           "unit": "s",
           "decimals": 2,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -329,7 +329,7 @@
       "id": 5,
       "title": "慢请求 >3s",
       "type": "stat",
-      "description": "当前窗口 total_ms >= 3000 的样本数；无样本显示未采集，0 表示有样本但没有慢请求。慢不等于失败，需结合段耗时和 failure_reason。",
+      "description": "当前窗口 total_ms >= 3000 的样本数；无样本显示无流量，0 表示有样本但没有慢请求。慢不等于失败，需结合段耗时和 failure_reason。",
       "datasource": {
         "type": "postgres",
         "uid": "sub2api-pg"
@@ -358,7 +358,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无流量",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -486,7 +486,7 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "noValue": "未采集",
+          "noValue": "无请求",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -1282,15 +1282,14 @@
           "type": "postgres",
           "uid": "sub2api-pg"
         },
-        "query": "SELECT DISTINCT model AS __value, model AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY 1 LIMIT 500",
-        "definition": "SELECT DISTINCT model AS __value, model AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY 1 LIMIT 500",
+        "query": "SELECT __value, __text\nFROM (\n  SELECT '__all__' AS __value, '全部' AS __text, 0 AS sort_order\n  UNION ALL\n  SELECT model AS __value, model AS __text, 1 AS sort_order\n  FROM (\n    SELECT DISTINCT model\n    FROM ops_request_transfer_samples\n    WHERE $__timeFilter(observed_at) AND model <> '__all__'\n    ORDER BY model\n    LIMIT 500\n  ) models\n) options\nORDER BY sort_order, __value",
+        "definition": "SELECT __value, __text\nFROM (\n  SELECT '__all__' AS __value, '全部' AS __text, 0 AS sort_order\n  UNION ALL\n  SELECT model AS __value, model AS __text, 1 AS sort_order\n  FROM (\n    SELECT DISTINCT model\n    FROM ops_request_transfer_samples\n    WHERE $__timeFilter(observed_at) AND model <> '__all__'\n    ORDER BY model\n    LIMIT 500\n  ) models\n) options\nORDER BY sort_order, __value",
         "refresh": 1,
-        "includeAll": true,
-        "allValue": "__all__",
+        "includeAll": false,
         "multi": false,
         "current": {
-          "text": "All",
-          "value": "$__all"
+          "text": "全部",
+          "value": "__all__"
         },
         "options": []
       },

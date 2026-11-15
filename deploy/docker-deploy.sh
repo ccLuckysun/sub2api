@@ -77,6 +77,7 @@ prepare_compose_helper() {
         monitoring/grafana/provisioning/datasources/prometheus.yml \
         monitoring/grafana/provisioning/datasources/postgres.yml \
         monitoring/grafana/provisioning/dashboards/dashboards.yml \
+        monitoring/grafana/dashboard-preflight.sh \
         monitoring/grafana/dashboards/01-overview.json \
         monitoring/grafana/dashboards/02-requests.json \
         monitoring/grafana/dashboards/03-nodes.json \

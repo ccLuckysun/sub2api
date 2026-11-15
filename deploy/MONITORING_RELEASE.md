@@ -11,6 +11,54 @@
 - 正式发布仍需构建并 push `sun/sub2api:0.0.5-v2mon`，按 `deploy-us1.sh`/`remote-deploy.sh` 流程部署；本仓库未执行 push、生产部署或外部 SMTP。
 
 
+## Dashboard deployment safety
+
+当前 **只保留六张 canonical 看板**。生成器和 2026-11-15 重设计明确用 `02-requests.json` 取代旧 `02-chain.json`；不能补一个不存在的 chain bind mount，也不能把历史链路面板当作第七张看板。旧链路指标/规则仍可供现有看板查询，不代表应恢复旧 JSON。
+
+- `compose-deploy.sh --monitoring`（包括 `--no-start`）、生成的 `sub2api-compose up/start/restart` 与 `deploy-us1.sh` 在启动/构建/上传前运行 `monitoring/grafana/dashboard-preflight.sh --source`：递归检查所有 `.json`，任何零字节文件都打印完整路径并非零退出，缺少六个必需文件或存在旧 chain 也失败。同时用 `--metadata` 检查 provisioning。两种模式都递归拒绝任意大小的 `._*` / `.DS_Store` 文件或目录。此检查只读，不自动忽略或清理文件。
+- Grafana 的 entrypoint 在执行 `/run.sh` **之前**先检查挂载的 `/etc/grafana/provisioning` 元数据，再对真实 `/var/lib/grafana/dashboards/v2` 执行 `--volume` 检查，因此即使绕过部署脚本直接 `docker compose up`，provisioning 元数据、持久卷内非空 AppleDouble JSON 或历史空文件也会阻断 Grafana 进程启动并明确报错。全部通过后原样透传启动参数给 `/run.sh`。其他服务可能已经启动；这不是全栈事务。六个 JSON 使用 `create_host_path: false`，缺少源文件不会被 Docker 自动创建成目录。
+- 普通 bind mount 中被当前非空源文件遮蔽的同名卷文件不会被 provider 读取；检查针对 provider 的实际可见目录。未挂载的历史 `02-chain.json`（空或非空）一定报错。非空历史内容须人工检查/迁移，不自动删除。
+- 不使用 `sed -i`、`mv` 或“临时文件 + rename”直接修改已挂载 dashboard JSON；这些操作会替换 inode，30s provider 扫描仍可能读取旧文件。常规修改应改生成器并重新生成、运行 `--check` 与部署测试，再 `./sub2api-compose up -d --no-deps --force-recreate grafana`。生成器当前对已有文件是原 inode 写入，正常更新最多 30s 重载；写入期间不要重启 Grafana。部署脚本会显式重建 Grafana 以兼容安装器/打包工具替换 inode，保留持久卷，绝不 `down -v`。
+- 所有监控发布包、配置备份与 snapshot tar 使用 `COPYFILE_DISABLE=1`，并排除 `._*` / `.DS_Store`；远端解包也排除旧包内这类元数据。不要通过原地 JSON 文本替换修复环境差异。
+
+### SQL、空值语义与静态检查
+
+请求明细的模型变量用查询返回的普通 `全部 / __all__` 选项（`includeAll: false`），而非 Grafana 的自定义 All 值；五个 SQL 面板统一保留 `${model:sqlstring}`。这样哨兵和具体模型都经过 SQL 字符串转义，不依赖自定义 All 绕过格式化的行为，也不依赖不同 PostgreSQL 插件默认插值是否额外包引号。模型名含单引号也必须按普通字符串匹配，不能拼接成 SQL 片段。用户、API 密钥的数字 `-1` 与 search textbox 的 `:sqlstring` 保持不变。
+
+空数据按面板含义显示 `无流量 / 无失败 / 无异常请求 / 无请求`；数据完整性继续使用 `未采集`，coverage 的 `-1 → 无样本` 映射保持不变。noValue 不是查询错误的判定依据，仍须检查 Grafana 面板错误提示和 PG 日志。入向/出向带宽、上游放大比和 P95 TTFT 使用当前 `$__range`；账号切换保留现有 `increase(...[5m])` 的五分钟计数语义，与标题“账号切换 / 5m”一致。
+
+```sh
+python3 deploy/monitoring/grafana/lint-dashboards.py
+python3 -B -m unittest discover -s deploy/monitoring/grafana -p 'test_lint_dashboards.py'
+python3 deploy/monitoring/grafana/build-dashboards.py --check
+python3 deploy/tests/monitoring-v2-dashboard-test.py --static-only
+python3 -I deploy/tests/monitoring-deploy-test.py MonitoringDeploymentSafety
+```
+
+上述检查已接入 `.github/workflows/grafana-lint.yml`；`--static-only` 明确跳过需要 Docker 的 PromQL 执行，不代表实机验收通过。运行态还须在每张看板默认“全部”和具体用户/API 密钥/模型（包括含单引号的模型）下刷新，检查所有面板无查询错误，Grafana provisioning/PG 日志无相关报错，并通过 `/api/search?type=dash-db` 核对六张 canonical UID。不要为验收向生产灌入模拟样本。
+
+### 历史空文件的人工清理（不是部署脚本的自动行为）
+
+本地先用 `sh deploy/monitoring/grafana/dashboard-preflight.sh --source deploy/monitoring/grafana/dashboards` 检查源码。卷侧错误从 `./sub2api-compose logs grafana` 获取完整路径；确认实际项目的 `grafana_data` 卷名，停止 Grafana 后，以只读 helper 挂载该卷查看 `/var/lib/grafana/dashboards/v2`。**禁止删除整个 dashboards 目录或卷。**
+
+仅在确认 `dashboards/v2/02-chain.json` 是历史零字节普通文件、不是 symlink，且不是当前挂载源时，操作人员可通过单独 helper 将同一卷挂至 `/volume`，运行下述严格限路径检查/清理。`GRAFANA_VOLUME` 必须是人工核实的实际卷名，helper 镜像须已在本机存在（`--pull=never`）；不对非空文件、其他文件或卷执行删除。此命令会修改卷，需明确授权后才能执行。
+
+```sh
+# 只读检查；先停止当前项目 Grafana，避免 provider 与清理并发。
+docker run --rm --pull=never --network none --read-only \
+  --mount "type=volume,src=${GRAFANA_VOLUME:?set verified volume name},dst=/volume,readonly" \
+  --entrypoint sh grafana/grafana:13.3.1 -ec \
+  'find /volume/dashboards/v2 -type f -name "*.json" -size 0c -print'
+# 仅清理明确授权的那个历史空文件；其他错误一律停止并人工处理。
+docker run --rm --pull=never --network none --read-only --user 0 \
+  --mount "type=volume,src=${GRAFANA_VOLUME:?set verified volume name},dst=/volume" \
+  --entrypoint sh grafana/grafana:13.3.1 -ec \
+  'p=/volume/dashboards/v2/02-chain.json; test ! -L "$p"; test -f "$p"; test ! -s "$p"; rm -- "$p"'
+./sub2api-compose up -d --no-deps --force-recreate grafana
+```
+
+本文只给出处理策略；本次代码修改/本地 fixture 测试不执行上述 Docker 清理、不运行远端部署。
+
 ## Binary check (auxiliary only)
 
 ```sh

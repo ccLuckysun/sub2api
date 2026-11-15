@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Validate the redesigned V2 dashboards and run PromQL regression cases."""
+import argparse
 import json
 import re
 import runpy
+import sqlite3
 import subprocess
 import tempfile
 from pathlib import Path
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--static-only', action='store_true',
+                    help='Run dashboard assertions without Docker/PromQL execution')
+args = parser.parse_args()
 
 ROOT = Path(__file__).resolve().parents[2]
 GEN = ROOT / 'deploy/monitoring/grafana/build-dashboards.py'
@@ -97,6 +104,19 @@ for spec in specs:
         assert panel['title'] == src['title']
         assert panel['type'] in ALLOWED_TYPES, (data['uid'], pid, panel['type'])
         assert panel['description'], f'{data["uid"]}/{pid}: empty description'
+        no_value = {
+            'ov_qps': '无流量', 'ov_p95_total': '无流量', 'ov_ttft': '无流量',
+            'ov_in': '无流量', 'ov_out': '无流量', 'ov_amp': '无流量',
+            'ov_fail': '无失败', 'ov_anom': '无异常请求',
+            'rq_count': '无流量', 'rq_rate': '无流量', 'rq_avg': '无流量',
+            'rq_slow': '无流量', 'rq_table': '无请求', 'nd_switch': '无流量',
+            'ov_cov': '未采集', 'ov_coverage': '未采集',
+        }.get(pid)
+        if no_value is not None:
+            assert panel['fieldConfig']['defaults']['noValue'] == no_value, pid
+        if pid == 'nd_switch':
+            assert '[5m]' in panel['targets'][0]['expr']
+            assert '5m' in panel['title']
         assert panel['datasource']['uid'] in (PROM_UID, PG_UID)
         if panel['type'] == 'text':
             assert not panel.get('targets')
@@ -172,8 +192,15 @@ for column in ['body_read_ms', 'wait_ms', 'gateway_ms', 'upstream_ms',
 assert '$__timeFilter(observed_at)' in share_sql
 print('PASS: ov_share barchart/PG/percent with six mutually exclusive phase averages')
 
+# Traffic windows use the selected range; collection coverage keeps its sentinel.
+for pid in ['ov_in', 'ov_out', 'ov_amp', 'ov_ttft']:
+    expr = by_pid[pid]['targets'][0]['expr']
+    assert '[$__range]' in expr, (pid, expr)
+    assert '[5m]' not in expr and '[10m]' not in expr, (pid, expr)
+
 # Coverage panels render -1 as grey 无样本, not 0% or success.
 for pid in ['ov_cov', 'ov_coverage']:
+    assert by_pid[pid]['fieldConfig']['defaults']['noValue'] == '未采集'
     mappings = by_pid[pid]['fieldConfig']['defaults']['mappings']
     assert any(m.get('type') == 'value' and
                m.get('options', {}).get('-1') == {'text': '无样本', 'color': 'gray'}
@@ -222,6 +249,52 @@ assert re.search(r'ORDER BY s\.observed_at DESC LIMIT 200', compact)
 for token in ['$__timeFilter(s.observed_at)', '$user', '$api_key', "'$result'",
               '${model:sqlstring}', '${search:sqlstring}']:
     assert token in sql, token
+# A normal query option, not custom includeAll/allValue, ensures sqlstring
+# formats the sentinel too. Grafana's custom All bypasses the formatter, while
+# its default PostgreSQL formatter auto-quotes includeAll concrete values.
+model_variable = next(v for v in requests['templating']['list'] if v['name'] == 'model')
+assert model_variable.get('includeAll') is False, model_variable
+assert model_variable.get('multi') is False, model_variable
+assert model_variable.get('allValue') in (None, ''), model_variable
+assert model_variable['current']['value'] == '__all__', model_variable
+assert model_variable['current']['text'] == '全部', model_variable
+request_sql = [target['rawSql'] for panel in requests['panels']
+               for target in panel.get('targets', []) if 'rawSql' in target]
+assert len(request_sql) == 5
+model_filter = "(${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})"
+for query in request_sql:
+    assert model_filter in norm_sql(query), query
+    assert "'${model}'" not in query, query
+    assert '($user = -1 OR s.user_id = $user)' in norm_sql(query), query
+    assert '($api_key = -1 OR s.api_key_id = $api_key)' in norm_sql(query), query
+# Exercise the SQL literals promised by :sqlstring, including apostrophes and
+# SQL-like model names. This is not a substitute for live Grafana interpolation.
+with sqlite3.connect(':memory:') as connection:
+    connection.execute('CREATE TABLE ops_request_transfer_samples (model TEXT)')
+    values = ['model-a', 'model-b', "vendor\'s-model", "x\' OR 1=1 --"]
+    connection.executemany('INSERT INTO ops_request_transfer_samples VALUES (?)',
+                           [(value,) for value in values])
+    for selected, count in [('__all__', 4), ('model-a', 1), ('missing', 0),
+                            ("vendor\'s-model", 1), ("x\' OR 1=1 --", 1)]:
+        literal = "'" + selected.replace("'", "''") + "'"
+        predicate = model_filter.replace('${model:sqlstring}', literal)
+        actual = connection.execute('SELECT count(*) FROM ops_request_transfer_samples s WHERE ' + predicate).fetchone()[0]
+        assert actual == count, (selected, actual)
+    model_query = model_variable['query']
+    if isinstance(model_query, dict):
+        model_query = model_query['query']
+    assert '$__timeFilter(observed_at)' in model_query, model_query
+    model_query = model_query.replace('$__timeFilter(observed_at)', '1=1')
+    for empty in (False, True):
+        if empty:
+            connection.execute('DELETE FROM ops_request_transfer_samples')
+        cursor = connection.execute(model_query)
+        columns = [column[0] for column in cursor.description]
+        options = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        sentinel = {'__text': '全部', '__value': '__all__'}
+        assert options[0] == sentinel, options
+        assert options.count(sentinel) == 1, options
+        assert len(options) == (1 if empty else 5), options
 assert table['options']['sortBy'] == [{'displayName': '时间', 'desc': True}]
 links = override_prop(table, '详情', 'links')
 assert override_prop(table, '详情', 'custom.cellOptions') == {'type': 'data-links'}
@@ -336,6 +409,10 @@ for value in [0.96, 0.85, 0, -1]:
 
 queries = [promql(expr) for expr in prom_exprs]
 assert all('vector(1)' not in expr for expr in queries)
+if args.static_only:
+    print(f'PASS: dashboard static regressions; {len(queries)} PromQL expressions prepared')
+    print('SKIP: PromQL parsing/regression execution (--static-only; requires Docker)')
+    raise SystemExit(0)
 with tempfile.TemporaryDirectory(prefix='w5-dashboard-promql-') as tmp:
     directory = Path(tmp)
     (directory / 'queries.yml').write_text(json.dumps({

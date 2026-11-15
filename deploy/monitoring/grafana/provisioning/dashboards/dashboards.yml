@@ -16,9 +16,9 @@ providers:
     folderUid: sub2api-folder
     type: file
     disableDeletion: false
-    # Grafana 文件 provider 每 30s 扫描一次 v2 目录。部署脚本替换只读挂载的
-    # JSON 后，最多 30s 生效，无需重启 Grafana；对人工更新看板足够。若要求
-    # 秒级生效，可降到 10s，但会增加小机器上的目录扫描/重载频率，故保持 30s。
+    # Grafana 文件 provider 每 30s 扫描一次 v2 目录。同 inode 原地写入的 JSON
+    # 最多 30s 生效；若安装工具通过 rename 替换 inode，必须重建 Grafana 文件绑定。
+    # 部署脚本已显式 force-recreate；常规扫描保持 30s，避免小机器频繁重载。
     updateIntervalSeconds: 30
     allowUiUpdates: false
     options:

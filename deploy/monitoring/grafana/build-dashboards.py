@@ -161,11 +161,11 @@ DASHBOARDS = [
             P("ov_ttft", "stat", "P95 TTFT", 3, 4, unit="s", decimals=2,
               desc="最终 attempt 首次发送到尾响应首字节；与 upstream 重叠，不参与段堆叠。无首字节不观察。"),
             P("ov_in", "stat", "入向带宽", 3, 4, unit="Bps", decimals=2,
-              desc="客户端请求体 in_wire 实际读取字节速率；gzip 按压缩后长度计，不使用 Content-Length。"),
+              desc="当前 $__range 内客户端请求体 in_wire 实际读取字节平均速率；gzip 按压缩后长度计，不使用 Content-Length。"),
             P("ov_out", "stat", "出向带宽", 3, 4, unit="Bps", decimals=2,
-              desc="实际写给客户端的响应体速率。客户端慢读/断开会让该值低于上游返回量。"),
+              desc="当前 $__range 内实际写给客户端的响应体平均速率。客户端慢读/断开会让该值低于上游返回量。"),
             P("ov_amp", "stat", "上游放大比", 3, 4, unit="x", decimals=2,
-              desc="resp_upstream / resp_downstream。>1.2 可能是客户端 abort、协议转换或流式重写；不能单独定性截断。"),
+              desc="当前 $__range 内 resp_upstream / resp_downstream。>1.2 可能是客户端 abort、协议转换或流式重写；不能单独定性截断。"),
             P("ov_cov", "stat", "数据完整性", 3, 4, unit="percentunit", decimals=1,
               desc="M-9 request 覆盖率。0~1 比例；-1 表示无样本，不是 0% 或成功率。"),
             P("ov_share", "barchart", "链路段耗时占比", 9, 10, ds="pg", unit="percentunit", decimals=1,
@@ -188,13 +188,13 @@ DASHBOARDS = [
             P("rq_nav", "text", "", 24, 2, content=nav("requests"), mode="html", nav=True,
               desc="模块导航。Grafana 原生没有 Tab，使用文本链接等价实现；当前页加粗。"),
             P("rq_count", "stat", "窗口内请求", 6, 3, ds="pg", unit="short", decimals=0,
-              desc="当前时间窗口内 PG 请求样本数；不是客户端缓冲，当前没有在途指标。无样本显示未采集，表格最多展示最新 200 行。"),
+              desc="当前时间窗口内 PG 请求样本数；不是客户端缓冲，当前没有在途指标。无样本显示无流量，表格最多展示最新 200 行。"),
             P("rq_rate", "stat", "成功率", 6, 3, ds="pg", unit="percent", decimals=1,
               desc="当前窗口样本中 result=success 的比例。与 M-10 网关请求口径不同，不可直接对账。"),
             P("rq_avg", "stat", "平均总耗时", 6, 3, ds="pg", unit="s", decimals=2,
               desc="当前窗口 total_ms 平均值。均值会被长流式请求拉高，排查看 P95/单请求。"),
             P("rq_slow", "stat", "慢请求 >3s", 6, 3, ds="pg", unit="short", decimals=0,
-              desc="当前窗口 total_ms >= 3000 的样本数；无样本显示未采集，0 表示有样本但没有慢请求。慢不等于失败，需结合段耗时和 failure_reason。"),
+              desc="当前窗口 total_ms >= 3000 的样本数；无样本显示无流量，0 表示有样本但没有慢请求。慢不等于失败，需结合段耗时和 failure_reason。"),
             P("rq_legend", "text", "", 24, 2, content=phase_legend(), mode="html", nav=True,
               desc="链路分段颜色图例。6 段互斥，之和等于总耗时；TTFT（headers_end）与上游重叠，不参与堆叠。"),
             P("rq_table", "table", "实时请求", 24, 24, ds="pg", cell_height="md", footer_show=True,
@@ -331,6 +331,10 @@ DASHBOARDS = [
 # ---------------------------------------------------------------------------
 # Shared filters
 # ---------------------------------------------------------------------------
+# The model sentinel is an ordinary query option, not Grafana's custom All:
+# custom All bypasses :sqlstring, while manually quoting includeAll variables
+# double-quotes concrete models. Normal options let :sqlstring safely quote
+# both __all__ and model names containing apostrophes.
 REQ_STAT_FILTER = """$__timeFilter(s.observed_at)
   AND ($user = -1 OR s.user_id = $user)
   AND ($api_key = -1 OR s.api_key_id = $api_key)
@@ -459,10 +463,10 @@ SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) / 1000.0 AS "P95 �
 FROM ops_request_transfer_samples
 WHERE $__timeFilter(observed_at)
 """)],
-    "ov_ttft": [dict(kind="prom", expr='histogram_quantile(0.95, sum by (le)(rate(sub2api_request_phase_seconds_bucket{phase="headers_end"}[10m])))', legend="P95 TTFT")],
-    "ov_in": [dict(kind="prom", expr='sum(rate(sub2api_transfer_bytes_total{direction="in_wire"}[5m]))', legend="入向带宽")],
-    "ov_out": [dict(kind="prom", expr='sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[5m]))', legend="出向带宽")],
-    "ov_amp": [dict(kind="prom", expr='(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[10m])), 1)', legend="上游放大比")],
+    "ov_ttft": [dict(kind="prom", expr='histogram_quantile(0.95, sum by (le)(rate(sub2api_request_phase_seconds_bucket{phase="headers_end"}[$__range])))', legend="P95 TTFT")],
+    "ov_in": [dict(kind="prom", expr='sum(rate(sub2api_transfer_bytes_total{direction="in_wire"}[$__range]))', legend="入向带宽")],
+    "ov_out": [dict(kind="prom", expr='sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[$__range]))', legend="出向带宽")],
+    "ov_amp": [dict(kind="prom", expr='(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[$__range]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[$__range])), 1)', legend="上游放大比")],
     "ov_cov": [dict(kind="prom", expr='min(sub2api_metric_coverage_ratio{kind="request"})', legend="数据完整性")],
     "ov_share": [dict(kind="pg", sql="""
 SELECT '链路段耗时占比' AS "分类",
@@ -893,6 +897,21 @@ LIMIT 1
 # ---------------------------------------------------------------------------
 # Variables
 # ---------------------------------------------------------------------------
+MODEL_OPTIONS_SQL = """SELECT __value, __text
+FROM (
+  SELECT '__all__' AS __value, '全部' AS __text, 0 AS sort_order
+  UNION ALL
+  SELECT model AS __value, model AS __text, 1 AS sort_order
+  FROM (
+    SELECT DISTINCT model
+    FROM ops_request_transfer_samples
+    WHERE $__timeFilter(observed_at) AND model <> '__all__'
+    ORDER BY model
+    LIMIT 500
+  ) models
+) options
+ORDER BY sort_order, __value"""
+
 VARIABLES = {
     "user": dict(
         name="user", label="用户", type="query", datasource=PG,
@@ -917,10 +936,10 @@ VARIABLES = {
     ),
     "model": dict(
         name="model", label="模型", type="query", datasource=PG,
-        query="SELECT DISTINCT model AS __value, model AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY 1 LIMIT 500",
-        definition="SELECT DISTINCT model AS __value, model AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY 1 LIMIT 500",
-        refresh=1, includeAll=True, allValue="__all__", multi=False,
-        current={"text": "All", "value": "$__all"}, options=[],
+        query=MODEL_OPTIONS_SQL,
+        definition=MODEL_OPTIONS_SQL,
+        refresh=1, includeAll=False, multi=False,
+        current={"text": "全部", "value": "__all__"}, options=[],
     ),
     "search": dict(
         name="search", label="搜索", type="textbox",
@@ -972,6 +991,21 @@ FAILURE_STATUS_MAP = [
     regex_map("^(?:失败 · )?请求被拒$", "请求被拒", GRAY),
     regex_map("^(?:失败 · )?未知$", "未知", GRAY),
 ]
+
+# Empty traffic/sample queries are not evidence of missing instrumentation.
+# Coverage, host collection, account configuration and request-detail fields
+# retain 未采集; coverage's explicit -1 mapping remains 无样本.
+NO_VALUE = {
+    **dict.fromkeys([
+        "ov_qps", "ov_success", "ov_p95_total", "ov_ttft", "ov_in", "ov_out",
+        "ov_amp", "ov_share", "ov_acct",
+        "rq_count", "rq_rate", "rq_avg", "rq_slow",
+        "nd_retry", "nd_switch", "nd_accounts", "nd_models",
+    ], "无流量"),
+    "ov_fail": "无失败",
+    "ov_anom": "无异常请求",
+    "rq_table": "无请求",
+}
 
 STYLE = {
     # First step (value None) is the no-data/base colour: gray so that a
@@ -1303,7 +1337,7 @@ def make_panel(p, panel_id, x, y):
     defaults = {
         "unit": style.get("unit", "short"),
         "decimals": style.get("decimals", 0),
-        "noValue": "未采集",
+        "noValue": NO_VALUE.get(p["id"], "未采集"),
         "mappings": style.get("mappings", []),
         "thresholds": style.get("thresholds", thresholds((GREEN, None))),
     }
@@ -1501,7 +1535,10 @@ def main():
             if not path.exists() or path.read_text() != result:
                 raise SystemExit(f"OUT OF DATE: {path}")
         else:
-            path.write_text(result)
+            # Write in place: provisioned dashboard files may be bind-mounted.
+            # Atomic replacement would leave the mount pointing at the old inode.
+            with path.open("w", encoding="utf-8") as output:
+                output.write(result)
     print("PASS: 5 main dashboards + 1 request drilldown " + ("match generator" if args.check else "generated"))
 
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """AC-4: inspect provisioned dashboards and SELECT against a local Docker PG.
 
-Never creates fixtures, roles or panels; never prints emails, key names or keys.
+Never creates fixtures, roles or panels in the local PG; static checks use an
+isolated in-memory database. Never prints emails, key names or keys.
 Without grafana_ro, use the local container role with both session and explicit
 transaction read-only guards. SQL timings include docker exec/psql overhead;
 Grafana interpolation is modeled, not a browser/UI timing acceptance test.
@@ -11,6 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import time
 
@@ -19,6 +21,7 @@ USER_SQL = ('SELECT id AS __value, COALESCE(email, id::text) AS __text '
             'FROM users ORDER BY 2 LIMIT 1000')
 KEY_SQL = ('SELECT id AS __value, name AS __text FROM api_keys '
            'WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000')
+MODEL_FILTER = "(${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})"
 
 
 def panels(items):
@@ -47,6 +50,44 @@ def assert_numeric_variable(v, name, sql):
     print(f'VARIABLE {name}: numeric query PASS; SQL={sql}')
 
 
+def assert_model_variable(v):
+    assert v['type'] == 'query' and v['multi'] is False
+    assert v['includeAll'] is False and 'allValue' not in v
+    assert v['current'] == {'text': '全部', 'value': '__all__'}
+    assert v['datasource'] == PG_DS
+    assert v['query'] == v['definition']
+    assert 'SELECT DISTINCT model' in v['query'] and 'LIMIT 500' in v['query']
+    assert '$__timeFilter(observed_at)' in v['query']
+    # An ordinary sentinel option must pass through :sqlstring just like a
+    # concrete model. Custom All bypasses formatting; manual outer quotes can
+    # double-quote includeAll values. Model SQL-string formatting, not the UI.
+    query = v['query'].replace('$__timeFilter(observed_at)', '1=1')
+    values = ['model-a', 'model-b', "vendor's-model", "x' OR 1=1 --",
+              '__all__', 'model-a', None]
+    with sqlite3.connect(':memory:') as connection:
+        connection.execute('CREATE TABLE ops_request_transfer_samples (model TEXT)')
+        connection.executemany('INSERT INTO ops_request_transfer_samples VALUES (?)',
+                               [(value,) for value in values])
+        options = connection.execute(query).fetchall()
+        real_models = sorted({value for value in values if value not in (None, '__all__')})
+        assert options == [('__all__', '全部')] + [(value, value) for value in real_models], options
+        for selected, count in [('__all__', len(values)), ('model-a', 2), ('missing', 0),
+                                ("vendor's-model", 1), ("x' OR 1=1 --", 1)]:
+            literal = "'" + selected.replace("'", "''") + "'"
+            predicate = MODEL_FILTER.replace('${model:sqlstring}', literal)
+            actual = connection.execute('SELECT count(*) FROM ops_request_transfer_samples s '
+                                        'WHERE ' + predicate).fetchone()[0]
+            assert actual == count, (selected, actual)
+        connection.execute('DELETE FROM ops_request_transfer_samples')
+        assert connection.execute(query).fetchall() == [('__all__', '全部')]
+        connection.executemany('INSERT INTO ops_request_transfer_samples VALUES (?)',
+                               [(f'model-{index:03}',) for index in range(600)])
+        options = connection.execute(query).fetchall()
+        assert options[0] == ('__all__', '全部') and len(options) == 501
+    print('VARIABLE model: ordinary All first/unique/empty-safe, 500 real models; '
+          'All/concrete/apostrophe/SQL-like literal expansion PASS')
+
+
 def validate_dashboards():
     paths = sorted((ROOT / 'deploy/monitoring/grafana/dashboards').glob('0*.json'))
     assert len(paths) == 6, [p.name for p in paths]
@@ -71,11 +112,7 @@ def validate_dashboards():
             assert result['type'] == 'custom' and result['multi'] is False
             assert result['includeAll'] is False
             assert result['query'] == result['definition'] == '全部 : all,成功 : success,失败 : failure'
-            model = variables['model']
-            assert model['type'] == 'query' and model['multi'] is False
-            assert model['includeAll'] is True and model['allValue'] == '__all__'
-            assert model['datasource'] == PG_DS
-            assert 'SELECT DISTINCT model' in model['query'] and 'LIMIT 500' in model['query']
+            assert_model_variable(variables['model'])
             search = variables['search']
             assert search['type'] == 'textbox' and search['includeAll'] is False
             assert search['multi'] is False
@@ -118,6 +155,10 @@ def validate_dashboards():
                 elif uid == 'sub2api-v2-requests' and sql:
                     assert refs <= {'user', 'api_key'}, (panel['id'], refs)
                     assert '$user' in sql and '$api_key' in sql
+                    assert MODEL_FILTER in sql, (panel['id'], sql)
+                    assert '${model}' not in sql, (panel['id'], sql)
+                    if '${search' in sql:
+                        assert '${search:sqlstring}' in sql and '${search}' not in sql
                 else:
                     assert not refs, f'Unexpected user/key filter on {uid}/{panel["id"]}'
     assert seen == EXPECTED_UIDS, seen
@@ -157,7 +198,7 @@ class ReadOnlyPG:
 
 def interpolate(sql, user, key, start, end):
     # SQL is repository-owned; values are integers selected by this test.
-    sql = re.sub(r'\$__timeFilter\((\w+)\)',
+    sql = re.sub(r'\$__timeFilter\(([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\)',
                  lambda m: f'{m[1]} BETWEEN to_timestamp({start}) AND to_timestamp({end})', sql)
     sql = re.sub(r"\$__timeGroupAlias\((\w+),'5m'\)",
                  lambda m: f'floor(extract(epoch from {m[1]})/300)*300 AS "time"', sql)
@@ -167,12 +208,32 @@ def interpolate(sql, user, key, start, end):
     return sql
 
 
+def validate_interpolation():
+    for column in ['created_at', 'ul.created_at', 'public.usage_logs.created_at', '_t._column2']:
+        template = f'SELECT 1 WHERE $__timeFilter({column}) AND user_id=$user AND api_key_id=$api_key'
+        expected = (f'SELECT 1 WHERE {column} BETWEEN to_timestamp(100) AND to_timestamp(200) '
+                    'AND user_id=1 AND api_key_id=11')
+        assert interpolate(template, 1, 11, 100, 200) == expected, column
+    for macro in ['$__timeFilter(ul.created_at + 1)', '$__timeFilter(ul..created_at)',
+                  '$__unsupported(created_at)']:
+        try:
+            interpolate('SELECT ' + macro, 1, 11, 100, 200)
+        except AssertionError as error:
+            assert 'Unexpanded Grafana macro:' in str(error), error
+        else:
+            raise AssertionError(f'Unsupported macro accepted: {macro}')
+    assert interpolate("SELECT $__timeGroupAlias(created_at,'5m')", 1, 11, 100, 200) == (
+        'SELECT floor(extract(epoch from created_at)/300)*300 AS "time"')
+    print('INTERPOLATION PASS: qualified/unqualified identifiers; unsupported macros rejected; time grouping retained')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--container', help='Local PostgreSQL Docker container')
     parser.add_argument('--static-only', action='store_true',
                         help='Validate dashboard JSON only; do not run SQL')
     args = parser.parse_args()
+    validate_interpolation()
     queries = validate_dashboards()
     if args.static_only:
         return 0
@@ -247,10 +308,14 @@ def main():
         for ks, key in choices_k:
             for panel_id, title, template in queries:
                 sql = interpolate(template, user, key, start, end)
-                # Preserve result shape and filter fields without returning row contents.
+                # Preserve numeric metrics and result shape, never user/key labels.
+                metric = {2: '活跃用户', 3: '今日请求', 4: '今日 Token',
+                          5: '今日成本', 6: '请求', 7: '请求'}[panel_id]
                 summary = ("SELECT json_build_object('rows',count(*),'nonempty_rows',"
-                           "count(*) FILTER (WHERE v <> '{}'::jsonb),'max_requests',max((v->>'requests')::bigint),"
-                           "'total_requests',sum((v->>'requests')::bigint)) "
+                           "count(*) FILTER (WHERE v <> '{}'::jsonb),"
+                           "'max_requests',max(COALESCE(v->>'请求',v->>'今日请求')::bigint),"
+                           "'total_requests',sum(COALESCE(v->>'请求',v->>'今日请求')::bigint),"
+                           f"'value',sum((v->>'{metric}')::numeric)) "
                            f"FROM (SELECT jsonb_strip_nulls(to_jsonb(q)) AS v FROM ({sql}) q) summary")
                 try:
                     got, elapsed = db.query(f'panel-{panel_id}/{us}/{ks}', summary)

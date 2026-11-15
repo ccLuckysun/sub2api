@@ -86,6 +86,11 @@ services:
   # ---------------------------------------------------------------
   grafana:
     image: grafana/grafana:13.3.1
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - sh /etc/grafana/dashboard-preflight.sh --metadata /etc/grafana/provisioning && sh /etc/grafana/dashboard-preflight.sh --volume /var/lib/grafana/dashboards/v2 && exec /run.sh "$$@"
+      - grafana-dashboard-preflight
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -106,13 +111,44 @@ services:
     volumes:
       # provisioning 目录只读挂载：数据源 + 看板 provider 随容器启动生效
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      # 看板 JSON 目录：dashboards.yml provider 指向 /var/lib/grafana/dashboards
-      - ./monitoring/grafana/dashboards/01-overview.json:/var/lib/grafana/dashboards/v2/01-overview.json:ro
-      - ./monitoring/grafana/dashboards/02-requests.json:/var/lib/grafana/dashboards/v2/02-requests.json:ro
-      - ./monitoring/grafana/dashboards/03-nodes.json:/var/lib/grafana/dashboards/v2/03-nodes.json:ro
-      - ./monitoring/grafana/dashboards/04-users.json:/var/lib/grafana/dashboards/v2/04-users.json:ro
-      - ./monitoring/grafana/dashboards/05-host.json:/var/lib/grafana/dashboards/v2/05-host.json:ro
-      - ./monitoring/grafana/dashboards/06-request.json:/var/lib/grafana/dashboards/v2/06-request.json:ro
+      # Validate the provider directory (including stale grafana_data artifacts)
+      # before /run.sh starts Grafana. Missing bind sources must never become dirs.
+      - type: bind
+        source: ./monitoring/grafana/dashboard-preflight.sh
+        target: /etc/grafana/dashboard-preflight.sh
+        read_only: true
+        bind: {create_host_path: false}
+      # Six canonical dashboards; retired 02-chain.json is deliberately NOT mounted.
+      - type: bind
+        source: ./monitoring/grafana/dashboards/01-overview.json
+        target: /var/lib/grafana/dashboards/v2/01-overview.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./monitoring/grafana/dashboards/02-requests.json
+        target: /var/lib/grafana/dashboards/v2/02-requests.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./monitoring/grafana/dashboards/03-nodes.json
+        target: /var/lib/grafana/dashboards/v2/03-nodes.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./monitoring/grafana/dashboards/04-users.json
+        target: /var/lib/grafana/dashboards/v2/04-users.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./monitoring/grafana/dashboards/05-host.json
+        target: /var/lib/grafana/dashboards/v2/05-host.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./monitoring/grafana/dashboards/06-request.json
+        target: /var/lib/grafana/dashboards/v2/06-request.json
+        read_only: true
+        bind: {create_host_path: false}
       - grafana_data:/var/lib/grafana
     ports:
       # 本地查看用，仅绑 127.0.0.1；生产部署须收紧（SSH 隧道或防火墙）

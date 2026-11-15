@@ -1,0 +1,1 @@
+# Preserve Grafana's optional plugin provisioning directory in read-only mounts.

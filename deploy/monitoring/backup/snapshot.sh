@@ -81,7 +81,7 @@ STAMP="$(date '+%Y%m%dT%H%M%S%z')"
 TMP_TARBALL="$BACKUP_DIR/${TMP_PREFIX}${STAMP}-${SNAP_NAME}.tar.gz"
 ARCHIVE="$BACKUP_DIR/prometheus-snapshot-${STAMP}-${SNAP_NAME}.tar.gz"
 log "archiving $SNAP_NAME"
-if ! tar -czf "$TMP_TARBALL" -C "$SNAPSHOT_DIR" "$SNAP_NAME"; then
+if ! COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$TMP_TARBALL" -C "$SNAPSHOT_DIR" "$SNAP_NAME"; then
     fail "tar failed: $TMP_TARBALL"
 fi
 if [ -e "$ARCHIVE" ]; then
