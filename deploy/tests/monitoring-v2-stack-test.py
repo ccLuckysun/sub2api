@@ -40,14 +40,14 @@ with tempfile.TemporaryDirectory(prefix='sub2api-w5-') as tmp:
             return json.loads(r.stdout) if r.returncode==0 else None
         for _ in range(120):
             data=get('/api/search?type=dash-db')
-            if data and len(data)==5:break
+            if data and len(data)==6:break
             time.sleep(.5)
-        else:raise RuntimeError('five dashboards were not provisioned')
-        expected=['sub2api-v2-'+x for x in ['overview','chain','nodes','users','host']]
+        else:raise RuntimeError('six dashboards were not provisioned')
+        expected=['sub2api-v2-'+x for x in ['overview','requests','nodes','users','host','request']]
         assert sorted(x['uid'] for x in data)==sorted(expected), data
-        for uid,n in zip(expected,[16,19,9,6,15]):
+        for uid,n in zip(expected,[14,7,8,7,23,10]):
             d=get('/api/dashboards/uid/'+uid)['dashboard'];assert len(d['panels'])==n
-        print('PASS: native Grafana provisioned exactly five V2 dashboards (16/19/9/6/15); V1 absent',flush=True)
+        print('PASS: native Grafana provisioned exactly six V2 dashboards (14/7/8/7/23/10); V1 absent',flush=True)
         datasource=get('/api/datasources/uid/sub2api-pg')
         assert datasource['user']=='grafana_ro' and datasource['secureJsonFields']['password'] is True
         print('PASS: PG datasource provisioned with secure password and grafana_ro',flush=True)

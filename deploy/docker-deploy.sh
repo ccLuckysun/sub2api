@@ -78,10 +78,11 @@ prepare_compose_helper() {
         monitoring/grafana/provisioning/datasources/postgres.yml \
         monitoring/grafana/provisioning/dashboards/dashboards.yml \
         monitoring/grafana/dashboards/01-overview.json \
-        monitoring/grafana/dashboards/02-chain.json \
+        monitoring/grafana/dashboards/02-requests.json \
         monitoring/grafana/dashboards/03-nodes.json \
         monitoring/grafana/dashboards/04-users.json \
-        monitoring/grafana/dashboards/05-host.json; do
+        monitoring/grafana/dashboards/05-host.json \
+        monitoring/grafana/dashboards/06-request.json; do
         fetch_asset "$asset" "$asset"
     done
     chmod +x compose-deploy.sh monitoring/render-prometheus-config.sh monitoring/backup/snapshot.sh

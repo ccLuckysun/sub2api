@@ -108,10 +108,11 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       # 看板 JSON 目录：dashboards.yml provider 指向 /var/lib/grafana/dashboards
       - ./monitoring/grafana/dashboards/01-overview.json:/var/lib/grafana/dashboards/v2/01-overview.json:ro
-      - ./monitoring/grafana/dashboards/02-chain.json:/var/lib/grafana/dashboards/v2/02-chain.json:ro
+      - ./monitoring/grafana/dashboards/02-requests.json:/var/lib/grafana/dashboards/v2/02-requests.json:ro
       - ./monitoring/grafana/dashboards/03-nodes.json:/var/lib/grafana/dashboards/v2/03-nodes.json:ro
       - ./monitoring/grafana/dashboards/04-users.json:/var/lib/grafana/dashboards/v2/04-users.json:ro
       - ./monitoring/grafana/dashboards/05-host.json:/var/lib/grafana/dashboards/v2/05-host.json:ro
+      - ./monitoring/grafana/dashboards/06-request.json:/var/lib/grafana/dashboards/v2/06-request.json:ro
       - grafana_data:/var/lib/grafana
     ports:
       # 本地查看用，仅绑 127.0.0.1；生产部署须收紧（SSH 隧道或防火墙）

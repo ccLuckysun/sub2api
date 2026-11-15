@@ -84,6 +84,8 @@ func TestOpsMetaRequestIDDimensionsFailoverAndCoverage(t *testing.T) {
 	sample := <-samples
 	require.Equal(t, "client-x-request", sample.RequestID)
 	require.NotEqual(t, "internal-client-uuid", sample.RequestID)
+	require.NotNil(t, sample.ClientRequestID)
+	require.Equal(t, "internal-client-uuid", *sample.ClientRequestID)
 	require.EqualValues(t, 11, *sample.UserID)
 	require.EqualValues(t, 22, *sample.APIKeyID)
 	require.EqualValues(t, 55, *sample.AccountID)
@@ -141,6 +143,40 @@ func TestOpsMetaNoRecorderIsNoop(t *testing.T) {
 	attachOpsRequestMeta(c, &service.APIKey{ID: 22}, 11, "raw-model", &service.Account{ID: 33})
 	require.Same(t, before, c.Request)
 	require.Nil(t, monitoring.RecorderFromContext(c.Request.Context()))
+}
+func TestOpsMetaClientRequestIDCorrelation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{"present", "correlation-uuid", "correlation-uuid"},
+		{"trimmed", "  correlation-uuid  ", "correlation-uuid"},
+		{"missing", nil, ""},
+		{"non-string ignored", 42, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metrics, err := monitoring.NewOpsMetrics(prometheus.NewRegistry())
+			require.NoError(t, err)
+			samples := make(metaSampleSink, 1)
+			ctx := monitoring.WithOpsRecorderDependencies(context.Background(), nil, nil, samples)
+			ctx, rec := monitoring.BeginGatewayRequest(ctx, "/v1/messages", metrics)
+			if tc.value != nil {
+				ctx = context.WithValue(ctx, ctxkey.ClientRequestID, tc.value)
+			}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/v1/messages", nil).WithContext(ctx)
+			attachOpsRequestMeta(c, nil, 0, "", nil)
+			rec.Finalize(monitoring.FinalizeInput{Status: 200})
+			sample := <-samples
+			if tc.want == "" {
+				require.Nil(t, sample.ClientRequestID)
+				return
+			}
+			require.NotNil(t, sample.ClientRequestID)
+			require.Equal(t, tc.want, *sample.ClientRequestID)
+		})
+	}
 }
 func TestOpsMetaFallbackGroupUpdatesWholeSnapshot(t *testing.T) {
 	registry := prometheus.NewRegistry()

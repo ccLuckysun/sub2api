@@ -8,7 +8,7 @@
   "timezone": "browser",
   "refresh": "30s",
   "time": {
-    "from": "now-6h",
+    "from": "now-15m",
     "to": "now"
   },
   "tags": [
@@ -18,79 +18,61 @@
   "panels": [
     {
       "id": 1,
-      "title": "采集目标健康",
-      "type": "stat",
-      "description": "只看抓取目标是否可达，不代表业务健康。alertmanager 未部署时该目标不存在，需按实际 job 调整。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "title": "",
+      "type": "text",
+      "description": "模块导航。Grafana 原生没有 Tab，使用文本链接等价实现；当前页加粗。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
       },
       "gridPos": {
+        "h": 2,
+        "w": 24,
         "x": 0,
-        "y": 0,
-        "w": 4,
-        "h": 4
+        "y": 0
       },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(min(up) by (job)) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (min(up) by (job)))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        }
-      ],
+      "targets": [],
       "interval": "15s",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "decimals": 0,
           "noValue": "未采集",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#3ecf8e",
                 "value": null
               }
             ]
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
-      "options": {}
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"display:flex;align-items:center;flex-wrap:wrap\"><a href=\"/d/sub2api-v2-overview\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:600;background:#1c2229;color:#f4f5f5;border:1px solid #323a43\">01 总览</a><a href=\"/d/sub2api-v2-requests\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:500;background:transparent;color:#828c97;border:1px solid transparent\">02 请求明细</a><a href=\"/d/sub2api-v2-nodes\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:500;background:transparent;color:#828c97;border:1px solid transparent\">03 上游节点</a><a href=\"/d/sub2api-v2-users\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:500;background:transparent;color:#828c97;border:1px solid transparent\">04 用户与密钥</a><a href=\"/d/sub2api-v2-host\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:500;background:transparent;color:#828c97;border:1px solid transparent\">05 宿主与应用</a></div>",
+        "codeLanguage": "plaintext",
+        "codeShowLineNumbers": false,
+        "renderMode": "once"
+      }
     },
     {
       "id": 2,
-      "title": "入向带宽",
+      "title": "网关 QPS",
       "type": "stat",
-      "description": "客户端请求体进入网关的速率。gzip 请求按压缩后长度计；不含响应方向。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "description": "网关请求速率（含 0-attempt 失败）；不是上游 attempt 速率。重试会让上游 attempt 高于此值。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
       },
       "gridPos": {
-        "x": 4,
-        "y": 0,
-        "w": 4,
-        "h": 4
+        "h": 4,
+        "w": 3,
+        "x": 0,
+        "y": 2
       },
       "targets": [
         {
@@ -99,26 +81,31 @@
             "type": "prometheus",
             "uid": "sub2api-prometheus"
           },
-          "expr": "(sum(rate(sub2api_transfer_bytes_total{direction=\"in_wire\"}[5m]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum(rate(sub2api_transfer_bytes_total{direction=\"in_wire\"}[5m]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
+          "expr": "sum(rate(sub2api_gateway_requests_total[$__rate_interval]))",
+          "legendFormat": "网关 QPS",
+          "range": false,
           "instant": true
         }
       ],
       "interval": "15s",
       "fieldConfig": {
         "defaults": {
-          "unit": "Bps",
+          "unit": "reqps",
+          "decimals": 1,
           "noValue": "未采集",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#3ecf8e",
                 "value": null
               }
             ]
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e6e9ed"
           }
         },
         "overrides": [
@@ -136,144 +123,41 @@
           }
         ]
       },
-      "options": {}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 26,
+          "titleSize": 10
+        }
+      }
     },
     {
       "id": 3,
-      "title": "出向带宽",
-      "type": "stat",
-      "description": "实际写给客户端的响应体字节速率。客户端慢读/断开会让该值低于上游返回量。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 8,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[5m]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[5m]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "Bps",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 4,
-      "title": "上游放大比",
-      "type": "stat",
-      "description": "上游回了多少、客户端实际收到多少的比值。>1.2 说明下游少于上游，可能是客户端 abort、协议转换或流式重写；不能单独定性为截断。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "((sum(rate(sub2api_transfer_bytes_total{direction=\"resp_upstream\"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[10m])), 1)) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() ((sum(rate(sub2api_transfer_bytes_total{direction=\"resp_upstream\"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[10m])), 1)))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "x",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 5,
       "title": "成功率（1h）",
       "type": "stat",
-      "description": "5xx 占全部 HTTP 请求的比例，含管理接口与认证失败。业务失败（SSE 已开始输出后失败）不一定改状态码，需结合 02 的失败根因看。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "description": "1h 内 M-10 成功网关请求占比。业务失败可能发生在已写出 200 的 SSE 中，不能只看 HTTP 5xx。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
       },
       "gridPos": {
-        "x": 16,
-        "y": 0,
-        "w": 4,
-        "h": 4
+        "h": 4,
+        "w": 3,
+        "x": 3,
+        "y": 2
       },
       "targets": [
         {
@@ -282,667 +166,9 @@
             "type": "prometheus",
             "uid": "sub2api-prometheus"
           },
-          "expr": "((1 - sum(rate(sub2api_http_requests_total{status_code=~\"5..\"}[1h])) / clamp_min(sum(rate(sub2api_http_requests_total[1h])),1e-9))*100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() ((1 - sum(rate(sub2api_http_requests_total{status_code=~\"5..\"}[1h])) / clamp_min(sum(rate(sub2api_http_requests_total[1h])),1e-9))*100))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 6,
-      "title": "P95 TTFT",
-      "type": "stat",
-      "description": "最终 attempt 首次发送至其首字节；与 upstream 重叠，无首字节不观察。不得与段耗时相加。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 20,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(histogram_quantile(0.95, sum by (le) (rate(sub2api_request_phase_seconds_bucket{phase=\"headers_end\"}[10m])))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (histogram_quantile(0.95, sum by (le) (rate(sub2api_request_phase_seconds_bucket{phase=\"headers_end\"}[10m])))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 7,
-      "title": "链路流量漏斗",
-      "type": "timeseries",
-      "description": "四个关键方向的字节速率。漏斗不是严格递减：上游响应可能大于请求体，下游又可能小于上游。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum by (direction) (rate(sub2api_transfer_bytes_total[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (direction) (rate(sub2api_transfer_bytes_total[$__rate_interval]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "Bps",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 8,
-      "title": "分层错误瀑布",
-      "type": "timeseries",
-      "description": "按 result 堆叠的失败构成。看“谁在涨”，不要把所有非 2xx 混在一起。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum by (result) (rate(sub2api_gateway_requests_total{result!=\"success\"}[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (result) (rate(sub2api_gateway_requests_total{result!=\"success\"}[$__rate_interval]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 9,
-      "title": "请求速率 QPS",
-      "type": "timeseries",
-      "description": "网关请求与上游尝试分开：重试会让上游尝试高于网关请求。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 12,
-        "w": 6,
-        "h": 7
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum(rate(sub2api_gateway_requests_total[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum(rate(sub2api_gateway_requests_total[$__rate_interval]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": false
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum(rate(sub2api_upstream_requests_total[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum(rate(sub2api_upstream_requests_total[$__rate_interval]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 10,
-      "title": "4xx / 5xx 速率",
-      "type": "timeseries",
-      "description": "V1 HTTP 指标口径，含管理接口；与 02 的业务失败根因不可直接对账。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 6,
-        "y": 12,
-        "w": 6,
-        "h": 7
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum by (status_code) (rate(sub2api_http_requests_total{status_code=~\"4..|5..\"}[5m]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (status_code) (rate(sub2api_http_requests_total{status_code=~\"4..|5..\"}[5m]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 11,
-      "title": "段耗时占比（均值）",
-      "type": "piechart",
-      "description": "6 个互斥段的均值占比，可堆叠。headers_end 不在其中（与 upstream 重叠）。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 12,
-        "w": 6,
-        "h": 7
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum by (phase)(rate(sub2api_request_phase_seconds_sum{phase!=\"headers_end\"}[$__rate_interval])) / clamp_min(sum(rate(sub2api_request_phase_seconds_sum{phase!=\"headers_end\"}[$__rate_interval])),1e-9)*100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (phase)(rate(sub2api_request_phase_seconds_sum{phase!=\"headers_end\"}[$__rate_interval])) / clamp_min(sum(rate(sub2api_request_phase_seconds_sum{phase!=\"headers_end\"}[$__rate_interval])),1e-9)*100))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 12,
-      "title": "失败根因 Top",
-      "type": "barchart",
-      "description": "请求视角的 13 类根因。unknown 长期 >10% 说明分类缺失，不能当成“其他”。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 18,
-        "y": 12,
-        "w": 6,
-        "h": 7
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum by (failure_reason) (rate(sub2api_gateway_requests_total{result!=\"success\"}[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (failure_reason) (rate(sub2api_gateway_requests_total{result!=\"success\"}[$__rate_interval]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 13,
-      "title": "节点健康矩阵",
-      "type": "table",
-      "description": "10 个账号同屏对比；账号名启动时快照，新账号在重启前显示 unknown。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 账号启动时快照最多十个；新增/改名重启前为 unknown。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 19,
-        "w": 16,
-        "h": 10
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum by (account)(rate(sub2api_upstream_requests_total[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (account)(rate(sub2api_upstream_requests_total[$__rate_interval]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum by (account)(rate(sub2api_upstream_requests_total{result!=\"success\"}[5m])) / clamp_min(sum by (account)(rate(sub2api_upstream_requests_total[5m])),1e-9)*100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (account)(rate(sub2api_upstream_requests_total{result!=\"success\"}[5m])) / clamp_min(sum by (account)(rate(sub2api_upstream_requests_total[5m])),1e-9)*100))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        },
-        {
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(histogram_quantile(0.95, sum by (le,account)(rate(sub2api_upstream_ttft_seconds_bucket[$__rate_interval])))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (histogram_quantile(0.95, sum by (le,account)(rate(sub2api_upstream_ttft_seconds_bucket[$__rate_interval])))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": true
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {},
-      "transformations": [
-        {
-          "id": "joinByField",
-          "options": {
-            "byField": "account",
-            "mode": "outer"
-          }
-        }
-      ]
-    },
-    {
-      "id": 14,
-      "title": "客户端中断",
-      "type": "timeseries",
-      "description": "只统计确认的客户端断开；超时与服务端 shutdown 不算。正常 EOF 不是 abort。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 16,
-        "y": 19,
-        "w": 8,
-        "h": 10
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sum by (stage) (rate(sub2api_client_abort_total[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (stage) (rate(sub2api_client_abort_total[$__rate_interval]))))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "interval": "15s",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "noValue": "未采集",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*未采集.*"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "未采集"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {}
-    },
-    {
-      "id": 15,
-      "title": "数据完整性",
-      "type": "gauge",
-      "description": "M-9 覆盖率为 0~1 ratio，按百分比显示；<90% 黄、≥90% 绿；-1 表示无样本，不是 0% 或成功率。",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 29,
-        "w": 8,
-        "h": 10
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "sub2api-prometheus"
-          },
-          "expr": "(sub2api_metric_coverage_ratio) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sub2api_metric_coverage_ratio))",
-          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
-          "range": true,
+          "expr": "(sum(rate(sub2api_gateway_requests_total{result=\"success\"}[1h])) or sum(rate(sub2api_gateway_requests_total[1h])) * 0) / clamp_min(sum(rate(sub2api_gateway_requests_total[1h])), 1e-9)",
+          "legendFormat": "成功率",
+          "range": false,
           "instant": true
         }
       ],
@@ -950,6 +176,561 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "decimals": 2,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#6c7782",
+                "value": null
+              },
+              {
+                "color": "#ef6b6b",
+                "value": 0
+              },
+              {
+                "color": "#f5b942",
+                "value": 0.95
+              },
+              {
+                "color": "#3ecf8e",
+                "value": 0.99
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 26,
+          "titleSize": 10
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "P95 总耗时",
+      "type": "stat",
+      "description": "PG 请求样本 total_ms 的 P95。样本受落库覆盖率影响；不是各段 P95 相加。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 6,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nSELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) / 1000.0 AS \"P95 总耗时\"\nFROM ops_request_transfer_samples\nWHERE $__timeFilter(observed_at)\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#6c7782",
+                "value": null
+              },
+              {
+                "color": "#3ecf8e",
+                "value": 0
+              },
+              {
+                "color": "#f5b942",
+                "value": 3
+              },
+              {
+                "color": "#ef6b6b",
+                "value": 8
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 26,
+          "titleSize": 10
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "P95 TTFT",
+      "type": "stat",
+      "description": "最终 attempt 首次发送到尾响应首字节；与 upstream 重叠，不参与段堆叠。无首字节不观察。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 9,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le)(rate(sub2api_request_phase_seconds_bucket{phase=\"headers_end\"}[10m])))",
+          "legendFormat": "P95 TTFT",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#6c7782",
+                "value": null
+              },
+              {
+                "color": "#3ecf8e",
+                "value": 0
+              },
+              {
+                "color": "#f5b942",
+                "value": 3
+              },
+              {
+                "color": "#ef6b6b",
+                "value": 8
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 26,
+          "titleSize": 10
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "入向带宽",
+      "type": "stat",
+      "description": "客户端请求体 in_wire 实际读取字节速率；gzip 按压缩后长度计，不使用 Content-Length。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "sum(rate(sub2api_transfer_bytes_total{direction=\"in_wire\"}[5m]))",
+          "legendFormat": "入向带宽",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "decimals": 2,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e6e9ed"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 26,
+          "titleSize": 10
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "出向带宽",
+      "type": "stat",
+      "description": "实际写给客户端的响应体速率。客户端慢读/断开会让该值低于上游返回量。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[5m]))",
+          "legendFormat": "出向带宽",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "decimals": 2,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e6e9ed"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 26,
+          "titleSize": 10
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "上游放大比",
+      "type": "stat",
+      "description": "resp_upstream / resp_downstream。>1.2 可能是客户端 abort、协议转换或流式重写；不能单独定性截断。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_upstream\"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[10m])), 1)",
+          "legendFormat": "上游放大比",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "x",
+          "decimals": 2,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#6c7782",
+                "value": null
+              },
+              {
+                "color": "#3ecf8e",
+                "value": 0
+              },
+              {
+                "color": "#f5b942",
+                "value": 1.2
+              },
+              {
+                "color": "#ef6b6b",
+                "value": 2.0
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 26,
+          "titleSize": 10
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "数据完整性",
+      "type": "stat",
+      "description": "M-9 request 覆盖率。0~1 比例；-1 表示无样本，不是 0% 或成功率。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "min(sub2api_metric_coverage_ratio{kind=\"request\"})",
+          "legendFormat": "数据完整性",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
           "noValue": "未采集",
           "mappings": [
             {
@@ -966,21 +747,22 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "gray",
+                "color": "#6c7782",
                 "value": null
               },
               {
-                "color": "yellow",
+                "color": "#f5b942",
                 "value": 0
               },
               {
-                "color": "green",
+                "color": "#3ecf8e",
                 "value": 0.9
               }
             ]
           },
-          "min": 0,
-          "max": 1
+          "color": {
+            "mode": "thresholds"
+          }
         },
         "overrides": [
           {
@@ -997,45 +779,1226 @@
           }
         ]
       },
-      "options": {}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 26,
+          "titleSize": 10
+        }
+      }
     },
     {
-      "id": 16,
-      "title": "定位 Playbook（值班先看这里）",
-      "type": "text",
-      "description": "该面板是文字说明，不产生查询；上线后放在 01 右下角，值班可直接照做。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "id": 10,
+      "title": "链路段耗时占比",
+      "type": "barchart",
+      "description": "PG 请求样本的 6 个互斥段平均耗时，Grafana 按 100% 堆叠归一化；headers_end 与 upstream 重叠，不在此面板。各段 P95 不可相加。",
       "datasource": {
-        "type": "prometheus",
-        "uid": "sub2api-prometheus"
+        "type": "postgres",
+        "uid": "sub2api-pg"
       },
       "gridPos": {
-        "x": 8,
-        "y": 29,
-        "w": 16,
-        "h": 10
+        "h": 10,
+        "w": 9,
+        "x": 0,
+        "y": 6
       },
-      "targets": [],
-      "interval": "15s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nSELECT '链路段耗时占比' AS \"分类\",\n       avg(body_read_ms) AS \"读取请求体\",\n       avg(wait_ms) AS \"槽位等待\",\n       avg(gateway_ms) AS \"网关本地\",\n       avg(upstream_ms) AS \"上游耗时\",\n       avg(response_ms) AS \"响应传输\",\n       avg(finish_ms) AS \"收尾\"\nFROM ops_request_transfer_samples\nWHERE $__timeFilter(observed_at)\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
       "fieldConfig": {
         "defaults": {
-          "unit": "",
+          "unit": "percentunit",
+          "decimals": 1,
           "noValue": "未采集",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#3ecf8e",
                 "value": null
               }
             ]
+          },
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 100,
+            "gradientMode": "none",
+            "axisPlacement": "hidden",
+            "axisLabel": ""
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "读取请求体"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "读取请求体"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "槽位等待"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "槽位等待"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1aa57a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "网关本地"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "网关本地"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e07a3f"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "上游耗时"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "上游耗时"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d4a72c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "响应传输"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "响应传输"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d9669a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "收尾"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "收尾"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "mode": "markdown",
-        "content": "先看流量与错误 → 段均值与 TTFT → 账号样本量 → PG 单请求。\n\n字节差不等于截断；各段 P95 不可相加；headers_end 不参与堆叠。"
+        "xField": "分类",
+        "orientation": "horizontal",
+        "stacking": "percent",
+        "showValue": "never",
+        "barWidth": 0.3,
+        "groupWidth": 0.7,
+        "barRadius": 0.05,
+        "fullHighlight": false,
+        "xTickLabelRotation": 0,
+        "xTickLabelMaxLength": 0,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "text": {
+          "valueSize": 12
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "失败根因 Top 6",
+      "type": "bargauge",
+      "description": "近 $__range 内 M-10 失败请求数 Top 6；无失败时无数据是健康状态，不是未采集。unknown 长期偏高说明分类缺失。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 7,
+        "x": 9,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "topk(6, sum by (failure_reason)(increase(sub2api_gateway_requests_total{result!=\"success\"}[$__range])))",
+          "legendFormat": "{{failure_reason}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "upstream_rate_limit"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "上游限流"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e07a3f"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "upstream_server_error"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "上游 5xx"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d4a72c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "upstream_read_timeout"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "上游超时"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d9669a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "client_abort_during_response"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "客户端中断"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "gateway_error"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "网关错误"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ef6b6b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rejected"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "请求被拒"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6c7782"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "unknown"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未知"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6c7782"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "textMode": "value_and_name",
+        "sizing": "manual",
+        "minVizWidth": 8,
+        "minVizHeight": 22,
+        "maxVizHeight": 34,
+        "text": {
+          "valueSize": 13
+        },
+        "legend": {
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "数据完整性",
+      "type": "bargauge",
+      "description": "4 类 M-9 覆盖率（request/account/bytes/user）。<90% 黄；-1 灰=无样本；缺序列不等于健康。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 16,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "sub2api_metric_coverage_ratio",
+          "legendFormat": "{{kind}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "未采集",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "无样本",
+                  "color": "gray"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#6c7782",
+                "value": null
+              },
+              {
+                "color": "#f5b942",
+                "value": 0
+              },
+              {
+                "color": "#3ecf8e",
+                "value": 0.9
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "request"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "request（埋点完整）"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "account"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "account（账号可知）"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "bytes（四方向完整）"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "user"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "user（用户 + 密钥）"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "textMode": "value_and_name",
+        "sizing": "manual",
+        "minVizWidth": 8,
+        "minVizHeight": 22,
+        "maxVizHeight": 34,
+        "text": {
+          "valueSize": 13
+        },
+        "legend": {
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "最近异常请求",
+      "type": "table",
+      "description": "PG 请求样本中最近的失败请求；点击请求 ID 打开单请求详情。样本量不代表总体分位。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 14,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nSELECT\n  s.observed_at AS \"时间\",\n  COALESCE(u.email, '#' || s.user_id) AS \"用户\",\n  s.model AS \"模型\",\n  s.total_ms AS \"总耗时\",\n  (CASE s.failure_reason\n  WHEN 'upstream_rate_limit' THEN '上游限流'\n  WHEN 'upstream_server_error' THEN '上游 5xx'\n  WHEN 'upstream_read_timeout' THEN '上游超时'\n  WHEN 'client_abort_during_response' THEN '客户端中断'\n  WHEN 'gateway_error' THEN '网关错误'\n  WHEN 'rejected' THEN '请求被拒'\n  WHEN 'unknown' THEN '未知'\n  ELSE COALESCE(s.failure_reason, s.result, 'unknown')\nEND) AS \"失败原因\",\n  s.request_id AS \"详情\"\nFROM ops_request_transfer_samples s\nLEFT JOIN users u ON u.id = s.user_id\nWHERE $__timeFilter(s.observed_at)\n  AND s.result <> 'success'\nORDER BY s.observed_at DESC\nLIMIT 8\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "inspect": false,
+            "wrapText": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "时间"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "用户"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "模型"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              },
+              {
+                "id": "custom.wrapText",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "总耗时"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "失败原因"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^成功$",
+                      "result": {
+                        "text": "成功",
+                        "color": "#3ecf8e"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?上游限流$",
+                      "result": {
+                        "text": "上游限流",
+                        "color": "#e07a3f"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?上游 5xx$",
+                      "result": {
+                        "text": "上游 5xx",
+                        "color": "#d4a72c"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?上游超时$",
+                      "result": {
+                        "text": "上游超时",
+                        "color": "#d9669a"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?客户端中断$",
+                      "result": {
+                        "text": "客户端中断",
+                        "color": "#9085e9"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?网关错误$",
+                      "result": {
+                        "text": "网关错误",
+                        "color": "#ef6b6b"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?请求被拒$",
+                      "result": {
+                        "text": "请求被拒",
+                        "color": "#6c7782"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?未知$",
+                      "result": {
+                        "text": "未知",
+                        "color": "#6c7782"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "详情"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "data-links"
+                }
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "查看详情",
+                    "url": "/d/sub2api-v2-request?var-request=${__value.raw}&from=${__from}&to=${__to}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "frameIndex": 0,
+        "showHeader": true,
+        "showTypeIcons": false,
+        "cellHeight": "sm",
+        "maxRowHeight": 80,
+        "enablePagination": false,
+        "footer": {
+          "show": false,
+          "reducer": [
+            "count"
+          ],
+          "countRows": false,
+          "fields": ""
+        },
+        "sortBy": []
+      }
+    },
+    {
+      "id": 14,
+      "title": "上游账号速览",
+      "type": "table",
+      "description": "PG 请求样本按账号聚合的 QPS/TTFT/失败率/带宽；不是 attempt 口径，低样本百分比噪声大。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 10,
+        "x": 14,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nWITH win AS (\n  SELECT s.account_id,\n         max(COALESCE(s.platform, a.platform)) AS platform,\n         count(*) AS requests,\n         count(*) FILTER (WHERE s.result <> 'success') * 100.0 / count(*) AS failure_pct,\n         percentile_cont(0.95) WITHIN GROUP (ORDER BY s.headers_end_ms) / 1000.0 AS ttft_p95_s,\n         sum(COALESCE(s.bytes_resp_downstream, 0)) / EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) AS downstream_bps,\n         mode() WITHIN GROUP (ORDER BY COALESCE(g.name, '—')) AS group_name\n  FROM ops_request_transfer_samples s\n  LEFT JOIN accounts a ON a.id = s.account_id\n  LEFT JOIN groups g ON g.id = s.group_id\n  WHERE $__timeFilter(s.observed_at)\n    AND s.account_id IS NOT NULL\n  GROUP BY s.account_id\n)\nSELECT COALESCE(a.name, '#' || w.account_id) AS \"账号\",\n       w.platform AS \"平台\",\n       w.group_name AS \"分组\",\n       round((w.requests / EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)))::numeric, 2) AS \"QPS\",\n       round(w.ttft_p95_s::numeric, 2) AS \"P95 TTFT\",\n       round(w.failure_pct::numeric, 1) AS \"失败率\",\n       w.downstream_bps AS \"带宽\",\n       CASE WHEN a.id IS NULL THEN '未知'\n            WHEN a.deleted_at IS NOT NULL OR a.status <> 'active' OR a.schedulable IS FALSE THEN '停用'\n            WHEN a.overload_until > now() OR a.rate_limited_at > now() - interval '5 minutes' THEN '限流'\n            WHEN w.failure_pct > 5 THEN '降权候选'\n            WHEN w.failure_pct > 2 THEN '观察'\n            ELSE '正常' END AS \"状态\"\nFROM win w\nLEFT JOIN accounts a ON a.id = w.account_id\nORDER BY w.requests DESC\nLIMIT 5\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "inspect": false,
+            "wrapText": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "账号"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平台"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "分组"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "QPS"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P95 TTFT"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "失败率"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "带宽"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "状态"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^成功$",
+                      "result": {
+                        "text": "成功",
+                        "color": "#3ecf8e"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^失败",
+                      "result": {
+                        "text": "失败",
+                        "color": "#ef6b6b"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^正常$",
+                      "result": {
+                        "text": "正常",
+                        "color": "#3ecf8e"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^观察$",
+                      "result": {
+                        "text": "观察",
+                        "color": "#f5b942"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^降权候选$",
+                      "result": {
+                        "text": "降权候选",
+                        "color": "#ef6b6b"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^停用$",
+                      "result": {
+                        "text": "停用",
+                        "color": "#6c7782"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^未知$",
+                      "result": {
+                        "text": "未知",
+                        "color": "#6c7782"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^限流$",
+                      "result": {
+                        "text": "限流",
+                        "color": "#e07a3f"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "frameIndex": 0,
+        "showHeader": true,
+        "showTypeIcons": false,
+        "cellHeight": "sm",
+        "maxRowHeight": 80,
+        "enablePagination": false,
+        "footer": {
+          "show": false,
+          "reducer": [
+            "count"
+          ],
+          "countRows": false,
+          "fields": ""
+        },
+        "sortBy": []
       }
     }
   ],

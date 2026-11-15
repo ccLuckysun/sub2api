@@ -1521,6 +1521,11 @@
       "filename": "252_add_usage_logs_v2_fields.sql",
       "version": "252",
       "sha256": "119a74d2d95b313384176f1f8358a8cb58570c52886b4f13bbafa401d5ff9713"
+    },
+    {
+      "filename": "253_ops_samples_client_request_id.sql",
+      "version": "253",
+      "sha256": "347714338c73b9efabfcc3421450a004c530bcea4b07a2df3c1751ba25f4926c"
     }
   ],
   "acknowledged_number_conflicts": {

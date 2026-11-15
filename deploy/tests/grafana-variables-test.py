@@ -31,40 +31,100 @@ def compact(text):
     return re.sub(r'\s+', '', text).lower()
 
 
+EXPECTED_UIDS = {
+    'sub2api-v2-overview', 'sub2api-v2-requests', 'sub2api-v2-nodes',
+    'sub2api-v2-users', 'sub2api-v2-host', 'sub2api-v2-request',
+}
+PG_DS = {'type': 'postgres', 'uid': 'sub2api-pg'}
+
+
+def assert_numeric_variable(v, name, sql):
+    assert v['type'] == 'query' and v['multi'] is False
+    assert v['includeAll'] is True and v['allValue'] == '-1'
+    assert v['datasource'] == PG_DS
+    assert v['query'] == v['definition'] == sql
+    assert v['refresh'] == 2
+    print(f'VARIABLE {name}: numeric query PASS; SQL={sql}')
+
+
 def validate_dashboards():
     paths = sorted((ROOT / 'deploy/monitoring/grafana/dashboards').glob('0*.json'))
-    assert len(paths) == 5
+    assert len(paths) == 6, [p.name for p in paths]
     queries = []
+    seen = set()
     for path in paths:
         data = json.loads(path.read_text())
+        uid = data['uid']
+        seen.add(uid)
         variables = {v['name']: v for v in data['templating']['list']}
-        if data['uid'] == 'sub2api-v2-users':
-            assert len(data['panels']) == 6
-            for name, sql in [('user', USER_SQL), ('api_key', KEY_SQL)]:
-                v = variables[name]
-                assert v['type'] == 'query' and v['multi'] is False
-                assert v['includeAll'] is True and v['allValue'] == '-1'
-                assert v['datasource'] == {'type': 'postgres', 'uid': 'sub2api-pg'}
-                assert v['query'] == v['definition'] == sql
-                assert v['refresh'] == 2
-                print(f'VARIABLE {name}: query/single/includeAll/-1/refresh=2 PASS; SQL={sql}')
+        if uid == 'sub2api-v2-users':
+            assert len(data['panels']) == 7
+            assert list(variables) == ['user', 'api_key']
+            assert_numeric_variable(variables['user'], 'user', USER_SQL)
+            assert_numeric_variable(variables['api_key'], 'api_key', KEY_SQL)
+        elif uid == 'sub2api-v2-requests':
+            assert len(data['panels']) == 7
+            assert list(variables) == ['user', 'api_key', 'result', 'model', 'search']
+            assert_numeric_variable(variables['user'], 'user', USER_SQL)
+            assert_numeric_variable(variables['api_key'], 'api_key', KEY_SQL)
+            result = variables['result']
+            assert result['type'] == 'custom' and result['multi'] is False
+            assert result['includeAll'] is False
+            assert result['query'] == result['definition'] == '全部 : all,成功 : success,失败 : failure'
+            model = variables['model']
+            assert model['type'] == 'query' and model['multi'] is False
+            assert model['includeAll'] is True and model['allValue'] == '__all__'
+            assert model['datasource'] == PG_DS
+            assert 'SELECT DISTINCT model' in model['query'] and 'LIMIT 500' in model['query']
+            search = variables['search']
+            assert search['type'] == 'textbox' and search['includeAll'] is False
+            assert search['multi'] is False
+            print('VARIABLES requests: user/api_key/result/model/search PASS')
+        elif uid == 'sub2api-v2-request':
+            assert len(data['panels']) == 10
+            assert list(variables) == ['request']
+            request = variables['request']
+            assert request['type'] == 'query' and request['multi'] is False
+            assert request['includeAll'] is False
+            assert request['datasource'] == PG_DS
+            assert 'ORDER BY observed_at DESC' in request['query']
+            assert 'LIMIT 1000' in request['query']
+            for panel in panels(data['panels']):
+                for target in panel.get('targets', []):
+                    sql = target.get('rawSql', '')
+                    if sql:
+                        assert '${request:sqlstring}' in sql, (uid, panel['id'])
+            print('VARIABLE request: recent 1000 request ids PASS')
+        else:
+            assert not variables, (uid, list(variables))
+
         for panel in panels(data['panels']):
             for target in panel.get('targets', []):
+                assert not re.search(r'\$(?:\{)?(?:user|api_key)\b',
+                                     target.get('expr', '')), \
+                    f'Unexpected user/key filter on {uid}/{panel["id"]}'
                 sql = target.get('rawSql', '')
-                refs = re.findall(r'\$(?:\{)?(user|api_key)\b', sql)
-                if data['uid'] == 'sub2api-v2-users' and sql:
+                refs = set(re.findall(r'\$(?:\{)?(user|api_key)\b', sql))
+                if uid == 'sub2api-v2-users' and sql:
                     assert panel['datasource']['uid'] == 'sub2api-pg'
-                    assert set(refs) == {'user', 'api_key'}
+                    assert refs == {'user', 'api_key'}
                     for var, col in [('user', 'user_id'), ('api_key', 'api_key_id')]:
-                        assert compact(f'(${var} = -1 OR {col} = ${var})') in compact(sql)
+                        pattern = (r'\(\$' + var + r'=-1or(?:[a-z_]+\.)?' +
+                                   col + r'=\$' + var + r'\)')
+                        assert re.search(pattern, compact(sql)), (panel['id'], var)
                         assert not re.search(r"['\"]\$" + var + r"\b", sql)
                     queries.append((panel['id'], panel['title'], sql))
                     print(f'PANEL {panel["id"]}: numeric predicates PASS; SQL={sql}')
+                elif uid == 'sub2api-v2-requests' and sql:
+                    assert refs <= {'user', 'api_key'}, (panel['id'], refs)
+                    assert '$user' in sql and '$api_key' in sql
                 else:
-                    assert not refs, f'Unexpected user/key filter on {data["uid"]}/{panel["id"]}'
-                assert not re.search(r'\$(?:\{)?(?:user|api_key)\b', target.get('expr', ''))
-    assert len(queries) == 6
-    print('STATIC PASS: five dashboards unchanged; six applicable PG panels; no user/key filters on Prom/system panels')
+                    assert not refs, f'Unexpected user/key filter on {uid}/{panel["id"]}'
+    assert seen == EXPECTED_UIDS, seen
+    assert len(queries) == 6, len(queries)
+    print('STATIC PASS: six dashboards; 04 has 7 panels and six SQL panels with '
+          'numeric user/key predicates; 02 variables and request SQL allowed; '
+          '06 request variable; no user/key filters on Prom/system panels')
     return queries
 
 
@@ -109,9 +169,15 @@ def interpolate(sql, user, key, start, end):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--container', required=True, help='Local PostgreSQL Docker container')
+    parser.add_argument('--container', help='Local PostgreSQL Docker container')
+    parser.add_argument('--static-only', action='store_true',
+                        help='Validate dashboard JSON only; do not run SQL')
     args = parser.parse_args()
     queries = validate_dashboards()
+    if args.static_only:
+        return 0
+    if not args.container:
+        parser.error('--container is required unless --static-only is used')
     db = ReadOnlyPG(args.container)
     info, _ = db.query('initial-read-only', "SELECT json_build_object('database', current_database(), "
                        "'role', current_user, 'read_only', current_setting('transaction_read_only'), "
@@ -193,14 +259,16 @@ def main():
                     print('QUERY FAIL', str(error))
                     continue
                 if us == 'no-match' or ks == 'no-match':
-                    if panel_id == 2:
-                        assert got == {'rows': 1, 'nonempty_rows': 1, 'max_requests': 0, 'total_requests': 0}, got
+                    # us_active/us_req/us_tokens/us_cost are scalar aggregates and
+                    # still return one row; the two grouped tables return none.
+                    if panel_id in {2, 3, 4, 5}:
+                        assert got['rows'] == 1, got
                     else:
                         assert got['rows'] == 0, got
                 print(f'QUERY panel={panel_id} user={us} api_key={ks} {elapsed*1000:.3f}ms {json.dumps(got)}')
                 tests += 1
     status = 'PASS' if not failures and has_key else 'PARTIAL'
-    print(f'{status}: variable queries=4; successful panel queries={tests}/54; failed={len(failures)}; numeric bigint; read-only; successful calls <15s')
+    print(f'{status}: variable queries=2 (user/api_key); successful panel queries={tests}/{6*9}; failed={len(failures)}; numeric bigint; read-only; successful calls <15s')
     print(f'TIMING max={max(t for _, t in db.timings)*1000:.3f}ms; calls={len(db.timings)}; includes docker/psql startup')
     digest = hashlib.sha256(''.join(template for _, _, template in queries).encode()).hexdigest()
     print(f'QUERY_TEMPLATE_SHA256 {digest}')

@@ -1,0 +1,1314 @@
+{
+  "uid": "sub2api-v2-requests",
+  "title": "02 · 请求明细",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "allowUiUpdates": false,
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "tags": [
+    "sub2api",
+    "v2"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "",
+      "type": "text",
+      "description": "模块导航。Grafana 原生没有 Tab，使用文本链接等价实现；当前页加粗。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"display:flex;align-items:center;flex-wrap:wrap\"><a href=\"/d/sub2api-v2-overview\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:500;background:transparent;color:#828c97;border:1px solid transparent\">01 总览</a><a href=\"/d/sub2api-v2-requests\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:600;background:#1c2229;color:#f4f5f5;border:1px solid #323a43\">02 请求明细</a><a href=\"/d/sub2api-v2-nodes\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:500;background:transparent;color:#828c97;border:1px solid transparent\">03 上游节点</a><a href=\"/d/sub2api-v2-users\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:500;background:transparent;color:#828c97;border:1px solid transparent\">04 用户与密钥</a><a href=\"/d/sub2api-v2-host\" style=\"display:inline-block;padding:5px 12px;margin-right:5px;border-radius:5px;font-size:12px;text-decoration:none;font-weight:500;background:transparent;color:#828c97;border:1px solid transparent\">05 宿主与应用</a></div>",
+        "codeLanguage": "plaintext",
+        "codeShowLineNumbers": false,
+        "renderMode": "once"
+      }
+    },
+    {
+      "id": 2,
+      "title": "窗口内请求",
+      "type": "stat",
+      "description": "当前时间窗口内 PG 请求样本数；不是客户端缓冲，当前没有在途指标。无样本显示未采集，表格最多展示最新 200 行。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 0,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nSELECT NULLIF(count(*), 0) AS \"窗口内请求\"\nFROM ops_request_transfer_samples s\nWHERE $__timeFilter(s.observed_at)\n  AND ($user = -1 OR s.user_id = $user)\n  AND ($api_key = -1 OR s.api_key_id = $api_key)\n  AND (${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})\n  AND ('$result' = 'all'\n       OR ('$result' = 'success' AND s.result = 'success')\n       OR ('$result' = 'failure' AND s.result <> 'success'))\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e6e9ed"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 18,
+          "titleSize": 9
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "成功率",
+      "type": "stat",
+      "description": "当前窗口样本中 result=success 的比例。与 M-10 网关请求口径不同，不可直接对账。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 6,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nSELECT count(*) FILTER (WHERE s.result = 'success') * 100.0 / NULLIF(count(*), 0) AS \"成功率\"\nFROM ops_request_transfer_samples s\nWHERE $__timeFilter(s.observed_at)\n  AND ($user = -1 OR s.user_id = $user)\n  AND ($api_key = -1 OR s.api_key_id = $api_key)\n  AND (${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})\n  AND ('$result' = 'all'\n       OR ('$result' = 'success' AND s.result = 'success')\n       OR ('$result' = 'failure' AND s.result <> 'success'))\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#6c7782",
+                "value": null
+              },
+              {
+                "color": "#ef6b6b",
+                "value": 0
+              },
+              {
+                "color": "#f5b942",
+                "value": 95
+              },
+              {
+                "color": "#3ecf8e",
+                "value": 99
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 18,
+          "titleSize": 9
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "平均总耗时",
+      "type": "stat",
+      "description": "当前窗口 total_ms 平均值。均值会被长流式请求拉高，排查看 P95/单请求。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 12,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nSELECT avg(s.total_ms) / 1000.0 AS \"平均总耗时\"\nFROM ops_request_transfer_samples s\nWHERE $__timeFilter(s.observed_at)\n  AND ($user = -1 OR s.user_id = $user)\n  AND ($api_key = -1 OR s.api_key_id = $api_key)\n  AND (${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})\n  AND ('$result' = 'all'\n       OR ('$result' = 'success' AND s.result = 'success')\n       OR ('$result' = 'failure' AND s.result <> 'success'))\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e6e9ed"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 18,
+          "titleSize": 9
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "慢请求 >3s",
+      "type": "stat",
+      "description": "当前窗口 total_ms >= 3000 的样本数；无样本显示未采集，0 表示有样本但没有慢请求。慢不等于失败，需结合段耗时和 failure_reason。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 18,
+        "y": 2
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nSELECT CASE WHEN count(*) = 0 THEN NULL ELSE count(*) FILTER (WHERE s.total_ms >= 3000) END AS \"慢请求\"\nFROM ops_request_transfer_samples s\nWHERE $__timeFilter(s.observed_at)\n  AND ($user = -1 OR s.user_id = $user)\n  AND ($api_key = -1 OR s.api_key_id = $api_key)\n  AND (${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})\n  AND ('$result' = 'all'\n       OR ('$result' = 'success' AND s.result = 'success')\n       OR ('$result' = 'failure' AND s.result <> 'success'))\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e6e9ed"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 18,
+          "titleSize": 9
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "",
+      "type": "text",
+      "description": "链路分段颜色图例。6 段互斥，之和等于总耗时；TTFT（headers_end）与上游重叠，不参与堆叠。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"display:flex;align-items:center;flex-wrap:wrap;font-size:11px\"><span style=\"display:inline-block;width:10px;height:10px;background:#3987e5;border-radius:2px;margin-right:5px\"></span><span style=\"color:#b9c0c8;margin-right:16px\">读取请求体</span><span style=\"display:inline-block;width:10px;height:10px;background:#1aa57a;border-radius:2px;margin-right:5px\"></span><span style=\"color:#b9c0c8;margin-right:16px\">槽位等待</span><span style=\"display:inline-block;width:10px;height:10px;background:#e07a3f;border-radius:2px;margin-right:5px\"></span><span style=\"color:#b9c0c8;margin-right:16px\">网关本地</span><span style=\"display:inline-block;width:10px;height:10px;background:#d4a72c;border-radius:2px;margin-right:5px\"></span><span style=\"color:#b9c0c8;margin-right:16px\">上游耗时</span><span style=\"display:inline-block;width:10px;height:10px;background:#d9669a;border-radius:2px;margin-right:5px\"></span><span style=\"color:#b9c0c8;margin-right:16px\">响应传输</span><span style=\"display:inline-block;width:10px;height:10px;background:#9085e9;border-radius:2px;margin-right:5px\"></span><span style=\"color:#b9c0c8;margin-right:16px\">收尾</span><span style=\"color:#5f6872\">6 段互斥，之和等于总耗时；TTFT（headers_end）与上游段重叠，不参与堆叠。</span></div>",
+        "codeLanguage": "plaintext",
+        "codeShowLineNumbers": false,
+        "renderMode": "once"
+      }
+    },
+    {
+      "id": 7,
+      "title": "实时请求",
+      "type": "table",
+      "description": "按使用记录口径展示最近请求；最新在前，随 10s 刷新更新。Grafana 表格不支持原生自动滚动/抽屉，点击详情列打开单请求看板。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "h": 24,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "\nSELECT\n  s.observed_at AS \"时间\",\n  COALESCE(u.email, '#' || s.user_id) AS \"用户\",\n  COALESCE(k.name, '—') ||\n    CASE WHEN k.key IS NOT NULL\n      THEN ' · ' || left(k.key, 8) || '…' || right(k.key, 4)\n      ELSE '' END AS \"API 密钥\",\n  COALESCE(a.name, '#' || s.account_id) ||\n    CASE WHEN a.platform IS NOT NULL THEN ' · ' || a.platform ELSE '' END AS \"账户\",\n  s.model ||\n    CASE WHEN ul.upstream_model IS NOT NULL AND ul.upstream_model <> s.model\n      THEN ' ↳ ' || ul.upstream_model ELSE '' END AS \"模型\",\n  COALESCE(ul.inbound_endpoint, s.endpoint, '—') || ' / ' ||\n    COALESCE(ul.upstream_endpoint, '—') AS \"端点\",\n  COALESCE(g.name, '—') AS \"分组\",\n  CASE WHEN ul.stream IS TRUE THEN '流式'\n       WHEN ul.stream IS FALSE THEN '非流式'\n       ELSE '—' END AS \"类型\",\n  CASE ul.billing_mode\n    WHEN 'token' THEN '按量'\n    WHEN 'per_request' THEN '按次'\n    WHEN 'image' THEN '图片'\n    WHEN 'video' THEN '视频'\n    ELSE COALESCE(ul.billing_mode, '—') END AS \"计费模式\",\n  CASE WHEN ul.input_tokens IS NULL THEN '—' ELSE\n    '↓ ' || to_char(ul.input_tokens, 'FM999,999,999') ||\n    '  ↑ ' || to_char(ul.output_tokens, 'FM999,999,999') ||\n    CASE WHEN COALESCE(ul.cache_read_tokens, 0) > 0\n      THEN '  ·  缓存 ' || to_char(ul.cache_read_tokens, 'FM999,999,999')\n      ELSE '' END\n  END AS \"TOKEN\",\n  ul.actual_cost AS \"费用\",\n  s.bytes_in_wire AS \"请求体\",\n  COALESCE(s.body_read_ms, 0) AS \"读体\",\n  COALESCE(s.wait_ms, 0) AS \"等待\",\n  COALESCE(s.gateway_ms, 0) AS \"网关\",\n  COALESCE(s.upstream_ms, 0) AS \"上游\",\n  COALESCE(s.response_ms, 0) AS \"响应\",\n  COALESCE(s.finish_ms, 0) AS \"收尾\",\n  s.total_ms AS \"总耗时\",\n  s.headers_end_ms AS \"TTFT\",\n  CASE WHEN s.result = 'success' THEN '成功'\n       ELSE '失败 · ' || (CASE s.failure_reason\n  WHEN 'upstream_rate_limit' THEN '上游限流'\n  WHEN 'upstream_server_error' THEN '上游 5xx'\n  WHEN 'upstream_read_timeout' THEN '上游超时'\n  WHEN 'client_abort_during_response' THEN '客户端中断'\n  WHEN 'gateway_error' THEN '网关错误'\n  WHEN 'rejected' THEN '请求被拒'\n  WHEN 'unknown' THEN '未知'\n  ELSE COALESCE(s.failure_reason, s.result, 'unknown')\nEND) END AS \"状态\",\n  s.request_id AS \"详情\"\nFROM ops_request_transfer_samples s\nLEFT JOIN LATERAL (\n  SELECT ul.*\n  FROM usage_logs ul\n  WHERE ul.api_key_id = s.api_key_id\n    AND (ul.request_id = 'client:' || s.client_request_id\n         OR (NULLIF(s.client_request_id, '') IS NULL\n             AND ul.request_id = 'local:' || s.request_id))\n  ORDER BY (ul.request_id = 'client:' || s.client_request_id) DESC,\n           ul.created_at DESC\n  LIMIT 1\n) ul ON TRUE\nLEFT JOIN users u ON u.id = s.user_id\nLEFT JOIN api_keys k ON k.id = s.api_key_id\nLEFT JOIN accounts a ON a.id = s.account_id\nLEFT JOIN groups g ON g.id = s.group_id\nWHERE $__timeFilter(s.observed_at)\n  AND ($user = -1 OR s.user_id = $user)\n  AND ($api_key = -1 OR s.api_key_id = $api_key)\n  AND (${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})\n  AND ('$result' = 'all'\n       OR ('$result' = 'success' AND s.result = 'success')\n       OR ('$result' = 'failure' AND s.result <> 'success'))\n  AND (${search:sqlstring} = ''\n       OR COALESCE(u.email, '') ILIKE '%' || ${search:sqlstring} || '%'\n       OR COALESCE(k.name, '') ILIKE '%' || ${search:sqlstring} || '%'\n       OR s.model ILIKE '%' || ${search:sqlstring} || '%'\n       OR s.request_id ILIKE '%' || ${search:sqlstring} || '%')\nORDER BY s.observed_at DESC\nLIMIT 200\n",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "inspect": false,
+            "wrapText": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "时间"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "用户"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "API 密钥"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "账户"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "模型"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              },
+              {
+                "id": "custom.wrapText",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "端点"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 220
+              },
+              {
+                "id": "custom.wrapText",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "分组"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "类型"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "计费模式"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TOKEN"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "费用"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "请求体"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "读体"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 66
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 5000
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#3987e5",
+                      "value": null
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "等待"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 66
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 5000
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#1aa57a",
+                      "value": null
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "网关"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 66
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 5000
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#e07a3f",
+                      "value": null
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "上游"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 74
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 5000
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#d4a72c",
+                      "value": null
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "响应"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 74
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 5000
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#d9669a",
+                      "value": null
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "收尾"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 66
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 5000
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#9085e9",
+                      "value": null
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "总耗时"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TTFT"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "状态"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^成功$",
+                      "result": {
+                        "text": "成功",
+                        "color": "#3ecf8e"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?上游限流$",
+                      "result": {
+                        "text": "上游限流",
+                        "color": "#e07a3f"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?上游 5xx$",
+                      "result": {
+                        "text": "上游 5xx",
+                        "color": "#d4a72c"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?上游超时$",
+                      "result": {
+                        "text": "上游超时",
+                        "color": "#d9669a"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?客户端中断$",
+                      "result": {
+                        "text": "客户端中断",
+                        "color": "#9085e9"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?网关错误$",
+                      "result": {
+                        "text": "网关错误",
+                        "color": "#ef6b6b"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?请求被拒$",
+                      "result": {
+                        "text": "请求被拒",
+                        "color": "#6c7782"
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^(?:失败 · )?未知$",
+                      "result": {
+                        "text": "未知",
+                        "color": "#6c7782"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "详情"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "data-links"
+                }
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "查看详情",
+                    "url": "/d/sub2api-v2-request?var-request=${__value.raw}&from=${__from}&to=${__to}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "frameIndex": 0,
+        "showHeader": true,
+        "showTypeIcons": false,
+        "cellHeight": "md",
+        "maxRowHeight": 80,
+        "enablePagination": false,
+        "footer": {
+          "show": true,
+          "reducer": [
+            "count"
+          ],
+          "countRows": true,
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "时间",
+            "desc": true
+          }
+        ]
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "user",
+        "label": "用户",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "sub2api-pg"
+        },
+        "query": "SELECT id AS __value, COALESCE(email, id::text) AS __text FROM users ORDER BY 2 LIMIT 1000",
+        "definition": "SELECT id AS __value, COALESCE(email, id::text) AS __text FROM users ORDER BY 2 LIMIT 1000",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": "-1",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "api_key",
+        "label": "API 密钥",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "sub2api-pg"
+        },
+        "query": "SELECT id AS __value, name AS __text FROM api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000",
+        "definition": "SELECT id AS __value, name AS __text FROM api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": "-1",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "result",
+        "label": "结果",
+        "type": "custom",
+        "query": "全部 : all,成功 : success,失败 : failure",
+        "definition": "全部 : all,成功 : success,失败 : failure",
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "全部",
+          "value": "all"
+        },
+        "options": []
+      },
+      {
+        "name": "model",
+        "label": "模型",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "sub2api-pg"
+        },
+        "query": "SELECT DISTINCT model AS __value, model AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY 1 LIMIT 500",
+        "definition": "SELECT DISTINCT model AS __value, model AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY 1 LIMIT 500",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": "__all__",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "search",
+        "label": "搜索",
+        "type": "textbox",
+        "query": "",
+        "definition": "",
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": []
+      }
+    ]
+  },
+  "links": []
+}

@@ -19,7 +19,7 @@ func TestOpsSampleRecorderFieldMapping(t *testing.T) {
 	h := newRecorderHarness(t)
 	var samples []OpsSample
 	h.r.sampleSink = sampleSinkFunc(func(sample OpsSample) bool { samples = append(samples, sample); return true })
-	meta := OpsRequestMeta{RequestID: "provided-request", UserID: 11, APIKeyID: 12, AccountID: 13, GroupID: 14, Platform: "anthropic", Model: "claude-sonnet", Endpoint: "/v1/messages", EndpointClass: "responses"}
+	meta := OpsRequestMeta{RequestID: "provided-request", ClientRequestID: "client-correlation", UserID: 11, APIKeyID: 12, AccountID: 13, GroupID: 14, Platform: "anthropic", Model: "claude-sonnet", Endpoint: "/v1/messages", EndpointClass: "responses"}
 	h.r.AttachMeta(meta)
 	h.body()
 	attempt := h.send()
@@ -30,6 +30,7 @@ func TestOpsSampleRecorderFieldMapping(t *testing.T) {
 	sample := samples[0]
 	require.Equal(t, h.r.entry, sample.ObservedAt)
 	require.Equal(t, meta.RequestID, sample.RequestID)
+	require.Equal(t, "client-correlation", *sample.ClientRequestID)
 	require.EqualValues(t, 11, *sample.UserID)
 	require.EqualValues(t, 12, *sample.APIKeyID)
 	require.EqualValues(t, 13, *sample.AccountID)

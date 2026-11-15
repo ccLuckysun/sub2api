@@ -1,6 +1,8 @@
 # Sub2API 监控栈本地部署
 
-V2 默认监控部署包含六个独立的常驻容器：`sub2api`、`postgres`（PostgreSQL）、`redis`、`grafana`、`prometheus`、`alertmanager`。数据库、缓存、应用、可视化与指标存储均独立运行。Grafana 自动配置 Prometheus / PostgreSQL 数据源与五张 V2 看板。
+V2 默认监控部署包含六个独立的常驻容器：`sub2api`、`postgres`（PostgreSQL）、`redis`、`grafana`、`prometheus`、`alertmanager`。数据库、缓存、应用、可视化与指标存储均独立运行。Grafana 自动配置 Prometheus / PostgreSQL 数据源与六张 V2 看板（5 张主看板 + 1 张请求下钻）。
+
+> **2026-11-15 重新设计**：当前生成器输出 5 张主看板 + 1 张请求下钻，面板数 14/7/8/7/23/10，02 由“链路归因”改为“请求明细”，文件为 `02-requests.json`、新增 `06-request.json`。下文 2026-11-14 及更早的“16/19/9/6/15、02-chain、五张看板”输出是历史记录，不再对应当前生成器；当前验收见文末“Dashboard V2 redesign”。
 
 需要 Docker Compose ≥2.35。启用快照扩展时还需 Docker Engine ≥26（API ≥1.45）。部署脚本需要 Bash；Prometheus 配置渲染脚本兼容 POSIX `/bin/sh`，不再依赖 envsubst 或临时联网安装 gettext。
 
@@ -212,14 +214,14 @@ PGPASSWORD="$GRAFANA_PG_PASSWORD" psql -h 127.0.0.1 -U grafana_ro -d sub2api -c 
 稳定 RSS ≤640MB 是运行验收目标，不能由 limit 相加证明。本次隔离三容器启动后仅做 40s 采样，首个 cgroup memory 样本为 Prometheus 58.91MiB、Grafana 303.9MiB、Alertmanager 15.8MiB（合计 378.61MiB）；末次样本分别为 60.58/305.9/18.77MiB（合计 385.25MiB）。cgroup charge 含缓存，不等于 RSS。未加载业务流量、node/backup，不能签署长期稳定 RSS 或生产容量结论。Retention 默认 90d/8GB，先到先删；块限制不含 WAL/head/快照，90d 不构成磁盘/保留时长保证。
 
 - **授权契约偏差**：NodeLoadHigh 使用 `count without(cpu, mode)(node_cpu_seconds_total{mode="idle"})`，API 原式仅去 cpu 会因 mode 标签不匹配失效。规则注释与单测均记录；不回改契约文档。
-- **刷新偏差**：Grafana 只有看板级 refresh。02 为 10s，01/03/04/05 均为 30s；混合看板 PG 面板 `interval=1m` 是查询步长/min interval，实际仍随看板刷新，**不宣称 PG 独立每分钟刷新**。
+- **刷新偏差**：Grafana 只有看板级 refresh。02 为 10s，01/03/05 为 30s，04 为 1m，06 为 30s；混合看板 PG 面板 `interval=1m` 是查询步长/min interval，实际仍随看板刷新，**不宣称 PG 独立每分钟刷新**。
 - **Compose overlay**：实际执行单文件 `docker compose -f deploy/docker-compose.monitoring.yml config`，无环境变量先报告管理员密码缺失；注入本地占位密码后输出 `service "sub2api" has neither an image nor a build context specified: invalid compose project`。该文件是叠加文件，不应添加业务 image。实际验收 `dev + monitoring + host-metrics + backup config --quiet` 退出码 0、无输出。
-- **布局数据边界**：保持 16/19/9/6/15 面板顺序与网格；M-2 无 account，账号带宽改 PG 请求样本/分钟；无账号在途指标，原位置明确“未采集”；账号矩阵展示已有请求样本口径，无法凭空提供实时在途；M-11 无 model_class，不生成模型 TTFT。用户 result 改查请求样本表，系统快照使用实际 `created_at`。单请求分解从 Top 40 数据链接写入 request 变量，排除 headers_end。
+- **布局数据边界**：当前为 14/7/8/7/23/10（含每页导航 text 面板）与 06 请求下钻；M-2 无 account，账号带宽改 PG 请求样本/分钟；无账号在途指标，原位置明确“未采集”；账号矩阵展示已有请求样本口径，无法凭空提供实时在途；M-11 无 model_class，不生成模型 TTFT。用户 result 改查请求样本表，系统快照使用实际 `created_at`。单请求分解从 Top 40 数据链接写入 request 变量，排除 headers_end。
 - **未验证**：生产 Linux 的 node 指标语义、backup 真正压缩/恢复、真实 SMTP 投递、M3 真实迁移后的全部 SQL 执行/Top 40 ≤2s 与覆盖率、长期 RSS/峰值容量、业务栈完整端到端烟测。当前隔离测试只验证 provisioning；不将缺少 PG 服务的 datasource 配置成功视为查询成功。
 
 ### V1 看板回滚
 
-旧文件原样保存在 `monitoring/grafana/dashboards/backup/sub2api-overview.json`，provider 只扫描单独的 `/var/lib/grafana/dashboards/v2`，备份不会被递归加载。回滚时把备份复制到宿主机 dashboards 目录，将 Compose 五个 V2 JSON 挂载改回该目录挂载，并把 provider path 改回 `/var/lib/grafana/dashboards`（备份应移至该目录外避免重复）；重建/重启 Grafana。保留 Grafana/Prometheus 持久卷，不执行 `down -v`。
+旧文件原样保存在 `monitoring/grafana/dashboards/backup/sub2api-overview.json`，provider 只扫描单独的 `/var/lib/grafana/dashboards/v2`，备份不会被递归加载。回滚时把备份复制到宿主机 dashboards 目录，将 Compose 六张 V2 JSON（5 主 + 1 下钻）挂载改回该目录挂载，并把 provider path 改回 `/var/lib/grafana/dashboards`（备份应移至该目录外避免重复）；重建/重启 Grafana。保留 Grafana/Prometheus 持久卷，不执行 `down -v`。
 
 
 ### W5 审核修复验收（2026-11-14）
@@ -255,3 +257,38 @@ PASS: 54 generated PromQL parsed; 11 PromQL regression cases passed
 ```
 
 11 组查询回归与前述 30 组告警测试分别计数。百分比浮点计算按 1e-6 精度断言；实际 JSON 查询不加 round。不重启业务或已运行的监控栈，生产、SMTP、长期 RSS 和 M3 SQL 的未验证边界维持如前。
+
+
+## Dashboard V2 redesign（2026-11-15）
+
+本次按 `docs/dashboard-v2-mockup.html` 重做 5 个主模块，不保留折线图；新增请求详情下钻页。
+
+| 看板 | UID | 文件 | 面板数 |
+| --- | --- | --- | --- |
+| 01 · 总览 | `sub2api-v2-overview` | `01-overview.json` | 14 |
+| 02 · 请求明细 | `sub2api-v2-requests` | `02-requests.json` | 7 |
+| 03 · 上游节点 | `sub2api-v2-nodes` | `03-nodes.json` | 8 |
+| 04 · 用户与密钥 | `sub2api-v2-users` | `04-users.json` | 7 |
+| 05 · 宿主与应用 | `sub2api-v2-host` | `05-host.json` | 23 |
+| 请求详情（下钻） | `sub2api-v2-request` | `06-request.json` | 10 |
+
+面板数包含导航 text 面板。02 的请求表以 PG samples 为主表，LEFT JOIN usage_logs/users/api_keys/accounts/groups，最新在前 `LIMIT 200`；6 段耗时列和请求体大小在同表展示，详情列进入 06。01 的链路占比使用 PG 宽表 + barchart percent 堆叠，等价于 mockup 的单条堆叠条。
+
+当前 Compose 将上述六个 JSON **逐文件**只读挂载到 `/var/lib/grafana/dashboards/v2/`，provider 的 `path` 保持 `/var/lib/grafana/dashboards/v2` 不变；不整目录挂载，避免 `backup/` 下的旧 V1 JSON 被 provider 扫描加载。旧的 `02-chain.json` 已由 `02-requests.json` 取代，历史输出段落保留仅作记录。provider 的 `updateIntervalSeconds: 30` 表示部署脚本替换挂载文件后最多 30s 生效，无需重启 Grafana；30s 对人工更新足够，故保持该值。
+
+本地验收命令：
+
+```bash
+python3 deploy/monitoring/grafana/build-dashboards.py
+python3 deploy/monitoring/grafana/build-dashboards.py --check
+python3 deploy/tests/monitoring-v2-dashboard-test.py
+python3 deploy/tests/monitoring-v2-stack-test.py
+```
+
+已实际通过：
+- 生成器 `--check` 通过；
+- 隔离 Grafana 13.3.1 成功 provision 5 主 + 1 下钻（14/7/8/7/23/10），V1 不加载；
+- PG 数据源以 `grafana_ro` 安全密码 provision；
+- 结构测试检查无 timeseries/graph/heatmap、无 `or vector(1)`、每面板 description、PG interval=1m、02 五表 JOIN/LIMIT 200/详情链接、06 六段分解。
+
+原生限制（不是配置遗漏）：Grafana 表格无自动滚动/跟随/单面板暂停，02 以“最新在前 + 10s 刷新”近似；Grafana 无抽屉，使用 06 下钻；顶部 Tab 用 dashboard links + HTML text 导航（不可 sticky）。

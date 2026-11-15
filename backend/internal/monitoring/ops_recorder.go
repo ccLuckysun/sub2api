@@ -13,9 +13,12 @@ import (
 
 // OpsRequestMeta holds request/sample metadata. Raw values never become metric
 // labels: Model and Endpoint are classified and account names use the snapshot.
+// ClientRequestID is the ctxkey.ClientRequestID correlation UUID used by the
+// usage_logs billing id; RequestID remains the inbound request id.
 // AttachMeta replaces this value, so callers should supply the complete metadata.
 type OpsRequestMeta struct {
 	RequestID                                string
+	ClientRequestID                          string
 	UserID, APIKeyID, AccountID, GroupID     int64
 	Platform, Model, Endpoint, EndpointClass string
 }
@@ -795,7 +798,8 @@ func (r *OpsRecorder) makeSample(in FinalizeInput, result, reason string, phases
 	}
 	sample := OpsSample{
 		ObservedAt: r.entry, RequestID: r.sampleRequestID(),
-		UserID: optionalSampleID(r.meta.UserID), APIKeyID: optionalSampleID(r.meta.APIKeyID), AccountID: optionalSampleID(r.meta.AccountID), GroupID: optionalSampleID(r.meta.GroupID),
+		ClientRequestID: optionalSampleText(strings.TrimSpace(r.meta.ClientRequestID)),
+		UserID:          optionalSampleID(r.meta.UserID), APIKeyID: optionalSampleID(r.meta.APIKeyID), AccountID: optionalSampleID(r.meta.AccountID), GroupID: optionalSampleID(r.meta.GroupID),
 		Platform: optionalSampleText(r.meta.Platform), Model: optionalSampleText(r.meta.Model), Endpoint: samplePtr(endpoint), EndpointClass: samplePtr(class),
 		Result: samplePtr(result), HTTPStatus: samplePtr(in.Status), FailureReason: samplePtr(reason), AttemptCount: samplePtr(len(r.attempts)), FailedAttempts: samplePtr(failed), Node: samplePtr(opsSampleNode),
 		BodyReadMs: sampleMilliseconds(phases["body_read"]), GatewayMs: sampleMilliseconds(phases["gateway"]), WaitMs: sampleMilliseconds(phases["wait"]), UpstreamMs: sampleMilliseconds(phases["upstream"]), ResponseMs: sampleMilliseconds(phases["response"]), FinishMs: sampleMilliseconds(phases["finish"]), TotalMs: sampleMilliseconds(total),

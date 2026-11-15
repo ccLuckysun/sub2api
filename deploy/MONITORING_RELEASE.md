@@ -5,6 +5,7 @@
 ## Deployment prerequisites (2026-11-15)
 
 - `compose-deploy.sh --monitoring` 默认启用 V1 metrics、V2 ops metrics 与 PG samples，并自动生成 `GRAFANA_PG_PASSWORD`；服务就绪后自动执行 `monitoring/sql/grafana-ro.sql`。`remote-deploy.sh` 在应用启动后也执行同一 SQL。
+- 当前 V2 看板为六张：`01-overview.json`、`02-requests.json`、`03-nodes.json`、`04-users.json`、`05-host.json`、`06-request.json`，UID 分别为 `sub2api-v2-overview`、`sub2api-v2-requests`、`sub2api-v2-nodes`、`sub2api-v2-users`、`sub2api-v2-host`、`sub2api-v2-request`，面板数 14/7/8/7/23/10。旧的 `02-chain.json` 已由 `02-requests.json` 取代（历史记录见 `MONITORING_LOCAL.md`）。Compose 逐文件只读挂载到 `/var/lib/grafana/dashboards/v2/`，provider 不整目录挂载。
 - 手工 `docker compose` / `--no-start` 部署需自行执行 `monitoring/sql/grafana-ro.sql`，否则 Grafana PG 数据源无法登录。
 - 部署前建议先跑 `python3 deploy/tests/verify-migrations.py` 与 `python3 deploy/tests/verify-instrumentation.py /path/to/main`；前者校验 49 组历史编号冲突 ack 基线，后者仅为二进制辅助检查。
 - 正式发布仍需构建并 push `sun/sub2api:0.0.5-v2mon`，按 `deploy-us1.sh`/`remote-deploy.sh` 流程部署；本仓库未执行 push、生产部署或外部 SMTP。

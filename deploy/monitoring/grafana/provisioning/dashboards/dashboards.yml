@@ -1,9 +1,11 @@
 # =============================================================================
 # Grafana 看板 provisioning provider
 # =============================================================================
-# 看板 JSON 放 /var/lib/grafana/dashboards（compose 只读挂载
-# deploy/monitoring/grafana/dashboards）；provisioned 看板以 Git 文件为权威，
-# 页面手工改动重启后会被覆盖（迭代流程：本地调 -> 导出 JSON -> 回写仓库）。
+# 看板 JSON 位于仓库 deploy/monitoring/grafana/dashboards；compose 将当前六张
+# V2 JSON 逐文件只读挂载到 /var/lib/grafana/dashboards/v2，provider 只扫描该
+# 目录（不整目录挂载，backup/ 下的旧 V1 JSON 不会被加载）。provisioned 看板
+# 以 Git 文件为权威，页面手工改动重启后会被覆盖（迭代流程：本地调 -> 导出
+# JSON -> 回写仓库）。
 # =============================================================================
 apiVersion: 1
 
@@ -14,6 +16,9 @@ providers:
     folderUid: sub2api-folder
     type: file
     disableDeletion: false
+    # Grafana 文件 provider 每 30s 扫描一次 v2 目录。部署脚本替换只读挂载的
+    # JSON 后，最多 30s 生效，无需重启 Grafana；对人工更新看板足够。若要求
+    # 秒级生效，可降到 10s，但会增加小机器上的目录扫描/重载频率，故保持 30s。
     updateIntervalSeconds: 30
     allowUiUpdates: false
     options:

@@ -500,9 +500,9 @@ Grafana 数据源：
 | password | `${GRAFANA_PG_PASSWORD}` |
 | jsonData | `sslmode: disable`、`maxOpenConns: 3`、`maxIdleConns: 1`、`connMaxLifetime: 14400`、`postgresVersion: 1500` |
 
-### 7.2 `usage_logs` 字段（源码缺失，需新增）
+### 7.2 `usage_logs` 字段（已实现）
 
-当前仓库的 `usage_logs` **没有** `body_bytes` 与 `gateway_latency_ms`（ent schema 与迁移均无）。V2 必须补：
+`body_bytes` 与 `gateway_latency_ms` 已由 `backend/migrations/252_add_usage_logs_v2_fields.sql` 以可空列加入，ent schema 与写入映射也已存在；新增面板直接读取，不要重复加列。
 
 | 动作 | 文件 |
 | --- | --- |
@@ -520,6 +520,7 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
   id BIGSERIAL PRIMARY KEY,
   observed_at TIMESTAMPTZ NOT NULL,
   request_id TEXT NOT NULL,
+  client_request_id TEXT,
   user_id BIGINT, api_key_id BIGINT, account_id BIGINT, group_id BIGINT,
   platform TEXT, model TEXT, endpoint_class TEXT, endpoint TEXT,
   result TEXT, http_status INT, failure_reason TEXT,
@@ -539,6 +540,23 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 - 迁移必须**纯增量**：`CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`；部署前只读核对线上列类型/非空约束/索引，产出映射表；不兼容时**阻止发布**，不得“只写交集”静默丢字段。
 - 写入 100% 网关请求（当前实测 ~0.15 QPS ≈ 1.3 万行/日，30d ≈ 40 万行，可接受）；队列上限 8192，批量 500 行/1s；满则丢弃并日志告警，绝不阻塞请求。
 - `request_id` 必填：入站无 ID 时由入口中间件生成稳定内部 ID（`internal-<unixnano>-<seq>`），禁止空串。
+- `client_request_id` 可空，取 `ctxkey.ClientRequestID`（入口中间件生成的关联 UUID）。它与 `request_id` 语义不同：**不能直接用 `usage_logs.request_id` 关联样本**。`usage_logs.request_id` 是计费幂等键，由 `resolveUsageBillingRequestID` 生成：优先 `client:<ClientRequestID>`，无关联 ID 时 `local:<RequestID>`，然后才是上游/生成 ID。历史样本该列为 NULL，只能退回 `local:` 口径。
+- 02/06 面板的关联口径保留 `api_key_id`，避免跨 Key 误关联。使用 `LATERAL ... LIMIT 1` 限制关联结果，避免宽表重复。有 `client_request_id` 时只匹配精确 `client:` 键；异步 usage 尚未落库时保留 NULL，不能回退到复用入站 ID 的旧账单。历史样本没有关联 UUID 时才允许 `local:` 匹配：
+  ```sql
+  LEFT JOIN LATERAL (
+    SELECT ul.*
+    FROM usage_logs ul
+    WHERE ul.api_key_id = s.api_key_id
+      AND (ul.request_id = 'client:' || s.client_request_id
+           OR (NULLIF(s.client_request_id, '') IS NULL
+               AND ul.request_id = 'local:' || s.request_id))
+    ORDER BY (ul.request_id = 'client:' || s.client_request_id) DESC,
+             ul.created_at DESC
+    LIMIT 1
+  ) ul ON TRUE
+  ```
+  当前看板不将裸 `request_id` 作为额外兜底；无法关联的历史或独立计费事件保留缺失值，不虚构 Token、费用或客户端信息。
+- 若计费走了强制上游 ID（`web_search:`、`grok-video:` 等异步/独立事件），该行不会命中上述关联；这是计费键语义而非样本缺失。
 - 丢弃/失败必须可观测：日志 + `ops_system_logs`（或等价现有通道）；若新增 Prometheus 计数，需另算预算。
 - 保留 30d，加入现有 cleanup targets；`retention=0` 的 TRUNCATE 语义只用于显式配置，默认 30，配置校验拒绝 0 以外的负数。
 - 索引按查询实测确定（见 §7.4），不要假设复合索引能免排序。
@@ -563,60 +581,55 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 
 ---
 
-## 8. 看板契约（5 张，uid 固定）
+## 8. 看板契约（5 张主看板 + 1 张请求下钻，uid 固定）
 
-| uid | 标题 | 面板数 | 数据源 |
-| --- | --- | --- | --- |
-| `sub2api-v2-overview` | 01 · 总览 | 16 | Prom |
-| `sub2api-v2-chain` | 02 · 链路归因 | 19 | Prom + PG |
-| `sub2api-v2-nodes` | 03 · 上游节点 | 9 | Prom + PG |
-| `sub2api-v2-users` | 04 · 用户/密钥 | 6 | PG |
-| `sub2api-v2-host` | 05 · 宿主与应用 | 15 | Prom(node) + PG |
+| uid | 标题 | 面板数 | 数据源 | 文件 |
+| --- | --- | --- | --- | --- |
+| `sub2api-v2-overview` | 01 · 总览 | 14 | Prom + PG |
+| `sub2api-v2-requests` | 02 · 请求明细 | 7 | PG |
+| `sub2api-v2-nodes` | 03 · 上游节点 | 8 | Prom + PG |
+| `sub2api-v2-users` | 04 · 用户与密钥 | 7 | PG |
+| `sub2api-v2-host` | 05 · 宿主与应用 | 23 | Prom + PG |
+| `sub2api-v2-request` | 请求详情（下钻） | 10 | PG |
 
-通用：`editable:false`、`allowUiUpdates:false`、默认 6h、浏览器时区；01/03/04/05 Prom 面板 30s 刷新，**02 看板 10s 刷新**（AC-1 的 30s 预算：15s 抓取 + 10s 刷新 + ≤2s 查询 ≈ 27s 最坏）；PG 面板 1m；每面板必须有 description（口径 + 误读风险）；缺序列用 `or vector(0)` 并显示“未采集”，**不得**用 `or vector(1)`。
+面板数包含每张主看板顶部的 HTML 导航 text 面板；02 另含链路颜色图例 text 面板。06 不是第 6 个主模块，仅从 02 的“详情”列进入。
+
+通用：`editable:false`、`allowUiUpdates:false`、浏览器时区；01/03/05 刷新 30s，02 刷新 10s，04 刷新 1m，06 刷新 30s。默认时间范围：01/02/03 `now-15m`，04 `now-24h`，05/06 `now-1h`。PG 面板 `interval=1m` 是查询步长，不是独立每分钟刷新。每面板必须有 description（口径 + 误读风险）。禁止 `timeseries`/`graph`/`heatmap`（无折线图）与 `or vector(1)`；缺序列由面板 `noValue` 显示“未采集”，覆盖率 `-1` 显示“无样本”，不得把 0 冒充健康。
 
 ### 8.1 关键面板
 
-| 看板 | 面板 | 查询 |
+| 看板 | 面板 | 查询 / 口径 |
 | --- | --- | --- |
-| 02 | 段耗时堆叠（互斥段） | `histogram_quantile(0.95, sum by (le,phase)(rate(sub2api_request_phase_seconds_bucket{phase!="headers_end"}[$__rate_interval])))`；说明：各段 P95 非同一请求分解，仅用于定位主导段；同一请求分解看 PG 样本 |
-| 02 | 段均值占比 | `sum by (phase)(rate(..._sum{phase!="headers_end"}[$__rate_interval])) / clamp_min(sum(rate(..._sum{phase!="headers_end"}[$__rate_interval])),1e-9)*100`；互斥段均值可堆叠 |
-| 02 | TTFT P95 | `histogram_quantile(0.95, sum by (le)(rate(sub2api_request_phase_seconds_bucket{phase="headers_end"}[$__rate_interval])))` |
-| 02 | 每方向字节速率 | `sum by (direction)(rate(sub2api_transfer_bytes_total[$__rate_interval]))` |
-| 02 | 字节差异 | `(sum(rate(...{direction="resp_upstream"}[10m])) - sum(rate(...{direction="resp_downstream"}[10m]))) / clamp_min(sum(rate(...{direction="resp_upstream"}[10m])),1)`；描述：差异 ≠ 截断，需结合失败根因 |
-| 02 | 失败根因 | `sum by (failure_reason)(rate(sub2api_gateway_requests_total{result!="success"}[$__rate_interval]))` |
-| 02 | 客户端中断 | `sum by (stage)(rate(sub2api_client_abort_total[$__rate_interval]))` |
-| 02 | 慢样本表 | `SELECT observed_at,total_ms,body_read_ms,wait_ms,upstream_ms,headers_end_ms,response_ms,result,failure_reason,account_id,model FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY total_ms DESC LIMIT 40` |
-| 03 | 账号失败率 | `sum by (account)(rate(...{result!="success"}[5m])) / clamp_min(sum by (account)(rate(...[5m])),1e-9)` |
-| 03 | 账号 TTFT P95 | `histogram_quantile(0.95, sum by (le,account)(rate(sub2api_upstream_ttft_seconds_bucket[$__rate_interval])))` |
-| 03 | 账号 QPS | `sum by (account)(rate(sub2api_upstream_requests_total[$__rate_interval]))` |
-| 04 | 用户请求量 | `SELECT $__timeGroupAlias(created_at,'5m'), count(*) FROM usage_logs WHERE $__timeFilter(created_at) AND ($user = -1 OR user_id = $user) GROUP BY 1 ORDER BY 1` |
-| 04 | 慢请求明细 | `usage_logs WHERE duration_ms > 30000 ... LIMIT 20`，不展示 IP |
-| 05 | 宿主资源 | `node_*` 标准表达式；应用参数 `ops_system_metrics` 1m 聚合 |
+| 01 | 链路段耗时占比 | PG samples 的 6 段平均毫秒，barchart `stacking=percent` 输出单条水平堆叠条；headers_end 不参与 |
+| 01 | 失败根因 Top 6 | `topk(6, sum by (failure_reason)(increase(sub2api_gateway_requests_total{result!="success"}[$__range])))`；无失败时无数据是健康，不是未采集 |
+| 01 | 数据完整性 | `sub2api_metric_coverage_ratio`；0~1，-1 显示“无样本” |
+| 01 | 最近异常 / 上游账号速览 | PG samples + users/api_keys/accounts/groups；账号速览为请求口径 |
+| 02 | 实时请求 | `ops_request_transfer_samples s` LEFT JOIN `usage_logs`（`api_key_id` + 精确 `client:`，无关联 UUID 时才回退 `local:`，`LATERAL ... LIMIT 1`）、`users`、`api_keys`、`accounts`、`groups`；`ORDER BY s.observed_at DESC LIMIT 200`；6 段 ms 列 + 总耗时/TTFT；详情列 data-links |
+| 02 | 4 个 mini stat | 窗口内请求、成功率、平均总耗时、慢请求 >3s；均为 PG 样本口径；无样本显示未采集 |
+| 03 | 账号健康矩阵 / 模型档位 / 并发上限 | PG samples 聚合；QPS/TTFT/失败率是请求口径，低样本百分比噪声大；并发只显示配置上限，不是实时在途 |
+| 04 | 用户 / 密钥表 | `usage_logs` 聚合，成本使用 `actual_cost`；失败率来自 PG samples；“今日”按 `Asia/Shanghai` 日界 |
+| 05 | 宿主 / 运行时 / 服务 / 应用信息 | node-exporter + go/process + `ops_system_metrics`；node-exporter 可选，未启用时显示未采集 |
+| 06 | 请求详情 | `$request` 变量；6 段分解、四方向字节与状态、token/actual_cost、失败结算 |
 
-### 8.2 变量（修正列名与类型）
+### 8.2 变量
 
-```yaml
-user:
-  type: query
-  query: "SELECT id AS __value, COALESCE(email, id::text) AS __text FROM users ORDER BY 2 LIMIT 1000"
-  includeAll: true
-  allValue: "-1"
-  multi: false
-api_key:
-  type: query
-  query: "SELECT id AS __value, name AS __text FROM api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000"
-  includeAll: true
-  allValue: "-1"
-  multi: false
-```
+| 看板 | 变量 |
+| --- | --- |
+| 02 | `user`、`api_key`、`result`（custom: all/success/failure）、`model`、`search`（textbox） |
+| 04 | `user`、`api_key` |
+| 06 | `request`（近期 1000 个 request_id；includeAll=false；URL `var-request`） |
 
-- `users` 主键是 `id`，不是 `user_id`。
-- 过滤用 `($user = -1 OR user_id = $user)` / `($api_key = -1 OR api_key_id = $api_key)`，保持 bigint 索引可用；变量本身是数字。
-- 仅对含 `user_id`/`api_key_id` 列的面板应用过滤；`ops_system_metrics`、`node_*`、Prom 面板不应用。
-- 变量变化后依赖面板自动刷新；生成器需为每个面板声明 `datasource` 与可用变量。
+- `user`/`api_key` 为 query 变量，`includeAll=true`、`allValue=-1`、`multi=false`。
+- `model` 为 query 变量，`includeAll=true`、`allValue=__all__`；All 时 SQL 条件为 `${model:sqlstring} = '__all__'`。
+- `search` 使用 `${search:sqlstring}`，匹配用户、Key 名称、模型和请求 ID。
+- 04 的 SQL 面板同时应用 `($user = -1 OR user_id = $user)` 与 `($api_key = -1 OR api_key_id = $api_key)`；02 应用 user/api_key/result/model/search。变量不得施加到 Prom、node 或系统快照面板。
 
----
+### 8.3 Grafana 原生限制
+
+- Table 没有自动滚动、跟随新行或单面板暂停；02 使用“最新在前 + 10s 看板刷新”，暂停是看板级。
+- Grafana 没有抽屉；02 的“详情”链接进入 `sub2api-v2-request`，等价于 mockup 的请求详情抽屉。
+- 原生没有 Tab：使用 dashboard `links`（保留时间范围/变量）+ 顶部 HTML text 导航（当前页高亮，不可 sticky）。
+- 单条水平堆叠条用 barchart + PG wide frame 实现，不引入自定义插件。
 
 ## 9. 告警契约（18 条）
 

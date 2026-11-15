@@ -703,8 +703,8 @@ gateway:
 
 ### Monitoring V2 as code
 
-监控 overlay 现包含 Prometheus、Alertmanager、Grafana，配合业务基础栈共六个常驻容器；`--host-metrics` / `--backup` 保留可选 profile。Prometheus 默认 15s 抓取、90d/8GB retention；五张 V2 看板由 `monitoring/grafana/build-dashboards.py` 生成，修改后执行 `--check`。
+监控 overlay 现包含 Prometheus、Alertmanager、Grafana，配合业务基础栈共六个常驻容器；`--host-metrics` / `--backup` 保留可选 profile。Prometheus 默认 15s 抓取、90d/8GB retention；六张 V2 看板（5 张主看板 + 1 张请求下钻）由 `monitoring/grafana/build-dashboards.py` 生成，文件为 `01-overview.json`、`02-requests.json`、`03-nodes.json`、`04-users.json`、`05-host.json`、`06-request.json`，修改后执行 `--check`。旧的 `02-chain.json` 已由 `02-requests.json` 取代。
 
 只读 PG 角色、SMTP 占位配置、实际工具输出、30 组规则测试矩阵、896m 内存账与已知偏差见 [MONITORING_LOCAL.md](MONITORING_LOCAL.md#v2-w5-本地验收2026-11-14)。`monitoring.env` 中填写 `GRAFANA_PG_PASSWORD` / `ALERT_SMTP_*`；先完成 M3 表迁移与 `monitoring/sql/grafana-ro.sql` 初始化。单独 overlay 不构成完整 Compose 项目，需与 dev/local 基础 Compose 合并校验；旧 V1 JSON 在 backup 中，不被 V2 provider 加载。混合看板的 PG `interval=1m` 是查询步长，Grafana 实际按看板刷新。
 
-W5 审核修复后的看板刷新为 02=10s、其余（含 04）=30s，PG interval 仍为 1m。运行 `python3 deploy/tests/monitoring-v2-dashboard-test.py` 可复验五张看板结构、覆盖率百分比映射、54 条 PromQL 语法与 11 组查询回归（缺序列/真实零值、负载标签匹配、已有 256 KiB 桶）。
+当前看板刷新为 02=10s、04=1m，其余（01/03/05/06）=30s，PG interval 仍为 1m。运行 `python3 deploy/tests/monitoring-v2-dashboard-test.py` 可复验六张看板结构、覆盖率百分比映射、31 条 PromQL 语法与 9 组查询回归（缺序列/真实零值、负载标签匹配、已有 256 KiB 桶）。

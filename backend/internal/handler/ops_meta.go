@@ -27,8 +27,12 @@ func attachOpsRequestMeta(c *gin.Context, apiKey *service.APIKey, userID int64, 
 		requestID = strings.TrimSpace(c.GetHeader("x-request-id"))
 	}
 	// ClientRequestID is an independently generated UUID, not this request ID.
+	// usage_logs.request_id becomes "client:<ClientRequestID>" (or
+	// "local:<RequestID>" when absent), so keep it for the dashboard join.
+	clientRequestID, _ := ctx.Value(ctxkey.ClientRequestID).(string)
+	clientRequestID = strings.TrimSpace(clientRequestID)
 	endpoint := GetInboundEndpoint(c)
-	meta := monitoring.OpsRequestMeta{RequestID: requestID, UserID: userID, Model: originalModel, Endpoint: endpoint, EndpointClass: monitoring.EndpointClass(endpoint)}
+	meta := monitoring.OpsRequestMeta{RequestID: requestID, ClientRequestID: clientRequestID, UserID: userID, Model: originalModel, Endpoint: endpoint, EndpointClass: monitoring.EndpointClass(endpoint)}
 	if apiKey != nil {
 		meta.APIKeyID = apiKey.ID
 		if apiKey.GroupID != nil {
