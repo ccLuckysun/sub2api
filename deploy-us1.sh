@@ -36,7 +36,10 @@ VERSION="$(printf '%s' "$VERSION" | tr -d '[:space:]')"
 # SSH runs a remote shell: reject shell metacharacters in remotely passed values.
 [[ "$REMOTE_HOST" =~ ^[A-Za-z0-9_][A-Za-z0-9_@.-]*$ && "$IMAGE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9./_:-]*$ && "$APP_CONTAINER" =~ ^[A-Za-z0-9_.-]+$ && "$DB_CONTAINER" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo 'Invalid deployment target' >&2; exit 1; }
 docker info >/dev/null 2>&1 || { echo 'Docker daemon is unavailable' >&2; exit 1; }
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE_HOST" true
+# Deployment never needs the LocalForward tunnels in ~/.ssh/config; a developer
+# tunnel that already holds 3000/8080/18765 would make ssh exit 255 and abort here.
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o ClearAllForwardings=yes)
+ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" true
 FULL_IMAGE="${IMAGE_NAME}:${VERSION}"
 COMMIT="$(git rev-parse --short HEAD)"
 LOCAL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sub2api-deploy.XXXXXX")"
@@ -62,10 +65,10 @@ tar -czf "$LOCAL_DIR/monitoring-assets.tar.gz" -C deploy \
   monitoring/prometheus/rules monitoring/alertmanager monitoring/sql \
   monitoring/backup/snapshot.sh monitoring/backup/crontab.example \
   monitoring/grafana/provisioning monitoring/grafana/dashboards
-REMOTE_DIR="$(ssh "$REMOTE_HOST" mktemp -d /tmp/sub2api-deploy.XXXXXX)"
+REMOTE_DIR="$(ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" mktemp -d /tmp/sub2api-deploy.XXXXXX)"
 [[ "$REMOTE_DIR" =~ ^/tmp/sub2api-deploy\.[A-Za-z0-9]+$ ]] || { echo 'Unexpected remote staging path' >&2; exit 1; }
-scp -q "$LOCAL_DIR/image.tar.gz" "$LOCAL_DIR/monitoring-assets.tar.gz" deploy/remote-deploy.sh "$REMOTE_HOST:$REMOTE_DIR/"
-ssh "$REMOTE_HOST" bash "$REMOTE_DIR/remote-deploy.sh" "$VERSION" "$REMOTE_DIR" "$MODE" "$APP_CONTAINER" "$DB_CONTAINER" "$IMAGE_NAME"
+scp -q -o ClearAllForwardings=yes "$LOCAL_DIR/image.tar.gz" "$LOCAL_DIR/monitoring-assets.tar.gz" deploy/remote-deploy.sh "$REMOTE_HOST:$REMOTE_DIR/"
+ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" bash "$REMOTE_DIR/remote-deploy.sh" "$VERSION" "$REMOTE_DIR" "$MODE" "$APP_CONTAINER" "$DB_CONTAINER" "$IMAGE_NAME"
 printf '\nDeployed %s to %s.\n' "$FULL_IMAGE" "$REMOTE_HOST"
 printf 'Grafana tunnel: ssh -L 3000:127.0.0.1:3000 %s\n' "$REMOTE_HOST"
 echo 'Manage updates with ./sub2api-compose in the remote Compose directory.'
