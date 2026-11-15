@@ -34,7 +34,12 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	account *Account,
 	body []byte,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (opsResult *OpenAIForwardResult, opsErr error) {
+	ctx, ops, opsOwner := beginOpenAIBridgeOps(ctx, c, account)
+	if opsOwner {
+		defer func() { finishOpenAIBridgeOps(ops, opsResult, opsErr) }()
+	}
+
 	startTime := time.Now()
 
 	// 1. Parse Anthropic request
@@ -135,11 +140,13 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
+	ops.response(resp)
 	defer func() { _ = resp.Body.Close() }()
 
 	// 4. Handle error responses
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
@@ -149,6 +156,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 
 	// 5. Convert response
+	consumeOpenAIBridgeResponse(ops)
 	if clientStream {
 		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
@@ -224,6 +232,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 			writeStreamHeaders()
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 				clientDisconnected = true
+				openAIBridgeAbort(c)
 				break
 			}
 		}
@@ -267,6 +276,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 			writeStreamHeaders()
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 				clientDisconnected = true
+				openAIBridgeAbort(c)
 				break
 			}
 		}

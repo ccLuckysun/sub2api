@@ -32,7 +32,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	body []byte,
 	promptCacheKey string,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (opsResult *OpenAIForwardResult, opsErr error) {
+	ctx, ops, opsOwner := beginOpenAIBridgeOps(ctx, c, account)
+	if opsOwner {
+		defer func() { finishOpenAIBridgeOps(ops, opsResult, opsErr) }()
+	}
+
 	// 工具 Schema 清洗必须先于所有分流：下游每条路径（原生 Anthropic 直通、
 	// Chat Completions 转换、Responses 转换）都会把 tools 原样带给上游，而
 	// xAI / Moonshot 等严格校验方会因 input_schema 里的 required:null 或
@@ -429,10 +434,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 				return nil, fmt.Errorf("build grok retry request: %w", err)
 			}
 		}
+		upstreamReq = ops.prepare(upstreamReq)
+		ctx = ops.context(ctx)
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		if err != nil {
+			ops.failure(err, "transport", 0, "")
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
+		ops.response(resp)
 		if account.Platform != PlatformGrok || attempt > 0 || resp.StatusCode != http.StatusBadRequest {
 			break
 		}
@@ -469,6 +478,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
 			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
@@ -518,6 +528,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 	}
 
+	consumeOpenAIBridgeResponse(ops)
 	// 9. Handle normal response
 	// Upstream is always streaming; choose response format based on client preference.
 	var result *OpenAIForwardResult
@@ -921,6 +932,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			if !ok {
 				if frame, ok := parser.Finish(); ok {
 					payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+					openAIBridgeSemantic(c, []byte(payload))
 					payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
 					var event apicompat.ResponsesStreamEvent
 					if err := json.Unmarshal([]byte(payload), &event); err == nil {
@@ -945,6 +957,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			}
 			resetTimeout()
 			if ev.err != nil {
+				openAIBridgeReadError(c, ev.err)
 				if !errors.Is(ev.err, context.Canceled) && !errors.Is(ev.err, context.DeadlineExceeded) {
 					logger.L().Warn(logPrefix+": read error",
 						zap.Error(ev.err),
@@ -962,9 +975,11 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				continue
 			}
 			payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+			openAIBridgeSemantic(c, []byte(payload))
 			payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
 
 			var event apicompat.ResponsesStreamEvent
+			openAIBridgeSemantic(c, []byte(payload))
 			if err := json.Unmarshal([]byte(payload), &event); err != nil {
 				logger.L().Warn(logPrefix+": failed to parse event",
 					zap.Error(err),
@@ -1090,6 +1105,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 
 		var event apicompat.ResponsesStreamEvent
+		openAIBridgeSemantic(c, []byte(payload))
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("openai messages stream: failed to parse event",
 				zap.Error(err),
@@ -1139,6 +1155,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 							c.Writer.Flush()
 						}
 						clientDisconnected = true
+						openAIBridgeAbort(c)
 					}
 					return true
 				}
@@ -1198,6 +1215,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				writeStreamHeaders()
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					logger.L().Info("openai messages stream: client disconnected, continuing to drain upstream for billing",
 						zap.String("request_id", requestID),
 					)
@@ -1229,6 +1247,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				writeStreamHeaders()
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					logger.L().Info("openai messages stream: client disconnected during final flush",
 						zap.String("request_id", requestID),
 					)
@@ -1267,6 +1286,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	}
 	processFrame := func(frame openAICompatSSEFrame) bool {
 		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+		openAIBridgeSemantic(c, []byte(payload))
 		return processDataLine(payload)
 	}
 
@@ -1374,6 +1394,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				return missingTerminalErr()
 			}
 			if ev.err != nil {
+				openAIBridgeReadError(c, ev.err)
 				handleScanErr(ev.err)
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
 			}
@@ -1420,6 +1441,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					zap.String("request_id", requestID),
 				)
 				clientDisconnected = true
+				openAIBridgeAbort(c)
 				continue
 			}
 			clientOutputStarted = true

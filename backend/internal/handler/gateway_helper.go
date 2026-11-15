@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -400,6 +401,13 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 	}
 
 	backoff := initialBackoff
+	// Only the blocking queue interval belongs to wait. Immediate acquisition,
+	// admission checks, scheduler work and release remain gateway time. All P0
+	// user/account wait paths share this loop; do not time its callers again.
+	if rec := monitoring.RecorderFromContext(c.Request.Context()); rec != nil {
+		waitStarted := time.Now()
+		defer func() { rec.AddWait(time.Since(waitStarted)) }()
+	}
 	timer := time.NewTimer(backoff)
 	defer timer.Stop()
 

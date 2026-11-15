@@ -1,0 +1,431 @@
+{
+  "uid": "sub2api-v2-users",
+  "title": "04 · 用户/密钥",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "allowUiUpdates": false,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "tags": [
+    "sub2api",
+    "v2"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "用户请求量",
+      "type": "timeseries",
+      "description": "PG 5 分钟桶。变量 $user 为空（-1）时显示 Top 用户；选中后只看该用户。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(created_at,'5m'), user_id::text AS metric,count(*) AS requests FROM usage_logs WHERE $__timeFilter(created_at) AND ($user = -1 OR user_id = $user) AND ($api_key = -1 OR api_key_id = $api_key) GROUP BY 1,2 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "今日 Token / 成本",
+      "type": "stat",
+      "description": "PG 口径，含缓存 token；与账单系统的最终金额可能有四舍五入差异。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT sum(input_tokens+output_tokens) AS tokens,sum(total_cost) AS cost,sum(cache_read_tokens)::float/nullif(sum(input_tokens),0) AS cache_ratio,count(*) AS requests FROM usage_logs WHERE created_at >= date_trunc('day',now()) AND ($user = -1 OR user_id = $user) AND ($api_key = -1 OR api_key_id = $api_key)",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "API Key 流量 · Top 40",
+      "type": "table",
+      "description": "Key 名称是用户可改的展示名，不作为 Prometheus 标签；只在 PG 面板出现。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT api_key_id,count(*) AS requests,sum(input_tokens+output_tokens) AS tokens FROM usage_logs WHERE $__timeFilter(created_at) AND ($user = -1 OR user_id = $user) AND ($api_key = -1 OR api_key_id = $api_key) GROUP BY api_key_id ORDER BY requests DESC LIMIT 40",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "慢请求明细（>30s） · Top 40",
+      "type": "table",
+      "description": "按 duration_ms 降序的 PG 明细。IP 字段全是 Cloudflare 边缘 IP，按 Q10 决定不展示。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT created_at,user_id,api_key_id,model,duration_ms,first_token_ms,body_bytes FROM usage_logs WHERE $__timeFilter(created_at) AND duration_ms > 30000 AND ($user = -1 OR user_id = $user) AND ($api_key = -1 OR api_key_id = $api_key) ORDER BY duration_ms DESC LIMIT 40",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "用户延迟分位",
+      "type": "timeseries",
+      "description": "PG 精确分位，基于 usage_logs 全量样本（不是采样）。与 Prometheus 的 HTTP 延迟口径不同。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(created_at,'5m'),percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms)/1000 AS p50,percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)/1000 AS p95,percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms)/1000 AS p99 FROM usage_logs WHERE $__timeFilter(created_at) AND ($user = -1 OR user_id = $user) AND ($api_key = -1 OR api_key_id = $api_key) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "用户错误构成",
+      "type": "barchart",
+      "description": "用户维度只看 PG 的 result，不细分 failure_reason（12 类只在 02 的链路面板展开）。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 使用 PG 请求样本（非 attempt），受落库覆盖率影响。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT result,count(*) AS requests FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) AND ($user = -1 OR user_id = $user) AND ($api_key = -1 OR api_key_id = $api_key) GROUP BY result",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "user",
+        "label": "user",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "sub2api-pg"
+        },
+        "query": "SELECT id AS __value, COALESCE(email, id::text) AS __text FROM users ORDER BY 2 LIMIT 1000",
+        "definition": "SELECT id AS __value, COALESCE(email, id::text) AS __text FROM users ORDER BY 2 LIMIT 1000",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": "-1",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "api_key",
+        "label": "api_key",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "sub2api-pg"
+        },
+        "query": "SELECT id AS __value, name AS __text FROM api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000",
+        "definition": "SELECT id AS __value, name AS __text FROM api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": "-1",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      }
+    ]
+  },
+  "links": []
+}

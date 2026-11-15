@@ -1,0 +1,2 @@
+{{ define "sub2api.subject" }}[Sub2API {{ .Status }}] {{ .CommonLabels.alertname }}{{ end }}
+{{ define "sub2api.body" }}{{ range .Alerts }}<p>{{ .Labels.severity }} {{ .Annotations.summary }}: {{ .Annotations.description }}</p>{{ end }}{{ end }}

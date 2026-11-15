@@ -1,0 +1,972 @@
+{
+  "uid": "sub2api-v2-host",
+  "title": "05 · 宿主与应用",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "allowUiUpdates": false,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "tags": [
+    "sub2api",
+    "v2"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "宿主 CPU 使用率",
+      "type": "timeseries",
+      "description": "2 vCPU 机器的整机 CPU。process_* 是应用进程，不能与整机百分比直接对比。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(100 - avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])) * 100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (100 - avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])) * 100))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "宿主内存",
+      "type": "timeseries",
+      "description": "swap 已用 800MB+ 时，内存压力会先体现在 load 与响应抖动，而不是 OOM。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() ((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "根分区使用率",
+      "type": "gauge",
+      "description": "只代表根分区；Prometheus TSDB 与备份目录若分开挂载需另看。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "((1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() ((1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "磁盘 IO",
+      "type": "timeseries",
+      "description": "宿主磁盘吞吐。Prometheus 压缩/快照与 PG WAL 都会造成写峰值。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(rate(node_disk_read_bytes_total[$__rate_interval])) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (rate(node_disk_read_bytes_total[$__rate_interval])))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(rate(node_disk_written_bytes_total[$__rate_interval])) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (rate(node_disk_written_bytes_total[$__rate_interval])))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "宿主网卡（排除虚拟设备）",
+      "type": "timeseries",
+      "description": "整机聚合，排除 lo/veth/docker/bridge。与网关自报字节口径不同，不可精确对账。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(sum(rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum(rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[$__rate_interval]))))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(sum(rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum(rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[$__rate_interval]))))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "load5 / 核数",
+      "type": "timeseries",
+      "description": "按核数归一化的 load，避免硬编码 2 核。>2 说明有明显排队。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(node_load5 / count without(cpu, mode)(node_cpu_seconds_total{mode=\"idle\"})) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (node_load5 / count without(cpu, mode)(node_cpu_seconds_total{mode=\"idle\"})))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "x",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "goroutines",
+      "type": "timeseries",
+      "description": "Go 运行时 goroutine 数。与并发队列深度一起看，区分“真并发”与“卡住”。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(go_goroutines{job=\"sub2api\"}) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (go_goroutines{job=\"sub2api\"}))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "title": "Go 堆内存",
+      "type": "timeseries",
+      "description": "Go heap 不等于 RSS；容器内存 limit 是 RSS 口径。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(go_memstats_heap_inuse_bytes{job=\"sub2api\"}) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (go_memstats_heap_inuse_bytes{job=\"sub2api\"}))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(go_memstats_heap_sys_bytes{job=\"sub2api\"}) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (go_memstats_heap_sys_bytes{job=\"sub2api\"}))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 9,
+      "title": "进程 RSS",
+      "type": "stat",
+      "description": "应用进程 RSS，含 Go runtime 与未归还内存；与 node 的整机内存不同口径。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(process_resident_memory_bytes{job=\"sub2api\"}) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (process_resident_memory_bytes{job=\"sub2api\"}))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 10,
+      "title": "DB 连接",
+      "type": "timeseries",
+      "description": "来自 ops_system_metrics 的应用侧连接数；与 PG 侧 pg_stat_activity 可能有时差。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(created_at,'1m'),avg(db_conn_active) AS active,avg(db_conn_idle) AS idle FROM ops_system_metrics WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 11,
+      "title": "Redis 状态",
+      "type": "stat",
+      "description": "应用探活结果，不代表 Redis 内部指标；连接池接近上限时需看应用队列。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 24,
+        "w": 4,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(created_at,'1m'),min(redis_ok::int) AS redis_ok FROM ops_system_metrics WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 12,
+      "title": "并发队列深度",
+      "type": "timeseries",
+      "description": "应用调度队列深度；与 02 的 wait 段、03 的并发利用率互相印证。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(created_at,'1m'),avg(concurrency_queue_depth) AS queue_depth FROM ops_system_metrics WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 13,
+      "title": "应用 QPS / TPS",
+      "type": "timeseries",
+      "description": "ops_system_metrics 的应用口径，与 Prometheus 的 HTTP QPS 不可对账。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 24,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(created_at,'1m'),avg(qps) AS qps,avg(tps) AS tps FROM ops_system_metrics WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 14,
+      "title": "账号切换计数",
+      "type": "timeseries",
+      "description": "应用侧每分钟聚合的切换次数；与 M-7 的 Prometheus 计数口径不同，不可对账。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 8,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(created_at,'1m'),sum(account_switch_count) AS switches FROM ops_system_metrics WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 15,
+      "title": "应用系统参数（窗口聚合） · Top 40",
+      "type": "table",
+      "description": "应用侧每分钟聚合值，和宿主/进程指标语义不同；表头注明“窗口聚合值”。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 32,
+        "w": 16,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(created_at,'1m'),avg(cpu_usage_percent) AS cpu,avg(memory_usage_percent) AS memory,min(db_ok::int) AS db_ok,min(redis_ok::int) AS redis_ok,avg(goroutine_count) AS goroutines,avg(concurrency_queue_depth) AS queue_depth,sum(account_switch_count) AS switches FROM ops_system_metrics WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1 DESC LIMIT 40",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "links": []
+}

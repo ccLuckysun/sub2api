@@ -3,6 +3,31 @@
 # Validate a temporary file with promtool before atomically replacing the config.
 set -eu
 
+# Container-only SMTP renderer: allowlisted substitutions, no eval/source.
+if [ "${1:-}" = --alertmanager ]; then
+    : "${ALERT_SMTP_SMARTHOST:?required}" "${ALERT_SMTP_FROM:?required}" "${ALERT_SMTP_TO:?required}"
+    case "${ALERT_SMTP_REQUIRE_TLS:-true}" in true|false) ;; *) exit 1 ;; esac
+    export ALERT_SMTP_REQUIRE_TLS="${ALERT_SMTP_REQUIRE_TLS:-true}"
+    awk '
+      function quote(v) { gsub(/\047/, "\047\047", v); return "\047" v "\047" }
+      /\$\{ALERT_SMTP_/ {
+        line=$0
+        while (match(line, /\$\{ALERT_SMTP_[A-Z_]+\}/)) {
+          key=substr(line,RSTART+2,RLENGTH-3)
+          value=ENVIRON[key]
+          if (value ~ /[\r\n]/) exit 2
+          if (key != "ALERT_SMTP_REQUIRE_TLS") value=quote(value)
+          line=substr(line,1,RSTART-1) value substr(line,RSTART+RLENGTH)
+        }
+        print line; next
+      }
+      {print}
+    ' /etc/alertmanager/alertmanager.yml.tmpl > /alertmanager/alertmanager.yml
+    amtool check-config /alertmanager/alertmanager.yml
+    [ "${ALERTMANAGER_RENDER_ONLY:-false}" != true ] || exit 0
+    exec /bin/alertmanager --config.file=/alertmanager/alertmanager.yml --storage.path=/alertmanager
+fi
+
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ENV_FILE="${MONITORING_ENV_FILE:-$SCRIPT_DIR/../monitoring.env}"
 TEMPLATE="$SCRIPT_DIR/prometheus.yml.tmpl"
@@ -32,7 +57,7 @@ PROM_SCRAPE_INTERVAL="${PROM_SCRAPE_INTERVAL:-$(read_setting PROM_SCRAPE_INTERVA
 PROM_SCRAPE_TIMEOUT="${PROM_SCRAPE_TIMEOUT:-$(read_setting PROM_SCRAPE_TIMEOUT)}"
 MONITORING_HOST_METRICS_ENABLED="${MONITORING_HOST_METRICS_ENABLED:-$(read_setting MONITORING_HOST_METRICS_ENABLED)}"
 NODE_EXPORTER_HOST_IP="${NODE_EXPORTER_HOST_IP:-$(read_setting NODE_EXPORTER_HOST_IP)}"
-: "${PROM_SCRAPE_INTERVAL:=30s}"
+: "${PROM_SCRAPE_INTERVAL:=15s}"
 : "${PROM_SCRAPE_TIMEOUT:=10s}"
 : "${MONITORING_HOST_METRICS_ENABLED:=false}"
 case "$MONITORING_HOST_METRICS_ENABLED" in
@@ -65,12 +90,15 @@ awk '
         print
     }
 ' "$TEMPLATE" > "$TMP"
+if grep -q '\${' "$TMP"; then
+    echo '[render] ERROR: unresolved template variable' >&2; exit 1
+fi
 chmod 644 "$TMP"
 if command -v promtool >/dev/null 2>&1; then
-    promtool check config "$TMP"
+    promtool check config --syntax-only "$TMP"
 elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     docker run --rm --network none -v "$TMP:/prometheus.yml:ro" \
-        --entrypoint promtool prom/prometheus:v3.16.0 check config /prometheus.yml
+        --entrypoint promtool prom/prometheus:v3.16.0 check config --syntax-only /prometheus.yml
 else
     echo '[render] ERROR: promtool and Docker unavailable; configuration NOT replaced' >&2
     exit 1

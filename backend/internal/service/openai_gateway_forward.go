@@ -8,8 +8,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -19,7 +21,14 @@ import (
 )
 
 // Forward forwards request to OpenAI API
-func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (result *OpenAIForwardResult, forwardErr error) {
+	ops := newOpenAIResponsesOps(ctx, c, account)
+	delegatedOrHTTP := false
+	defer func() {
+		if !delegatedOrHTTP && forwardErr != nil {
+			ops.fail(forwardErr, "", 0, "", false)
+		}
+	}()
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -158,6 +167,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	originalModel := reqModel
 
 	if account.Platform == PlatformGrok {
+		delegatedOrHTTP = true
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 	}
 
@@ -190,8 +200,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Responses 客户端 × Anthropic 上游：转成 Anthropic 请求走原生端点。不能落到
 		// raw-CC 分支——其 URL 构造会把 anthropic base 当 CC base 用。
 		// 账号映射未命中时以去除首尾空白的请求模型兜底，计费名与上游模型名一致。
+		delegatedOrHTTP = true
 		return s.forwardResponsesViaNativeAnthropic(ctx, c, account, body, reqModel)
 	case APIProtocolChatCompletions:
+		delegatedOrHTTP = true
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, startTime)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
@@ -275,6 +287,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, mappedModel)
 		// 国产模型默认 effort 补充：也要用 mappedModel 判定是否是 passback-required 上游。
 		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, mappedModel)
+		delegatedOrHTTP = true
 		return s.forwardOpenAIPassthrough(
 			ctx,
 			c,
@@ -1037,9 +1050,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				wsResult.ImageInputSize = imageInputSize
 				wsResult.BillingModel = imageBillingModel
 			}
+			delegatedOrHTTP = true
 			return wsResult, nil
 		}
 		s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
+		delegatedOrHTTP = true
 		return nil, wsErr
 	}
 
@@ -1055,11 +1070,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		firstOutputTimeout = s.openAIFirstOutputTimeout(reasoningEffortValue)
 	}
 
+	delegatedOrHTTP = true
+	defer func() { ops.finish(result, forwardErr) }()
 	httpInvalidEncryptedContentRetryTried := false
 	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	for {
+		ops.stage = ""
+		ops.handle = nil
+		ops.cause = nil
+		ops.code = ""
+		ops.status = 0
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 		var headerGuard *openAIFirstOutputHeaderGuard
@@ -1086,11 +1108,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			proxyURL = account.Proxy.URL()
 		}
 
+		upstreamReq = ops.prepare(upstreamReq)
+		ctx = ops.context(ctx)
 		// Send request
 		upstreamStart := time.Now()
 		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		if err != nil {
+			ops.failure(err, "transport", 0, "")
+		}
 		if headerGuard != nil && headerGuard.stopHeaderWait() {
+			ops.failure(context.DeadlineExceeded, "headers", 0, "")
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}
@@ -1113,6 +1141,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			// unschedule the account on durable faults (e.g. rejected proxy credentials).
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
+		ops.response(resp)
 		if headerGuard != nil {
 			resp.Body = &openAIRequestContextReadCloser{ReadCloser: resp.Body, cleanup: headerGuard.close}
 		}
@@ -1215,6 +1244,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				})
 
 				shouldDisable := s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
+				ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
 				return nil, s.newOpenAIAccountFailoverError(
 					account,
 					resp.StatusCode,
@@ -1225,6 +1255,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					!shouldDisable && account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 				)
 			}
+			ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
 			return s.handleErrorResponse(ctx, resp, c, account, body, resolveOpenAIErrorSchedulingModel(billingModel, upstreamModel))
 		}
 		defer func() { _ = resp.Body.Close() }()
@@ -1241,6 +1272,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
 		reqBody = nil
 
+		ops.consume(c, body)
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
@@ -1567,4 +1599,148 @@ func (s *OpenAIGatewayService) codexIdentityOverrideUA(account *Account) string 
 		return ""
 	}
 	return account.GetOpenAIUserAgent()
+}
+
+// openAIResponsesOps carries one logical HTTP forward through local retries.
+// Response identity remains a candidate until the consumer's retry decision is
+// final, so compact/error responses discarded by that decision cannot lock it.
+type openAIResponsesOpsKey struct{}
+type openAIResponsesOps struct {
+	*compatForwardOps
+	handle *monitoring.OpsResponse
+	stage  string
+	status int
+	code   string
+	cause  error
+}
+
+func newOpenAIResponsesOps(ctx context.Context, c *gin.Context, a *Account) *openAIResponsesOps {
+	return &openAIResponsesOps{compatForwardOps: newCompatForwardOps(ctx, c, a)}
+}
+func (o *openAIResponsesOps) prepare(req *http.Request) *http.Request {
+	o.stage = ""
+	o.status = 0
+	o.code = ""
+	o.cause = nil
+	o.handle = nil
+	req = o.compatForwardOps.prepare(req)
+	if o.attempt != nil {
+		req = req.WithContext(context.WithValue(req.Context(), openAIResponsesOpsKey{}, o))
+	}
+	return req
+}
+func (o *openAIResponsesOps) context(ctx context.Context) context.Context {
+	if o.attempt == nil {
+		return ctx
+	}
+	return context.WithValue(monitoring.WithAttempt(ctx, o.attempt), openAIResponsesOpsKey{}, o)
+}
+func (o *openAIResponsesOps) response(resp *http.Response) {
+	o.handle = monitoring.ResponseHandle(resp)
+	o.status = resp.StatusCode
+	o.stage = "headers"
+}
+
+// Ordinary HTTP responses can be locked before consumption. Explicit compact
+// requests can still retry after parsing; defer their lock until that decision.
+func (o *openAIResponsesOps) consume(c *gin.Context, body []byte) {
+	o.stage = "body"
+	if !isExplicitOpenAICompactContext(c) && !isExplicitOpenAICompactRequest(c, body) {
+		observeForwardOps(func() { o.attempt.UseResponseFor(o.handle) })
+	}
+}
+func (o *openAIResponsesOps) failure(err error, stage string, status int, code string) {
+	o.cause = err
+	o.stage = stage
+	o.status = status
+	o.code = code
+}
+func (o *openAIResponsesOps) finish(result *OpenAIForwardResult, err error) {
+	// A business panic unwinds defers without a return value. Leave that attempt
+	// for Recovery/Finalize rather than publishing a false success.
+	if result == nil && err == nil {
+		return
+	}
+	observeForwardOps(func() {
+		if o.rec == nil {
+			return
+		}
+		if o.attempt == nil {
+			if err != nil {
+				o.fail(err, "", 0, "", false)
+			}
+			return
+		}
+		if o.stage == "body" {
+			o.attempt.UseResponseFor(o.handle)
+		}
+		if o.stage == "body" && openAIResponsesOpsClientWriteFailed(o.client) {
+			o.rec.MarkClientAbort("response")
+			o.fail(nil, "response", 0, "", true)
+			return
+		}
+		if err != nil {
+			cause := o.cause
+			if cause == nil {
+				cause = err
+			}
+			o.fail(cause, o.stage, o.status, o.code, false)
+		} else if o.rec.ClientAborted() || (o.client != nil && o.client.Request != nil && errors.Is(o.client.Request.Context().Err(), context.Canceled)) {
+			o.fail(nil, "response", 0, "", true)
+		} else {
+			o.attempt.Done("success", "", monitoring.FailureEvidence{})
+		}
+	})
+}
+func openAIResponsesOpsAbort(ctx context.Context) {
+	if ops, _ := ctx.Value(openAIResponsesOpsKey{}).(*openAIResponsesOps); ops != nil {
+		observeForwardOps(func() { ops.rec.MarkClientAbort("response") })
+	}
+}
+func openAIResponsesOpsCode(body []byte) string {
+	for _, path := range []string{"error.code", "error.type", "response.error.code", "response.error.type"} {
+		if value := strings.TrimSpace(gjson.GetBytes(body, path).String()); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+func openAIResponsesOpsSemantic(ctx context.Context, body []byte) {
+	if ops, _ := ctx.Value(openAIResponsesOpsKey{}).(*openAIResponsesOps); ops != nil {
+		ops.code = openAIResponsesOpsCode(body)
+	}
+}
+
+// The caller has already read these bytes; disabled observation skips parsing.
+func openAIResponsesOpsBody(ctx context.Context, body []byte) {
+	if ops, _ := ctx.Value(openAIResponsesOpsKey{}).(*openAIResponsesOps); ops == nil {
+		return
+	}
+	if terminal, payload, ok := extractOpenAISSETerminalEvent(string(body)); ok && (terminal == "response.failed" || terminal == "error") {
+		openAIResponsesOpsSemantic(ctx, payload)
+	} else {
+		openAIResponsesOpsSemantic(ctx, body)
+	}
+}
+
+// Gin records Render/Data write errors even when the consumer returns a normal
+// usage result. They establish client abort independently of context cancellation.
+func openAIResponsesOpsClientWriteFailed(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	for _, recorded := range c.Errors {
+		if recorded == nil || recorded.Err == nil {
+			continue
+		}
+		err := recorded.Err
+		if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
+			return true
+		}
+		message := strings.ToLower(err.Error())
+		if strings.Contains(message, "broken pipe") || strings.Contains(message, "connection reset by peer") {
+			return true
+		}
+	}
+	return false
 }

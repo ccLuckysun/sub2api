@@ -1,5 +1,5 @@
-# Monitoring overlay: the default stack adds only Prometheus and Grafana.
-# Use ./compose-deploy.sh --monitoring to configure and start all five core services.
+# Monitoring overlay: the default stack adds Prometheus, Alertmanager and Grafana.
+# Use ./compose-deploy.sh --monitoring to configure and start all six core services.
 # Optional profiles: host-metrics (Node Exporter), backup (snapshot cron + init).
 # Host metrics require Linux host networking and an explicit Docker bridge gateway;
 # compose-deploy.sh --host-metrics discovers and validates that private address.
@@ -16,6 +16,10 @@ services:
       # 叠加文件存在即启用，普通业务开发（不带 -f 本文件）不受影响。
       - MONITORING_METRICS_ENABLED=${MONITORING_METRICS_ENABLED:-true}
       - MONITORING_METRICS_BIND=${MONITORING_METRICS_BIND:-0.0.0.0:9091}
+      # V2 Ops instrumentation and 100% PG samples; both require V1 metrics.
+      - MONITORING_OPS_METRICS_ENABLED=${MONITORING_OPS_METRICS_ENABLED:-true}
+      - MONITORING_OPS_SAMPLES_ENABLED=${MONITORING_OPS_SAMPLES_ENABLED:-true}
+      - OPS_SAMPLE_RETENTION_DAYS=${OPS_SAMPLE_RETENTION_DAYS:-30}
 
   # ---------------------------------------------------------------
   # 一次性初始化同卷 snapshots 子目录（Prometheus 镜像以 nobody:65534 运行）
@@ -46,13 +50,16 @@ services:
       - --storage.tsdb.path=/prometheus
       # retention：time 与 size 先到者生效。注意 size 并非数据目录硬上限，
       # WAL/head/快照另占空间且删除异步，不能当磁盘配额依赖（DEV_PLAN 5.1）。
-      - --storage.tsdb.retention.time=${PROM_RETENTION_TIME:-15d}
-      - --storage.tsdb.retention.size=${PROM_RETENTION_SIZE:-1GB}
+      - --storage.tsdb.retention.time=${PROM_RETENTION_TIME:-90d}
+      - --storage.tsdb.retention.size=${PROM_RETENTION_SIZE:-8GB}
       # 快照备份 API（POST /api/v1/admin/tsdb/snapshot）依赖此开关；
       # 端口不映射宿主机，仅容器网内（备份容器）可达。
       - --web.enable-admin-api
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules/slo.yml:/etc/prometheus/rules/slo.yml:ro
+      - ./monitoring/prometheus/rules/chain.yml:/etc/prometheus/rules/chain.yml:ro
+      - ./monitoring/prometheus/rules/infra.yml:/etc/prometheus/rules/infra.yml:ro
       # snapshots 必须与活跃块位于同一卷：Prometheus 通过 hard link 创建块
       # 快照，另挂独立 snapshots 卷会在已有持久块时失败（EXDEV）。
       - prometheus_data:/prometheus
@@ -64,7 +71,7 @@ services:
     # 本地如需调试 Prometheus UI，取消下行注释（仅绑 127.0.0.1）：
     # ports:
     #   - "127.0.0.1:9090:9090"
-    mem_limit: 384m
+    mem_limit: 288m
     networks:
       - sub2api-network
     healthcheck:
@@ -88,6 +95,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
       # 本地一律绑回环：下方 ports 已用 127.0.0.1 前缀限制宿主侧监听；
       # Grafana 进程本身须绑容器 0.0.0.0，否则宿主回环端口转发不可达
+      - GRAFANA_PG_PASSWORD=${GRAFANA_PG_PASSWORD:-not-configured}
       - GF_USERS_ALLOW_SIGN_UP=false
       # 13.x 默认后台预装/更新多个插件，2GB 小机器上可能在 256m 限额内 OOM；
       # 本看板仅用内建 Prometheus 数据源和基础面板，无需额外插件。
@@ -99,7 +107,11 @@ services:
       # provisioning 目录只读挂载：数据源 + 看板 provider 随容器启动生效
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       # 看板 JSON 目录：dashboards.yml provider 指向 /var/lib/grafana/dashboards
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./monitoring/grafana/dashboards/01-overview.json:/var/lib/grafana/dashboards/v2/01-overview.json:ro
+      - ./monitoring/grafana/dashboards/02-chain.json:/var/lib/grafana/dashboards/v2/02-chain.json:ro
+      - ./monitoring/grafana/dashboards/03-nodes.json:/var/lib/grafana/dashboards/v2/03-nodes.json:ro
+      - ./monitoring/grafana/dashboards/04-users.json:/var/lib/grafana/dashboards/v2/04-users.json:ro
+      - ./monitoring/grafana/dashboards/05-host.json:/var/lib/grafana/dashboards/v2/05-host.json:ro
       - grafana_data:/var/lib/grafana
     ports:
       # 本地查看用，仅绑 127.0.0.1；生产部署须收紧（SSH 隧道或防火墙）
@@ -118,6 +130,28 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      ALERT_SMTP_SMARTHOST: ${ALERT_SMTP_SMARTHOST:-localhost:1025}
+      ALERT_SMTP_FROM: ${ALERT_SMTP_FROM:-sub2api@localhost}
+      ALERT_SMTP_AUTH_USERNAME: ${ALERT_SMTP_AUTH_USERNAME:-}
+      ALERT_SMTP_AUTH_PASSWORD: ${ALERT_SMTP_AUTH_PASSWORD:-}
+      ALERT_SMTP_REQUIRE_TLS: ${ALERT_SMTP_REQUIRE_TLS:-true}
+      ALERT_SMTP_TO: ${ALERT_SMTP_TO:-zsun40226@gmail.com}
+    # Alertmanager does not expand environment in mounted YAML. The existing
+    # renderer also provides a restricted, YAML-quoted SMTP rendering mode.
+    entrypoint: ["/bin/sh", "/etc/alertmanager/render.sh", "--alertmanager"]
+    volumes:
+      - ./monitoring/render-prometheus-config.sh:/etc/alertmanager/render.sh:ro
+      - ./monitoring/alertmanager/alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - ./monitoring/alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager_data:/alertmanager
+    mem_limit: 64m
+    networks: [sub2api-network]
 
   # ---------------------------------------------------------------
   # Node Exporter - 宿主机整机指标
@@ -204,6 +238,8 @@ services:
       - sub2api-network
 
 volumes:
+  alertmanager_data:
+    driver: local
   prometheus_data:
     driver: local
   grafana_data:

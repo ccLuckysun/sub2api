@@ -36,6 +36,7 @@ func (s *GatewayService) ForwardAsResponses(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	ops := newCompatForwardOps(ctx, c, account)
 
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)
 	if err != nil {
@@ -138,6 +139,7 @@ func (s *GatewayService) ForwardAsResponses(
 	upstreamReq, forwardedBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
 	releaseUpstreamCtx()
 	if err != nil {
+		ops.fail(err, "", 0, "", false)
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
 	// Bill the final Anthropic effort after conversion and account normalization.
@@ -145,12 +147,15 @@ func (s *GatewayService) ForwardAsResponses(
 	reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
 
+	upstreamReq = ops.prepare(upstreamReq)
+
 	// 11. Send request
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
 		}
+		ops.fail(err, "transport", 0, "", false)
 		return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
 			UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
 		})
@@ -162,6 +167,7 @@ func (s *GatewayService) ForwardAsResponses(
 		respBody, _ := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		ops.fail(nil, "headers", resp.StatusCode, compatOpsUpstreamCode(respBody), false)
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -195,6 +201,8 @@ func (s *GatewayService) ForwardAsResponses(
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
 
+	ops.use(resp)
+
 	// 13. Handle normal response (convert Anthropic → Responses)
 	var result *ForwardResult
 	var handleErr error
@@ -204,6 +212,7 @@ func (s *GatewayService) ForwardAsResponses(
 		var sseErr *sseStreamErrorEventError
 		switch {
 		case errors.As(handleErr, &sseErr):
+			ops.fail(nil, "body", resp.StatusCode, compatOpsUpstreamCode([]byte(sseErr.RawData)), false)
 			return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, c.Writer.Size() != writerSizeBeforeStream)
 		case errors.Is(handleErr, errAnthropicNativeStreamIdle) && s.rateLimitService != nil:
 			s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
@@ -212,6 +221,7 @@ func (s *GatewayService) ForwardAsResponses(
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	}
 
+	ops.finish(result, handleErr)
 	return result, handleErr
 }
 

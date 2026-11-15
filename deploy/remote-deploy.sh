@@ -57,7 +57,7 @@ docker exec "$DB_CONTAINER" sh -ec 'exec pg_dump -U "${POSTGRES_USER:-sub2api}" 
 # Back up only managed configuration, never runtime TSDB/business data.
 CONFIG_BACKUP="$WORKDIR/sub2api-deploy-config-${STAMP}.tar.gz"
 SAVED=()
-for path in compose-deploy.sh docker-compose.release.yml sub2api-compose monitoring.env docker-compose.monitoring.yml monitoring/render-prometheus-config.sh monitoring/prometheus.yml.tmpl monitoring/prometheus.yml monitoring/backup/snapshot.sh monitoring/grafana; do
+for path in compose-deploy.sh docker-compose.release.yml sub2api-compose monitoring.env docker-compose.monitoring.yml monitoring/render-prometheus-config.sh monitoring/prometheus.yml.tmpl monitoring/prometheus.yml monitoring/prometheus/rules monitoring/alertmanager monitoring/sql monitoring/backup/snapshot.sh monitoring/grafana; do
   [ ! -e "$path" ] || SAVED+=("$path")
 done
 if [ "${#SAVED[@]}" -gt 0 ]; then tar -czf "$CONFIG_BACKUP" "${SAVED[@]}"; fi
@@ -94,6 +94,17 @@ if grep -qx prometheus <<< "$ACTIVE_SERVICES"; then
   SERVICES+=(grafana)
 fi
 ./sub2api-compose up -d --no-deps --wait --wait-timeout 180 "${SERVICES[@]}"
+if grep -qx postgres <<< "$ACTIVE_SERVICES"; then
+  # First V2 deploy: provision the read-only Grafana role after app migrations complete.
+  pg_user="$(./sub2api-compose exec -T postgres printenv POSTGRES_USER 2>/dev/null | tr -d '\r')"
+  pg_db="$(./sub2api-compose exec -T postgres printenv POSTGRES_DB 2>/dev/null | tr -d '\r')"
+  pg_pw="$(sed -n 's/^GRAFANA_PG_PASSWORD=//p' monitoring.env | tail -1 | tr -d '\r')"
+  [ -n "$pg_pw" ] || { echo 'GRAFANA_PG_PASSWORD missing; aborting before Grafana health check' >&2; exit 1; }
+  ./sub2api-compose exec -T postgres \
+    psql -X -v ON_ERROR_STOP=1 -U "${pg_user:-sub2api}" -d "${pg_db:-sub2api}" \
+    -v password="$pg_pw" < monitoring/sql/grafana-ro.sql
+  echo '[deploy] Grafana read-only role provisioned (grafana_ro).'
+fi
 if grep -qx prometheus <<< "$ACTIVE_SERVICES"; then
   ./sub2api-compose exec -T prometheus wget -q -T 10 -O /dev/null http://localhost:9090/-/ready
   ./sub2api-compose exec -T grafana wget -q -T 10 -O /dev/null http://localhost:3000/api/health

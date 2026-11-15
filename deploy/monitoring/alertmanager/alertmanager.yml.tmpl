@@ -1,0 +1,27 @@
+global:
+  smtp_smarthost: ${ALERT_SMTP_SMARTHOST}
+  smtp_from: ${ALERT_SMTP_FROM}
+  smtp_auth_username: ${ALERT_SMTP_AUTH_USERNAME}
+  smtp_auth_password: ${ALERT_SMTP_AUTH_PASSWORD}
+  smtp_require_tls: ${ALERT_SMTP_REQUIRE_TLS}
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+route:
+  receiver: email
+  group_by: [alertname, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity="critical"']
+      repeat_interval: 1h
+    - matchers: ['severity="warning"']
+      repeat_interval: 4h
+receivers:
+  - name: email
+    email_configs:
+      - to: ${ALERT_SMTP_TO}
+        send_resolved: true
+        headers:
+          Subject: '{{ template "sub2api.subject" . }}'
+        html: '{{ template "sub2api.body" . }}'

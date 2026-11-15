@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
@@ -383,6 +386,71 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 
+	// Create the logical attempt lazily, after the first successful request build.
+	// Physical signature/budget/HTTP retries below keep this same handle.
+	opsRecorder := monitoring.RecorderFromContext(ctx)
+	var opsProxyConnect *HTTPUpstreamProxyConnectObservation
+	if opsRecorder != nil {
+		ctx, opsProxyConnect = withHTTPUpstreamProxyConnectObservation(ctx)
+	}
+	var opsAttempt *monitoring.OpsAttempt
+	opsUpstreamCode := ""
+	opsDoneError := func(cause error, stage string, status int, code string, disconnected bool) {
+		observeForwardOps(func() {
+			if opsRecorder == nil {
+				return
+			}
+			if stage == "transport" {
+				stage = opsUpstreamTransportStage(cause)
+				if proxyStatus := opsProxyConnect.failedStatus(); proxyStatus != 0 {
+					stage, status = "connect", proxyStatus
+				}
+			}
+			ev := monitoring.FailureEvidence{Stage: stage, StatusCode: status, ProxyUsed: proxyURL != "", UpstreamCode: code}
+			kind := "other"
+			if cause != nil {
+				var networkError net.Error
+				var dnsError *net.DNSError
+				switch {
+				case errors.As(cause, &networkError) && networkError.Timeout():
+					kind = "timeout"
+				case errors.As(cause, &dnsError):
+					kind = "dns"
+				case errors.Is(cause, syscall.ECONNREFUSED):
+					kind = "refused"
+				case errors.Is(cause, syscall.ECONNRESET) || errors.Is(cause, syscall.EPIPE):
+					kind = "reset"
+				case errors.Is(cause, io.EOF) || errors.Is(cause, io.ErrUnexpectedEOF):
+					kind = "eof"
+				case strings.Contains(strings.ToLower(cause.Error()), "tls"):
+					kind = "tls"
+				case strings.Contains(strings.ToLower(cause.Error()), "timeout"):
+					kind = "timeout"
+				}
+			}
+			ev.TransportKind = kind
+			result := "upstream_error"
+			if stage == "" {
+				result = "gateway_error"
+			}
+			if stage == "unknown" {
+				ev.Stage = ""
+			}
+			if kind == "timeout" && status < 400 {
+				result = "timeout"
+			} else if status < 400 && stage != "connect" && (disconnected || errors.Is(cause, context.Canceled) || (c != nil && c.Request != nil && errors.Is(c.Request.Context().Err(), context.Canceled))) {
+				result = "client_abort"
+				ev.Stage = "response"
+				ev.ClientCanceled = true
+				opsRecorder.MarkClientAbort("response")
+			}
+			if opsAttempt == nil {
+				opsRecorder.MarkFailure(result, monitoring.ClassifyFailure(result, ev), ev)
+			} else {
+				opsAttempt.Done(result, monitoring.ClassifyFailure(result, ev), ev)
+			}
+		})
+	}
 	// 重试循环
 	var resp *http.Response
 	lastWireBody := body
@@ -393,17 +461,29 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		upstreamReq, wireBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 		releaseUpstreamCtx()
 		if err != nil {
+			opsDoneError(err, "", 0, "", false)
 			return nil, err
 		}
 		// 记录本次实际发送的 wire body；只有请求成功后才写回 ParsedRequest，避免 400 retry 基于已签名 CCH 再改写。
 		lastWireBody = wireBody
 
+		// A failed local build is a request failure, not an upstream attempt.
+		if opsAttempt == nil {
+			observeForwardOps(func() { opsAttempt = opsRecorder.StartAttempt(account.Name) })
+			if opsAttempt != nil {
+				ctx = monitoring.WithAttempt(ctx, opsAttempt)
+			}
+		}
+		if opsAttempt != nil {
+			upstreamReq = upstreamReq.WithContext(monitoring.WithAttempt(upstreamReq.Context(), opsAttempt))
+		}
 		// 发送请求
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}
+			opsDoneError(err, "transport", 0, "", false)
 			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
 				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
 			})
@@ -413,6 +493,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		if resp.StatusCode == 400 {
 			respBody, readErr := s.readUpstreamErrorBody(resp)
 			if readErr == nil {
+				opsUpstreamCode = extractUpstreamErrorCode(respBody)
 				_ = resp.Body.Close()
 
 				if s.shouldRectifySignatureError(ctx, account, respBody, reqModel) {
@@ -469,6 +550,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 								lastWireBody = retryWireBody
 								if err := replaceBody(retryWireBody); err != nil {
 									_ = retryResp.Body.Close()
+									opsDoneError(err, "", 0, "", false)
 									return nil, err
 								}
 								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
@@ -512,9 +594,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 												lastWireBody = retryWireBody2
 												if err := replaceBody(retryWireBody2); err != nil {
 													_ = retryResp2.Body.Close()
+													opsDoneError(err, "", 0, "", false)
 													return nil, err
 												}
 											}
+											opsUpstreamCode = ""
 											resp = retryResp2
 											break
 										}
@@ -540,6 +624,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 							}
 
 							// Fall back to the original retry response context.
+							opsUpstreamCode = extractUpstreamErrorCode(retryRespBody)
 							resp = &http.Response{
 								StatusCode: retryResp.StatusCode,
 								Header:     retryResp.Header.Clone(),
@@ -595,9 +680,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									lastWireBody = budgetWireBody
 									if err := replaceBody(budgetWireBody); err != nil {
 										_ = budgetRetryResp.Body.Close()
+										opsDoneError(err, "", 0, "", false)
 										return nil, err
 									}
 								}
+								opsUpstreamCode = ""
 								resp = budgetRetryResp
 								break
 							}
@@ -655,6 +742,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
 				if err := sleepWithContext(ctx, delay); err != nil {
+					opsDoneError(err, "", 0, "", false)
 					return nil, err
 				}
 				continue
@@ -674,7 +762,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		break
 	}
 	if resp == nil || resp.Body == nil {
-		return nil, errors.New("upstream request failed: empty response")
+		failure := errors.New("upstream request failed: empty response")
+		opsDoneError(failure, "connect", 0, "", false)
+		return nil, failure
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -707,13 +797,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					return ""
 				}(),
 			})
+			opsDoneError(nil, "headers", resp.StatusCode, opsUpstreamCode, false)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
-		return s.handleRetryExhaustedError(ctx, resp, c, account, reqModel)
+		failureResult, failureErr := s.handleRetryExhaustedError(ctx, resp, c, account, reqModel)
+		opsDoneError(failureErr, "headers", resp.StatusCode, opsUpstreamCode, false)
+		return failureResult, failureErr
 	}
 
 	// 处理可切换账号的错误
@@ -743,6 +836,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				return ""
 			}(),
 		})
+		opsDoneError(nil, "headers", resp.StatusCode, opsUpstreamCode, false)
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           respBody,
@@ -755,7 +849,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			respBody, readErr := s.readUpstreamErrorBody(resp)
 			if readErr != nil {
 				// ReadAll failed, fall back to normal error handling without consuming the stream
-				return s.handleErrorResponse(ctx, resp, c, account, reqModel)
+				failureResult, failureErr := s.handleErrorResponse(ctx, resp, c, account, reqModel)
+				opsDoneError(failureErr, "headers", resp.StatusCode, opsUpstreamCode, false)
+				return failureResult, failureErr
 			}
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -794,10 +890,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					logger.LegacyPrintf("service.gateway", "Account %d: 400 error, attempting failover", account.ID)
 				}
 				s.handleFailoverSideEffects(ctx, resp, account, reqModel)
+				opsDoneError(nil, "headers", resp.StatusCode, opsUpstreamCode, false)
 				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
 			}
 		}
-		return s.handleErrorResponse(ctx, resp, c, account, reqModel)
+		failureResult, failureErr := s.handleErrorResponse(ctx, resp, c, account, reqModel)
+		opsDoneError(failureErr, "headers", resp.StatusCode, opsUpstreamCode, false)
+		return failureResult, failureErr
 	}
 
 	// 处理正常响应
@@ -805,8 +904,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if !bytes.Equal(lastWireBody, body) {
 		// 成功后再同步最终 wire body，避免失败重试从已签名 CCH 的 body 继续派生。
 		if err := replaceBody(lastWireBody); err != nil {
+			opsDoneError(err, "", 0, "", false)
 			return nil, err
 		}
+	}
+
+	if opsAttempt != nil {
+		observeForwardOps(func() { opsAttempt.UseResponseFor(monitoring.ResponseHandle(resp)) })
 	}
 
 	// 触发上游接受回调（提前释放串行锁，不等流完成）
@@ -823,8 +927,15 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		if err != nil {
 			var sseErr *sseStreamErrorEventError
 			if errors.As(err, &sseErr) {
-				return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, reqModel, c.Writer.Size() != writerSizeBeforeStream)
+				failure := s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, reqModel, c.Writer.Size() != writerSizeBeforeStream)
+				code := extractUpstreamErrorCode([]byte(sseErr.RawData))
+				if code == "" {
+					code = gjson.Get(sseErr.RawData, "error.type").String()
+				}
+				opsDoneError(nil, "body", resp.StatusCode, code, false)
+				return nil, failure
 			}
+			opsDoneError(err, "body", 0, "", streamResult != nil && streamResult.clientDisconnect)
 			// 流中断（缺失 terminal 事件、读错误、数据间隔超时等）时保留已观测到的
 			// usage 与错误一起返回，handler 在错误处理完成后照常提交 usage 记录。
 			if partial := partialStreamUsageResult(c, resp, streamResult, originalModel, mappedModel, startTime, err); partial != nil {
@@ -838,10 +949,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	} else {
 		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
 		if err != nil {
+			opsDoneError(err, "body", 0, "", false)
 			return nil, err
 		}
 	}
 
+	if clientDisconnect || opsRecorder.ClientAborted() || (opsAttempt != nil && c != nil && c.Request != nil && errors.Is(c.Request.Context().Err(), context.Canceled)) {
+		opsDoneError(nil, "response", 0, "", true)
+	} else {
+		observeForwardOps(func() { opsAttempt.Done("success", "", monitoring.FailureEvidence{}) })
+	}
 	return &ForwardResult{
 		RequestID:                     resp.Header.Get("x-request-id"),
 		UpstreamHeaders:               resp.Header,
@@ -856,6 +973,30 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		FirstTokenMs:                  firstTokenMs,
 		ClientDisconnect:              clientDisconnect,
 	}, nil
+}
+
+// Only proven connection setup failures belong to connect; other Do failures
+// can happen while waiting for headers, before a response is returned.
+func opsUpstreamTransportStage(err error) string {
+	if strings.Contains(strings.ToLower(err.Error()), "timeout awaiting response headers") {
+		return "headers"
+	}
+	var op *net.OpError
+	var dns *net.DNSError
+	if (errors.As(err, &op) && op.Op == "dial") || errors.As(err, &dns) || errors.Is(err, syscall.ECONNREFUSED) || strings.Contains(strings.ToLower(err.Error()), "tls handshake") {
+		return "connect"
+	}
+	return "unknown"
+}
+
+// Isolate observation failures without recovering or changing business I/O.
+func observeForwardOps(observe func()) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("forward ops observation failed", "panic", recovered)
+		}
+	}()
+	observe()
 }
 
 func anthropicSpeedModel(parsed *ParsedRequest, result *ForwardResult) string {

@@ -40,7 +40,12 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	account *Account,
 	body []byte,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (opsResult *OpenAIForwardResult, opsErr error) {
+	ctx, ops, opsOwner := beginOpenAIBridgeOps(ctx, c, account)
+	if opsOwner {
+		defer func() { finishOpenAIBridgeOps(ops, opsResult, opsErr) }()
+	}
+
 	startTime := time.Now()
 
 	// 1. Lower Codex client-side tools to function tools understood by Anthropic.
@@ -125,14 +130,19 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, upstreamModel)
 
+	upstreamReq = ops.prepare(upstreamReq)
+	ctx = ops.context(ctx)
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
+		ops.failure(err, "transport", 0, "")
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 	}
+	ops.response(resp)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
@@ -140,6 +150,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
 
+	consumeOpenAIBridgeResponse(ops)
 	if clientStream {
 		return s.handleResponsesStreamingFromNativeAnthropic(resp, c, originalModel, billingModel, upstreamModel, reasoningEffort, startTime, clientToolMapping)
 	}
@@ -203,6 +214,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 			}
 			logReadErr(rerr)
 			streamStatus.readErr = rerr
+			openAIBridgeReadError(c, rerr)
 			break
 		}
 		// SSE 规范允许 `event:xxx`（冒号后无空格）：Kimi 等上游返回紧凑格式。
@@ -217,6 +229,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 			}
 			logReadErr(rerr)
 			streamStatus.readErr = rerr
+			openAIBridgeReadError(c, rerr)
 			break
 		}
 		payload, ok := extractOpenAISSEDataLine(dataLine)
@@ -225,6 +238,7 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 		}
 
 		var event apicompat.AnthropicStreamEvent
+		openAIBridgeSemantic(c, []byte(payload))
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
@@ -451,6 +465,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					return
 				}
 			}
@@ -468,6 +483,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 			}
 			logReadErr(rerr)
 			streamStatus.readErr = rerr
+			openAIBridgeReadError(c, rerr)
 			break
 		}
 		if _, ok := extractOpenAISSEEventLine(line); !ok {
@@ -481,6 +497,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 			}
 			logReadErr(rerr)
 			streamStatus.readErr = rerr
+			openAIBridgeReadError(c, rerr)
 			break
 		}
 		payload, ok := extractOpenAISSEDataLine(dataLine)
@@ -489,6 +506,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		}
 
 		var event apicompat.AnthropicStreamEvent
+		openAIBridgeSemantic(c, []byte(payload))
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
@@ -532,6 +550,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					break
 				}
 				wrote = true

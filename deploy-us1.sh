@@ -59,6 +59,7 @@ docker save "$FULL_IMAGE" | gzip > "$LOCAL_DIR/image.tar.gz"
 tar -czf "$LOCAL_DIR/monitoring-assets.tar.gz" -C deploy \
   compose-deploy.sh docker-compose.monitoring.yml monitoring.env.example \
   monitoring/render-prometheus-config.sh monitoring/prometheus.yml.tmpl \
+  monitoring/prometheus/rules monitoring/alertmanager monitoring/sql \
   monitoring/backup/snapshot.sh monitoring/backup/crontab.example \
   monitoring/grafana/provisioning monitoring/grafana/dashboards
 REMOTE_DIR="$(ssh "$REMOTE_HOST" mktemp -d /tmp/sub2api-deploy.XXXXXX)"

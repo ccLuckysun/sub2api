@@ -1,6 +1,10 @@
 package service
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
+)
 
 func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 	s.pluginManager = manager
@@ -10,8 +14,24 @@ func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 // 插件返回标准 http.Response，响应解析、错误映射、SSE 和计费仍由现有核心链处理。
 func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	if s.pluginManager != nil {
+		a := monitoring.AttemptFromContext(request.Context())
+		rec := monitoring.RecorderFromContext(request.Context())
+		var handle *monitoring.OpsResponse
+		if s.pluginManager.ShouldRouteOpenAIOAuth(account) && a != nil {
+			observeForwardOps(func() { handle = a.Sent(); monitoring.ObserveHTTPRequest(rec, request) })
+		}
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {
+			observeForwardOps(func() {
+				if err != nil {
+					a.BodyDoneFor(handle, err)
+					return
+				}
+				if response != nil {
+					a.NoteHeadersFor(handle, response.StatusCode)
+					response.Body = monitoring.ObserveResponseBody(rec, a, handle, response.Body)
+				}
+			})
 			return response, err
 		}
 	}

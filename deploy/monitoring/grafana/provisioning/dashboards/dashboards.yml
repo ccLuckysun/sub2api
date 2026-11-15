@@ -13,8 +13,8 @@ providers:
     folder: Sub2API
     folderUid: sub2api-folder
     type: file
-    disableDeletion: true
+    disableDeletion: false
     updateIntervalSeconds: 30
     allowUiUpdates: false
     options:
-      path: /var/lib/grafana/dashboards
+      path: /var/lib/grafana/dashboards/v2

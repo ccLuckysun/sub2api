@@ -1,0 +1,19 @@
+apiVersion: 1
+datasources:
+  - uid: sub2api-pg
+    name: Sub2API Postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: grafana_ro
+    editable: false
+    secureJsonData:
+      password: ${GRAFANA_PG_PASSWORD}
+    jsonData:
+      database: sub2api
+      sslmode: disable
+      maxOpenConns: 3
+      maxIdleConns: 1
+      connMaxLifetime: 14400
+      postgresVersion: 1500
+      timescaledb: false

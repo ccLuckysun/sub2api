@@ -264,6 +264,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			h.handleFailoverExhausted(c, failoverErr, false)
 			return
 		}
+		markConfirmedAccountSwitch(c.Request.Context())
 		reqLog.Warn("openai_alpha_search.upstream_failover_switching",
 			zap.Int64("account_id", account.ID),
 			zap.Int("upstream_status", failoverErr.StatusCode),

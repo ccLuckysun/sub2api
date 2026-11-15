@@ -136,6 +136,14 @@ func (UsageLog) Fields() []ent.Field {
 		field.Int("first_token_ms").
 			Optional().
 			Nillable(),
+		field.Int64("body_bytes").
+			Optional().
+			Nillable().
+			Comment("Actual inbound wire bytes read; NULL means not observed"),
+		field.Int64("gateway_latency_ms").
+			Optional().
+			Nillable().
+			Comment("Gateway + wait + finish in milliseconds; NULL means not observed"),
 		field.String("user_agent").
 			MaxLen(512).
 			Optional().

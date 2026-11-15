@@ -16,6 +16,25 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+type proxyConnectObserverKey struct{}
+
+// WithProxyConnectObserver observes an already parsed CONNECT response without
+// changing the dialer's error, read or connection-close behavior.
+func WithProxyConnectObserver(ctx context.Context, observe func(int)) context.Context {
+	return context.WithValue(ctx, proxyConnectObserverKey{}, observe)
+}
+
+func observeProxyConnect(ctx context.Context, status int) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("TLS proxy CONNECT observation failed", "panic", recovered)
+		}
+	}()
+	if observe, _ := ctx.Value(proxyConnectObserverKey{}).(func(int)); observe != nil {
+		observe(status)
+	}
+}
+
 // Profile contains TLS fingerprint configuration.
 // All slice fields use built-in defaults when empty.
 type Profile struct {
@@ -238,6 +257,7 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 	}
 	// CONNECT response has no body; do not defer resp.Body.Close() as it wraps the
 	// same conn that will be used for the TLS handshake.
+	observeProxyConnect(ctx, resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		_ = conn.Close()

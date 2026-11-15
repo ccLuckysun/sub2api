@@ -1,0 +1,1717 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sub2API 观测看板 V2 · 面板布局评审稿</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111217;
+    --bg-2: #141619;
+    --panel: #181b1f;
+    --panel-2: #1f2329;
+    --panel-3: #23282e;
+    --border: #2c3235;
+    --border-strong: #3d444b;
+    --text: #d8d9da;
+    --text-strong: #f4f5f5;
+    --muted: #8e9297;
+    --muted-2: #6c7278;
+    --accent: #ff9830;
+    --accent-soft: rgba(255,152,48,.14);
+    --good: #0ca30c;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #d03b3b;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #9085e9;
+    --series-7: #0ca30c;
+    --series-8: #e66767;
+    --radius: 4px;
+    --shadow: 0 10px 40px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, select { font: inherit; }
+  button { cursor: pointer; }
+  .topbar {
+    height: 52px; display: flex; align-items: center; gap: 14px;
+    padding: 0 16px; background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 40;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: linear-gradient(135deg, #f05a28 0%, #ff9830 60%, #ffc46b 100%);
+    display: grid; place-items: center; color: #1a1208; font-weight: 800; font-size: 13px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset;
+  }
+  .brand-name { font-weight: 700; color: var(--text-strong); letter-spacing: -.01em; }
+  .crumb { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
+  .crumb b { color: var(--text); font-weight: 500; }
+  .topbar-spacer { flex: 1; }
+  .pill, .tb-btn {
+    height: 28px; display: inline-flex; align-items: center; gap: 6px;
+    padding: 0 10px; border-radius: 4px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); font-size: 12px; white-space: nowrap;
+  }
+  .tb-btn:hover { border-color: var(--border-strong); background: var(--panel-2); }
+  .pill.sim { border-color: rgba(255,152,48,.45); color: #ffc37b; background: var(--accent-soft); }
+  .pill.ds { color: var(--muted); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.good { background: var(--good); }
+  .dot.warn { background: var(--warning); }
+  .dot.crit { background: var(--critical); }
+  .tabs {
+    display: flex; align-items: center; gap: 4px; padding: 8px 16px;
+    background: var(--bg-2); border-bottom: 1px solid var(--border);
+    position: sticky; top: 52px; z-index: 39; overflow-x: auto;
+  }
+  .tab {
+    height: 34px; padding: 0 12px; border-radius: 4px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); font-size: 12.5px; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .tab:hover { background: var(--panel); color: var(--text); }
+  .tab.active { background: var(--panel-2); border-color: var(--border); color: var(--text-strong); }
+  .tab .num { font-size: 10px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+  .tab .count { font-size: 10px; padding: 1px 5px; border-radius: 9px; background: var(--panel-3); color: var(--muted); }
+  .tab.active .count { color: var(--text); }
+  .tabs-spacer { flex: 1; }
+  .review {
+    margin: 12px 16px 0; padding: 11px 14px; border: 1px solid rgba(255,152,48,.35);
+    background: linear-gradient(180deg, rgba(255,152,48,.10), rgba(255,152,48,.04));
+    border-radius: var(--radius); display: flex; gap: 12px; align-items: flex-start;
+  }
+  .review-icon {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #1a1208;
+    display: grid; place-items: center; font-weight: 800; font-size: 13px; flex: none; margin-top: 1px;
+  }
+  .review-main { flex: 1; min-width: 0; }
+  .review-title { color: #ffd7a6; font-weight: 650; font-size: 12.5px; margin-bottom: 2px; }
+  .review-text { color: var(--muted); font-size: 12px; }
+  .review-text b { color: var(--text); font-weight: 550; }
+  .review-actions { display: flex; gap: 8px; align-items: center; }
+  .dash { padding: 14px 16px 46px; max-width: 1800px; margin: 0 auto; }
+  .dash[hidden] { display: none; }
+  .dash-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 2px 0 12px; flex-wrap: wrap; }
+  .dash-title { font-size: 20px; font-weight: 650; color: var(--text-strong); letter-spacing: -.02em; }
+  .dash-sub { color: var(--muted); font-size: 12px; margin-top: 3px; max-width: 900px; }
+  .dash-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .tag { font-size: 10.5px; color: var(--muted); border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 2px 8px; }
+  .tag.hot { color: #ffc37b; border-color: rgba(255,152,48,.4); background: var(--accent-soft); }
+  .vars { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .var {
+    height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px;
+    border: 1px solid var(--border); border-radius: 4px; background: var(--panel); color: var(--text); font-size: 11.5px;
+  }
+  .var span.k { color: var(--muted); }
+  .var select { background: transparent; border: 0; color: var(--text); outline: none; font-size: 11.5px; }
+  .grid { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 8px; }
+  .row-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; margin: 10px 0 0; }
+  .row-head .line { flex: 1; height: 1px; background: var(--border); }
+  .row-head .label { font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+  .panel {
+    grid-column: span var(--span, 6);
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    min-height: var(--h, 240px); display: flex; flex-direction: column; overflow: hidden;
+    position: relative; transition: border-color .12s ease;
+  }
+  .panel:hover { border-color: var(--border-strong); }
+  .panel-head {
+    height: 33px; flex: none; display: flex; align-items: center; gap: 6px;
+    padding: 0 8px 0 10px; border-bottom: 1px solid rgba(255,255,255,.035);
+  }
+  .panel-title {
+    flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .panel-title .req { color: var(--accent); font-weight: 700; margin-right: 4px; }
+  .panel-actions { display: flex; gap: 2px; align-items: center; }
+  .mini {
+    width: 22px; height: 22px; border-radius: 3px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); display: grid; place-items: center; font-size: 12px; line-height: 1;
+  }
+  .mini:hover { color: var(--text); background: var(--panel-3); border-color: var(--border); }
+  .panel-body { flex: 1; min-height: 0; padding: 6px 8px 8px; position: relative; display: flex; flex-direction: column; }
+  .panel-desc {
+    display: none; flex: none; margin: 0 8px 6px; padding: 6px 8px; border-left: 2px solid var(--border-strong);
+    color: var(--muted); font-size: 10.5px; line-height: 1.45; background: rgba(255,255,255,.018);
+  }
+  body.show-desc .panel-desc { display: block; }
+  .h-stat { --h: 112px; }
+  .h-sm { --h: 200px; }
+  .h-md { --h: 244px; }
+  .h-lg { --h: 292px; }
+  .h-xl { --h: 344px; }
+  .h-table { --h: 330px; }
+  .h-text { --h: 300px; }
+  .s3 { --span: 3; } .s4 { --span: 4; } .s5 { --span: 5; } .s6 { --span: 6; }
+  .s8 { --span: 8; } .s10 { --span: 10; } .s12 { --span: 12; } .s14 { --span: 14; }
+  .s16 { --span: 16; } .s18 { --span: 18; } .s24 { --span: 24; }
+
+  /* Stat */
+  .stat-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 4px 2px 0; }
+  .stat-value { font-size: 30px; line-height: 1.05; font-weight: 650; letter-spacing: -.025em; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+  .stat-value .u { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 3px; letter-spacing: 0; }
+  .statgrid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 2px; }
+  .statgrid .cell { border: 1px solid rgba(255,255,255,.05); border-radius: 4px; padding: 8px 10px; background: rgba(255,255,255,.015); }
+  .statgrid .cell .k { color: var(--muted); font-size: 10px; margin-bottom: 3px; }
+  .statgrid .cell .v { color: var(--text-strong); font-size: 22px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .statgrid .cell .s { color: var(--muted-2); font-size: 9.5px; margin-top: 2px; }
+  .stat-sub { color: var(--muted); font-size: 10.5px; margin-top: 7px; padding: 0 2px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .stat-status { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; }
+  .stat-status.good { color: var(--good); } .stat-status.warn { color: var(--warning); } .stat-status.crit { color: var(--critical); }
+  .spark { width: 96px; height: 38px; flex: none; opacity: .95; }
+  .delta { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; color: var(--muted); }
+  .delta.up { color: var(--good); } .delta.down { color: var(--critical); }
+
+  /* Charts */
+  .chart-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 1px 2px 5px; flex: none; }
+  .legend .item { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10.5px; white-space: nowrap; }
+  .legend .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+  .legend .val { color: var(--text); font-variant-numeric: tabular-nums; }
+  .legend.vertical { flex-direction: column; align-items: stretch; gap: 5px; padding: 0 0 0 4px; }
+  .legend.vertical .item { justify-content: space-between; }
+  .chart { flex: 1; min-height: 0; position: relative; }
+  .chart svg { display: block; overflow: visible; }
+  .chart-tip {
+    position: absolute; pointer-events: none; z-index: 10; min-width: 150px;
+    background: rgba(17,18,23,.96); border: 1px solid var(--border-strong); border-radius: 4px;
+    padding: 7px 9px; box-shadow: var(--shadow); font-size: 10.5px; color: var(--muted); display: none;
+  }
+  .chart-tip .t { color: var(--text); font-weight: 600; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .chart-tip .r { display: flex; align-items: center; gap: 6px; justify-content: space-between; padding: 1px 0; }
+  .chart-tip .r .n { display: flex; align-items: center; gap: 5px; }
+  .chart-tip .r b { color: var(--text); font-weight: 550; font-variant-numeric: tabular-nums; }
+  .axis { fill: var(--muted-2); font-size: 9.5px; font-family: inherit; font-variant-numeric: tabular-nums; }
+  .axis-label { fill: var(--muted); font-size: 9.5px; }
+  .gridline { stroke: #262a2e; stroke-width: 1; }
+  .threshold-line { stroke: var(--warning); stroke-width: 1; stroke-dasharray: 3 3; opacity: .8; }
+  .threshold-label { fill: var(--warning); font-size: 9px; opacity: .9; }
+
+  /* Bars */
+  .bars { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 2px 2px 0; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr 56px; gap: 7px; align-items: center; }
+  .bar-label { color: var(--muted); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { height: 12px; background: #22262b; border-radius: 3px; overflow: hidden; position: relative; }
+  .bar-fill { height: 100%; border-radius: 3px; min-width: 2px; }
+  .bar-val { color: var(--text); font-size: 10.5px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Donut */
+  .donut-wrap { flex: 1; display: flex; align-items: center; gap: 12px; min-height: 0; }
+  .donut { flex: none; position: relative; }
+  .donut-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+  .donut-center .v { font-size: 17px; font-weight: 650; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+  .donut-center .l { font-size: 9.5px; color: var(--muted); margin-top: -2px; }
+
+  /* Table */
+  .table-wrap { flex: 1; min-height: 0; overflow: auto; margin: 0 -2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+  thead th {
+    position: sticky; top: 0; z-index: 2; background: var(--panel); color: var(--muted);
+    font-weight: 500; text-align: left; padding: 6px 7px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  tbody td { padding: 6px 7px; border-bottom: 1px solid #23272b; color: var(--text); white-space: nowrap; }
+  tbody tr:hover td { background: rgba(255,255,255,.028); }
+  td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+  td.mono { font-variant-numeric: tabular-nums; }
+  .pill-s {
+    display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 9px;
+    font-size: 9.5px; font-weight: 600; border: 1px solid transparent;
+  }
+  .pill-s.good { color: #6fdc6f; background: rgba(12,163,12,.12); border-color: rgba(12,163,12,.3); }
+  .pill-s.warn { color: #ffd166; background: rgba(250,178,25,.12); border-color: rgba(250,178,25,.3); }
+  .pill-s.crit { color: #ff8a8a; background: rgba(208,59,59,.13); border-color: rgba(208,59,59,.32); }
+  .pill-s.muted { color: var(--muted); background: rgba(255,255,255,.04); border-color: var(--border); }
+  .table-foot { flex: none; color: var(--muted-2); font-size: 9.5px; padding-top: 5px; display: flex; justify-content: space-between; }
+
+  /* Heatmap */
+  .heatmap { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-top: 2px; }
+  .hm-grid { flex: 1; display: grid; gap: 2px; align-items: stretch; }
+  .hm-label { color: var(--muted); font-size: 9px; display: flex; align-items: center; justify-content: flex-end; padding-right: 5px; white-space: nowrap; }
+  .hm-cell { border-radius: 2px; min-height: 12px; position: relative; }
+  .hm-cell:hover { outline: 1px solid rgba(255,255,255,.45); outline-offset: -1px; }
+  .hm-x { display: grid; gap: 2px; padding-left: 58px; margin-top: 4px; }
+  .hm-x span { color: var(--muted-2); font-size: 8.5px; text-align: center; white-space: nowrap; overflow: hidden; }
+  .hm-legend { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--muted-2); font-size: 9px; }
+  .hm-scale { height: 6px; width: 120px; border-radius: 3px; background: linear-gradient(90deg, #0d366b, #1c5cab, #3987e5, #86b6ef, #cde2fb); }
+
+  /* Gauge */
+  .gauge-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 9px; padding: 2px 3px; }
+  .gauge-top { display: flex; justify-content: space-between; align-items: baseline; }
+  .gauge-value { font-size: 24px; font-weight: 650; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+  .gauge-value .u { font-size: 11px; color: var(--muted); margin-left: 2px; }
+  .gauge-label { color: var(--muted); font-size: 10px; }
+  .gauge-track { height: 12px; border-radius: 3px; background: #22262b; display: flex; overflow: hidden; position: relative; }
+  .gauge-zone { height: 100%; }
+  .gauge-pointer { position: absolute; top: -3px; width: 2px; height: 18px; background: #fff; border-radius: 1px; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+  .gauge-ticks { display: flex; justify-content: space-between; color: var(--muted-2); font-size: 9px; font-variant-numeric: tabular-nums; }
+
+  /* Text */
+  .text-panel { flex: 1; overflow: auto; color: var(--muted); font-size: 11.5px; line-height: 1.6; padding: 2px 4px 4px; }
+  .text-panel h4 { margin: 0 0 6px; color: var(--text); font-size: 11.5px; font-weight: 600; }
+  .text-panel p { margin: 0 0 7px; }
+  .text-panel ul { margin: 0 0 7px; padding-left: 16px; }
+  .text-panel li { margin: 2px 0; }
+  .text-panel code { color: #ffc37b; background: rgba(255,152,48,.08); border: 1px solid rgba(255,152,48,.18); border-radius: 3px; padding: 0 4px; font-size: 10.5px; }
+  .text-panel .k { color: var(--text); font-weight: 550; }
+  .text-panel .warn { color: #ffd166; }
+
+  /* Drawer */
+  .drawer-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none;
+    transition: opacity .15s ease; z-index: 60;
+  }
+  body.drawer-open .drawer-overlay { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(430px, 92vw); z-index: 61;
+    background: var(--panel); border-left: 1px solid var(--border-strong); box-shadow: var(--shadow);
+    transform: translateX(102%); transition: transform .18s ease; display: flex; flex-direction: column;
+  }
+  body.drawer-open .drawer { transform: translateX(0); }
+  .no-anim .drawer, .no-anim .drawer-overlay { transition: none !important; }
+  @media (prefers-reduced-motion: reduce) {
+    .drawer, .drawer-overlay { transition: none !important; }
+  }
+  .drawer-head { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: flex-start; }
+  .drawer-title { flex: 1; font-size: 15px; font-weight: 650; color: var(--text-strong); line-height: 1.3; }
+  .drawer-close { width: 28px; height: 28px; border-radius: 4px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); }
+  .drawer-close:hover { color: var(--text); }
+  .drawer-body { padding: 14px 16px 24px; overflow: auto; }
+  .drawer-sec { margin-bottom: 16px; }
+  .drawer-sec h5 { margin: 0 0 5px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .drawer-sec .v { color: var(--text); font-size: 12px; }
+  .drawer-sec .muted { color: var(--muted); font-size: 11.5px; }
+  .kv { display: flex; flex-direction: column; gap: 6px; }
+  .kv .row { display: flex; gap: 10px; justify-content: space-between; font-size: 11.5px; border-bottom: 1px solid #23272b; padding-bottom: 5px; }
+  .kv .row .k { color: var(--muted); }
+  .kv .row .v { color: var(--text); text-align: right; }
+  .code {
+    background: #0d0f12; border: 1px solid var(--border); border-radius: 4px; padding: 9px 10px;
+    color: #c9d1d9; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px;
+    white-space: pre-wrap; word-break: break-word; line-height: 1.5;
+  }
+  .badge-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 9px; padding: 1px 7px; }
+  .badge.accent { color: #ffc37b; border-color: rgba(255,152,48,.35); background: var(--accent-soft); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    background: #23282e; border: 1px solid var(--border-strong); color: var(--text); border-radius: 5px;
+    padding: 8px 13px; font-size: 11.5px; opacity: 0; pointer-events: none; transition: all .18s ease; z-index: 80;
+  }
+  body.toast-on .toast { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 1180px) {
+    .panel { grid-column: span 24 !important; }
+    .tabs { top: 52px; }
+    .topbar .crumb { display: none; }
+    .stat-value { font-size: 26px; }
+  }
+  @media (max-width: 640px) {
+    .topbar { gap: 8px; padding: 0 10px; }
+    .topbar .pill.ds, .topbar .tb-btn.hide-sm { display: none; }
+    .dash { padding: 12px 10px 40px; }
+    .review { margin: 10px 10px 0; }
+    .review-actions { display: none; }
+    .dash-title { font-size: 17px; }
+    .bar-row { grid-template-columns: 74px 1fr 48px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">S</div>
+    <div class="brand-name">Sub2API</div>
+  </div>
+  <div class="crumb">观测看板 <span>/</span> <b>V2 评审稿</b></div>
+  <div class="topbar-spacer"></div>
+  <span class="pill ds"><span class="dot good"></span>Prometheus</span>
+  <span class="pill ds"><span class="dot good"></span>PostgreSQL</span>
+  <button class="tb-btn hide-sm" id="btnDesc" title="在面板内展开口径说明">显示口径</button>
+  <span class="pill sim">模拟数据 · 布局评审</span>
+  <button class="tb-btn hide-sm" id="btnReview">评审说明</button>
+</header>
+
+<nav class="tabs" id="tabs" aria-label="看板切换"></nav>
+
+<section class="review" id="reviewBanner">
+  <div class="review-icon">!</div>
+  <div class="review-main">
+    <div class="review-title">这是定稿前的静态样式稿，不是真实数据</div>
+    <div class="review-text">
+      5 张看板、面板数量与顺序按已审核契约：<b>01 总览 16 · 02 链路归因 19 · 03 上游节点 9 · 04 用户/密钥 6 · 05 宿主与应用 15</b>。旧 V1 <code>sub2api-overview</code> 备份后下线，由这 5 张替换（不保留双轨）。
+      每个面板右上角 <b>ⓘ</b> 可查看数据源、口径、PromQL/SQL、阈值与误读风险；<b>≡</b> 可切换表格视图。
+      请重点看：面板取舍、排序、单位、阈值配色、文字说明是否够用。刷新页面会重新生成模拟数据，布局不变。
+    </div>
+  </div>
+  <div class="review-actions">
+    <button class="tb-btn" id="btnHideReview">收起</button>
+  </div>
+</section>
+
+<main id="dashRoot"></main>
+
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="面板口径">
+  <div class="drawer-head">
+    <div class="drawer-title" id="drawerTitle"></div>
+    <button class="drawer-close" id="drawerClose" aria-label="关闭">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-sec">
+      <h5>面板信息</h5>
+      <div class="kv" id="drawerMeta"></div>
+    </div>
+    <div class="drawer-sec">
+      <h5>口径 / 误读风险</h5>
+      <div class="v muted" id="drawerDesc"></div>
+    </div>
+    <div class="drawer-sec">
+      <h5>查询</h5>
+      <div class="code" id="drawerQuery"></div>
+    </div>
+    <div class="drawer-sec">
+      <h5>阈值 / 验收</h5>
+      <div class="v muted" id="drawerThreshold"></div>
+    </div>
+    <div class="drawer-sec">
+      <h5>标签</h5>
+      <div class="badge-row" id="drawerTags"></div>
+    </div>
+  </div>
+</aside>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   基础工具
+   ========================================================= */
+const C = {
+  blue: '#3987e5', orange: '#d95926', aqua: '#199e70', yellow: '#c98500',
+  magenta: '#d55181', violet: '#9085e9', green: '#0ca30c', red: '#e66767'
+};
+const ST = { good: '#0ca30c', warning: '#fab219', serious: '#ec835a', critical: '#d03b3b' };
+const PHASE_COLORS = [C.blue, C.orange, C.aqua, C.yellow, C.magenta, C.violet];
+const DIR_COLORS = [C.blue, C.orange, C.aqua, C.yellow, C.magenta];
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const esc = (s) => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+function hash(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+}
+function genData(seed, base, amp, noise, spikes = [], min = 0, max = Infinity) {
+  const r = rng(seed);
+  const n = 61;
+  return Array.from({ length: n }, (_, i) => {
+    let v = base + Math.sin(i / 7 + (seed % 5)) * amp + (r() - .5) * noise;
+    spikes.forEach(([idx, mul]) => { if (idx === i) v *= mul; });
+    return Math.max(min, Math.min(max, v));
+  });
+}
+function timeLabels(n = 61) {
+  const now = new Date();
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date(now.getTime() - (n - 1 - i) * 6 * 60000);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  });
+}
+const TL = timeLabels();
+function humanBytes(v) {
+  const a = Math.abs(v);
+  if (a >= 1099511627776) return (v / 1099511627776).toFixed(2) + ' TB';
+  if (a >= 1073741824) return (v / 1073741824).toFixed(2) + ' GB';
+  if (a >= 1048576) return (v / 1048576).toFixed(2) + ' MB';
+  if (a >= 1024) return (v / 1024).toFixed(1) + ' KB';
+  return v.toFixed(0) + ' B';
+}
+function fmt(v, unit) {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  switch (unit) {
+    case 's': return v < 1 ? (v * 1000).toFixed(0) + ' ms' : v.toFixed(2) + ' s';
+    case 'ms': return v.toFixed(0) + ' ms';
+    case 'Bps': return humanBytes(v) + '/s';
+    case 'bytes': return humanBytes(v);
+    case 'percent': return v.toFixed(1) + '%';
+    case 'reqps': return v.toFixed(v < 10 ? 2 : 0) + ' req/s';
+    case 'count': return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0);
+    case 'x': return v.toFixed(2) + '×';
+    case 'target': return v.toFixed(0);
+    default: return String(v);
+  }
+}
+function compact(v, unit) {
+  if (unit === 'Bps') return humanBytes(v);
+  if (unit === 'bytes') return humanBytes(v);
+  if (unit === 'percent') return v.toFixed(0) + '%';
+  if (unit === 's') return v < 1 ? (v * 1000).toFixed(0) + 'ms' : v.toFixed(1) + 's';
+  if (unit === 'count') return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v));
+  return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v));
+}
+function heat(t) {
+  const stops = [[0, [13, 54, 107]], [.25, [28, 92, 171]], [.5, [57, 135, 229]], [.75, [134, 182, 239]], [1, [205, 226, 251]]];
+  let a = stops[0], b = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) if (t >= stops[i][0] && t <= stops[i + 1][0]) { a = stops[i]; b = stops[i + 1]; break; }
+  const k = (t - a[0]) / Math.max(.0001, b[0] - a[0]);
+  const rgb = a[1].map((v, i) => Math.round(v + (b[1][i] - v) * k));
+  return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+}
+
+/* =========================================================
+   查询片段（与契约一致）
+   ========================================================= */
+const Q = {
+  phase: 'histogram_quantile(0.95, sum by (le, phase) (rate(sub2api_request_phase_seconds_bucket{phase!="headers_end"}[$__rate_interval])))',
+  phaseShare: 'sum by (phase) (rate(sub2api_request_phase_seconds_sum{phase!="headers_end"}[$__rate_interval])) / clamp_min(sum(rate(sub2api_request_phase_seconds_sum{phase!="headers_end"}[$__rate_interval])), 1e-9) * 100',
+  ttft: 'histogram_quantile(0.95, sum by (le) (rate(sub2api_request_phase_seconds_bucket{phase="headers_end"}[$__rate_interval])))',
+  bytes: 'sum by (direction) (rate(sub2api_transfer_bytes_total[$__rate_interval]))',
+  byteDiff: '(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[10m])) - sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[10m])), 1)',
+  reasons: 'sum by (result, failure_reason) (rate(sub2api_gateway_requests_total{result!="success"}[$__rate_interval]))',
+  accountFail: 'sum by (account) (rate(sub2api_upstream_requests_total{result!="success"}[5m])) / clamp_min(sum by (account) (rate(sub2api_upstream_requests_total[5m])), 1e-9)',
+  accountQps: 'sum by (account) (rate(sub2api_upstream_requests_total[$__rate_interval]))',
+  accountTtft: 'histogram_quantile(0.95, sum by (le, account) (rate(sub2api_upstream_ttft_seconds_bucket[$__rate_interval])))',
+  attempts: 'sum by (outcome) (rate(sub2api_attempts_total[$__rate_interval]))',
+  switches: 'sum(rate(sub2api_account_switches_total[$__rate_interval]))',
+  aborts: 'sum by (stage) (rate(sub2api_client_abort_total[$__rate_interval]))',
+  coverage: 'sub2api_metric_coverage_ratio',
+  bodyHist: 'sum by (le) (rate(sub2api_request_body_bytes_bucket[$__rate_interval]))',
+  qps: 'sum(rate(sub2api_http_requests_total[5m]))',
+  errRate: 'sum by (status_code) (rate(sub2api_http_requests_total{status_code=~"4..|5.."}[5m]))',
+  slow: `SELECT observed_at, total_ms, body_read_ms, wait_ms, upstream_ms, headers_end_ms, response_ms, result, failure_reason, account_id, model
+FROM ops_request_transfer_samples
+WHERE $__timeFilter(observed_at)
+ORDER BY total_ms DESC LIMIT 40`,
+  users: `SELECT $__timeGroupAlias(created_at,'5m'), user_id, count(*) AS requests
+FROM usage_logs
+WHERE $__timeFilter(created_at) AND ($user = -1 OR user_id = $user)
+GROUP BY 1,2 ORDER BY 1`,
+  slowUsers: `SELECT created_at, user_id, api_key_id, model, duration_ms, first_token_ms, body_bytes, result
+FROM usage_logs
+WHERE $__timeFilter(created_at) AND duration_ms > 30000
+  AND ($user = -1 OR user_id = $user)
+  AND ($api_key = -1 OR api_key_id = $api_key)
+ORDER BY duration_ms DESC LIMIT 20`,
+  hostCpu: '100 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[$__rate_interval])) * 100',
+  hostMem: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100',
+  hostDisk: '(1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100',
+  hostNet: 'sum by(direction) (rate(node_network_{receive,transmit}_bytes_total{device!~"lo|veth|docker|br-.*"}[$__rate_interval]))',
+  goroutines: 'go_goroutines',
+  goMem: 'go_memstats_heap_inuse_bytes',
+  rss: 'process_resident_memory_bytes',
+  dbConn: 'ops_system_metrics.db_conn_active, db_conn_idle',
+  queue: 'ops_system_metrics.concurrency_queue_depth',
+  appQps: 'ops_system_metrics.qps, tps',
+  switchCount: 'ops_system_metrics.account_switch_count'
+};
+
+/* =========================================================
+   面板定义
+   ========================================================= */
+function P(o) {
+  return Object.assign({
+    source: 'Prometheus', unit: '', span: 6, height: 'h-md', status: 'good',
+    threshold: '—', desc: '', query: '—', tags: [], stacked: false, percent: false
+  }, o);
+}
+
+const DASHBOARDS = [
+  {
+    id: 'overview', num: '01', title: '01 · 总览', short: '总览',
+    subtitle: '整体健康吗？慢/错在哪一段？先看 6 个 KPI，再沿链路漏斗下钻。',
+    refresh: '30s', tags: ['Prometheus', '6h', 'editable:false', '30s 刷新'],
+    panels: [
+      P({ id: 'k1', type: 'stat', span: 4, height: 'h-stat', title: '采集目标健康', unit: 'target',
+        value: '3 / 3', sub: 'sub2api · prometheus · alertmanager', status: 'good',
+        query: 'min(up) by (job)', threshold: '全部 up=1 → 绿；任一为 0 → 红',
+        desc: '只看抓取目标是否可达，不代表业务健康。alertmanager 未部署时该目标不存在，需按实际 job 调整。',
+        tags: ['up', 'job'] }),
+      P({ id: 'k2', type: 'stat', span: 4, height: 'h-stat', title: '入向带宽', unit: 'Bps',
+        value: '1.82 MB/s', delta: '+12%', spark: [1.2, 1.4, 1.3, 1.5, 1.7, 1.6, 1.8, 1.75, 1.9, 1.82], status: 'good',
+        sub: 'direction="in_wire" · 24h 峰值 3.4 MB/s', query: 'sum(rate(sub2api_transfer_bytes_total{direction="in_wire"}[5m]))',
+        threshold: '无固定阈值；对照 24h 峰值', desc: '客户端请求体进入网关的速率。gzip 请求按压缩后长度计；不含响应方向。',
+        tags: ['bytes', 'in_wire'] }),
+      P({ id: 'k3', type: 'stat', span: 4, height: 'h-stat', title: '出向带宽', unit: 'Bps',
+        value: '2.46 MB/s', delta: '+8%', spark: [1.1, 1.3, 1.2, 1.6, 1.8, 2.0, 1.9, 2.2, 2.3, 2.46], status: 'good',
+        sub: 'direction="resp_downstream" · 24h 峰值 4.1 MB/s', query: 'sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[5m]))',
+        threshold: '无固定阈值；对照 24h 峰值', desc: '实际写给客户端的响应体字节速率。客户端慢读/断开会让该值低于上游返回量。',
+        tags: ['bytes', 'resp_downstream'] }),
+      P({ id: 'k4', type: 'stat', span: 4, height: 'h-stat', title: '上游放大比', unit: 'x',
+        value: '1.34×', sub: 'resp_upstream / resp_downstream', status: 'warn',
+        query: '(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[10m])), 1)',
+        threshold: '>1.2 黄；>2.0 红', desc: '上游回了多少、客户端实际收到多少的比值。>1.2 说明下游少于上游，可能是客户端 abort、协议转换或流式重写；不能单独定性为截断。',
+        tags: ['bytes', 'amplification'] }),
+      P({ id: 'k5', type: 'stat', span: 4, height: 'h-stat', title: '成功率（1h）', unit: 'percent',
+        value: '99.62%', delta: '-0.08%', status: 'good',
+        query: '1 - sum(rate(sub2api_http_requests_total{status_code=~"5.."}[1h])) / clamp_min(sum(rate(sub2api_http_requests_total[1h])), 1e-9)',
+        threshold: '<99% 黄；<95% 红', desc: '5xx 占全部 HTTP 请求的比例，含管理接口与认证失败。业务失败（SSE 已开始输出后失败）不一定改状态码，需结合 02 的失败根因看。',
+        tags: ['http', '5xx'] }),
+      P({ id: 'k6', type: 'stat', span: 4, height: 'h-stat', title: 'P95 TTFT', unit: 's',
+        value: '2.14 s', delta: '+0.21s', status: 'good',
+        query: 'histogram_quantile(0.95, sum by (le) (rate(sub2api_request_phase_seconds_bucket{phase="headers_end"}[10m])))',
+        threshold: '>3s 黄；>8s 红', desc: 'TTFT = 首个上游请求发出 → 最终响应首字节。与 upstream 重叠，不参与段堆叠；无首字节的请求不参与计算。',
+        tags: ['ttft', 'headers_end'] }),
+
+      P({ id: 'o7', type: 'line', span: 12, height: 'h-md', title: '链路流量漏斗', unit: 'Bps',
+        series: [
+          { name: 'in_wire', color: C.blue, base: 1.7e6, amp: .35e6, noise: .12e6 },
+          { name: 'req_upstream', color: C.orange, base: 1.45e6, amp: .3e6, noise: .1e6 },
+          { name: 'resp_upstream', color: C.aqua, base: 2.5e6, amp: .55e6, noise: .18e6 },
+          { name: 'resp_downstream', color: C.yellow, base: 2.2e6, amp: .5e6, noise: .16e6 }
+        ],
+        query: Q.bytes, threshold: '各方向独立；关注 resp_upstream 与 resp_downstream 的差',
+        desc: '四个关键方向的字节速率。漏斗不是严格递减：上游响应可能大于请求体，下游又可能小于上游。',
+        tags: ['bytes', 'funnel'] }),
+      P({ id: 'o8', type: 'stack', span: 12, height: 'h-md', title: '分层错误瀑布', unit: 'reqps',
+        series: [
+          { name: 'upstream_error', color: C.orange, base: .18, amp: .05, noise: .03 },
+          { name: 'timeout', color: C.yellow, base: .06, amp: .02, noise: .012 },
+          { name: 'client_abort', color: C.magenta, base: .04, amp: .015, noise: .01 },
+          { name: 'gateway_error', color: C.violet, base: .012, amp: .006, noise: .004 },
+          { name: 'rejected', color: C.red, base: .025, amp: .01, noise: .006 }
+        ],
+        query: 'sum by (result) (rate(sub2api_gateway_requests_total{result!="success"}[$__rate_interval]))',
+        threshold: 'gateway_error >0.05/s 告警', desc: '按 result 堆叠的失败构成。看“谁在涨”，不要把所有非 2xx 混在一起。',
+        tags: ['errors', 'result'] }),
+      P({ id: 'o9', type: 'line', span: 6, height: 'h-sm', title: '请求速率 QPS', unit: 'reqps',
+        series: [
+          { name: '网关请求', color: C.blue, base: 7.4, amp: 1.1, noise: .35 },
+          { name: '上游尝试', color: C.orange, base: 8.1, amp: 1.2, noise: .45 }
+        ],
+        query: Q.qps, threshold: '无固定阈值；对照容量', desc: '网关请求与上游尝试分开：重试会让上游尝试高于网关请求。',
+        tags: ['qps'] }),
+      P({ id: 'o10', type: 'line', span: 6, height: 'h-sm', title: '4xx / 5xx 速率', unit: 'reqps',
+        series: [
+          { name: '4xx', color: C.yellow, base: .12, amp: .03, noise: .02 },
+          { name: '5xx', color: C.red, base: .035, amp: .012, noise: .008 }
+        ],
+        query: Q.errRate, threshold: '5xx 占比 >1% 告警', desc: 'V1 HTTP 指标口径，含管理接口；与 02 的业务失败根因不可直接对账。',
+        tags: ['http', '4xx', '5xx'] }),
+      P({ id: 'o12', type: 'donut', span: 6, height: 'h-sm', title: '段耗时占比（均值）', unit: 'percent',
+        items: [
+          { name: 'upstream', value: 52, color: PHASE_COLORS[3] },
+          { name: 'response', value: 28, color: PHASE_COLORS[4] },
+          { name: 'body_read', value: 8, color: PHASE_COLORS[0] },
+          { name: 'gateway', value: 6, color: PHASE_COLORS[1] },
+          { name: 'wait', value: 4, color: PHASE_COLORS[2] },
+          { name: 'finish', value: 2, color: PHASE_COLORS[5] }
+        ],
+        query: Q.phaseShare, threshold: '无阈值；主导段 >50% 时下钻', desc: '6 个互斥段的均值占比，可堆叠。headers_end 不在其中（与 upstream 重叠）。',
+        tags: ['phase', 'share'] }),
+      P({ id: 'o13', type: 'bars', span: 6, height: 'h-sm', title: '失败根因 Top', unit: 'reqps',
+        items: [
+          { name: 'upstream_rate_limit', value: .072, color: C.orange },
+          { name: 'upstream_server_error', value: .041, color: C.yellow },
+          { name: 'upstream_read_timeout', value: .023, color: C.magenta },
+          { name: 'client_abort_during_response', value: .018, color: C.violet },
+          { name: 'upstream_auth', value: .009, color: C.red },
+          { name: 'unknown', value: .004, color: '#6c7278' }
+        ],
+        query: 'sum by (failure_reason) (rate(sub2api_gateway_requests_total{result!="success"}[$__rate_interval]))',
+        threshold: 'unknown 占比 >10% 告警', desc: '请求视角的 13 类根因。unknown 长期 >10% 说明分类缺失，不能当成“其他”。',
+        tags: ['failure_reason'] }),
+      P({ id: 'o11', type: 'table', span: 16, height: 'h-lg', title: '节点健康矩阵', unit: '',
+        columns: [
+          { label: '账号', key: 'account' }, { label: '平台', key: 'platform' },
+          { label: 'QPS', key: 'qps', cls: 'r' }, { label: 'P95 TTFT', key: 'ttft', cls: 'r' },
+          { label: '失败率', key: 'fail', cls: 'r' }, { label: '带宽', key: 'bw', cls: 'r' },
+          { label: '在途', key: 'inflight', cls: 'r' }, { label: '状态', key: 'status' }
+        ],
+        rows: [
+          { account: 'sun', platform: 'anthropic', qps: '1.82', ttft: '1.42s', fail: '0.8%', bw: '612 KB/s', inflight: '4', status: { v: '正常', c: 'good' } },
+          { account: 'hyb', platform: 'anthropic', qps: '1.44', ttft: '2.10s', fail: '1.2%', bw: '488 KB/s', inflight: '3', status: { v: '正常', c: 'good' } },
+          { account: 'qyh', platform: 'openai', qps: '1.33', ttft: '1.86s', fail: '2.4%', bw: '402 KB/s', inflight: '3', status: { v: '观察', c: 'warn' } },
+          { account: 'lt', platform: 'anthropic', qps: '1.02', ttft: '4.62s', fail: '8.9%', bw: '301 KB/s', inflight: '5', status: { v: '降权候选', c: 'crit' } },
+          { account: 'xf', platform: 'openai', qps: '.88', ttft: '2.35s', fail: '1.8%', bw: '255 KB/s', inflight: '2', status: { v: '正常', c: 'good' } },
+          { account: 'szy', platform: 'gemini', qps: '.62', ttft: '1.98s', fail: '0.9%', bw: '188 KB/s', inflight: '1', status: { v: '正常', c: 'good' } },
+          { account: 'xbw', platform: 'anthropic', qps: '.44', ttft: '2.72s', fail: '3.1%', bw: '144 KB/s', inflight: '1', status: { v: '观察', c: 'warn' } },
+          { account: 'yyp', platform: 'openai', qps: '.31', ttft: '2.05s', fail: '1.1%', bw: '96 KB/s', inflight: '1', status: { v: '正常', c: 'good' } }
+        ],
+        query: 'sum by (account) (rate(sub2api_upstream_requests_total[5m])) / histogram_quantile(...) / ...',
+        threshold: '失败率 >20% 且样本 >20 触发账号告警', desc: '10 个账号同屏对比；账号名启动时快照，新账号在重启前显示 unknown。',
+        tags: ['account', 'nodes'] }),
+      P({ id: 'o14', type: 'line', span: 8, height: 'h-lg', title: '客户端中断', unit: 'reqps',
+        series: [
+          { name: 'body_read', color: C.magenta, base: .018, amp: .006, noise: .004 },
+          { name: 'response', color: C.violet, base: .031, amp: .01, noise: .006 }
+        ],
+        query: Q.aborts, threshold: '中断占比 >5% 告警', desc: '只统计确认的客户端断开；超时与服务端 shutdown 不算。正常 EOF 不是 abort。',
+        tags: ['client_abort'] }),
+      P({ id: 'o15', type: 'gauge', span: 8, height: 'h-lg', title: '数据完整性', unit: 'percent',
+        gauges: [
+          { label: 'request（埋点完整）', value: 99.8, color: ST.good },
+          { label: 'account（账号可知）', value: 98.4, color: ST.good },
+          { label: 'bytes（四方向完整）', value: 96.1, color: ST.warning },
+          { label: 'user（用户+密钥）', value: 100, color: ST.good }
+        ],
+        query: Q.coverage, threshold: '<80% 告警；-1 表示无样本',
+        desc: '覆盖率不是“成功率”。bytes 96.1% 表示约 4% 请求缺某个方向的字节，带宽会被低估；低于 90% 时看板变黄。',
+        tags: ['coverage', 'M-9'] }),
+      P({ id: 'o16', type: 'text', span: 16, height: 'h-lg', title: '定位 Playbook（值班先看这里）', unit: '',
+        html: `<h4>收到「慢 / 失败」后按顺序问</h4>
+          <ul>
+            <li><span class="k">1. 哪一跳异常？</span> 看「链路流量漏斗」与「分层错误瀑布」：QPS 掉、错误涨的是网关还是上游。</li>
+            <li><span class="k">2. 时间花在哪段？</span> 打开「02 · 链路归因」看段耗时堆叠；<code>body_read</code> 大 → 客户端上传慢/请求体过大；<code>wait</code> 大 → 槽位排队；<code>upstream</code> 大 → 上游/出口慢；<code>response</code> 大 → 流式慢或客户端慢读。</li>
+            <li><span class="k">3. 是否单一账号？</span> 打开「03 · 上游节点」：失败率与 P95 TTFT 是否集中在某个 account；是则摘除/降权，否则按平台级故障处理。</li>
+            <li><span class="k">4. 字节不平衡？</span> 上游 ≫ 下游时先看 <code>failure_reason</code>：<code>client_abort_*</code> 才是客户端中断；协议转换/重试也会造成差异。</li>
+          </ul>
+          <p class="warn">禁止：把各段 P95 相加当总 P95；把 headers_end 放进段堆叠；用 or vector(1) 掩盖无数据。</p>`,
+        query: '—', threshold: '—', desc: '该面板是文字说明，不产生查询；上线后放在 01 右下角，值班可直接照做。',
+        tags: ['playbook'] })
+    ]
+  },
+  {
+    id: 'chain', num: '02', title: '02 · 链路归因', short: '链路归因',
+    subtitle: '头号看板。段耗时、字节平衡、失败根因、单请求明细都在这一页。',
+    refresh: '10s', tags: ['Prometheus + PostgreSQL', '头号看板', '10s 刷新', 'AC-1 主战场'], hot: true,
+    panels: [
+      P({ id: 'c1', type: 'stack', span: 14, height: 'h-lg', title: '段耗时 P95 堆叠（6 互斥段）', unit: 's',
+        series: [
+          { name: 'body_read', color: PHASE_COLORS[0], base: .28, amp: .05, noise: .03 },
+          { name: 'gateway', color: PHASE_COLORS[1], base: .18, amp: .03, noise: .02 },
+          { name: 'wait', color: PHASE_COLORS[2], base: .09, amp: .02, noise: .015 },
+          { name: 'upstream', color: PHASE_COLORS[3], base: 1.1, amp: .2, noise: .1 },
+          { name: 'response', color: PHASE_COLORS[4], base: .62, amp: .14, noise: .06 },
+          { name: 'finish', color: PHASE_COLORS[5], base: .05, amp: .01, noise: .006 }
+        ],
+        query: Q.phase, threshold: '主导段 >50% 时下钻；总 P95 不作堆叠',
+        desc: '6 个互斥段可堆叠，和等于请求总时长。headers_end 不在此图（与 upstream 重叠，单独看 TTFT）。各段 P95 不是同一请求的分解。',
+        tags: ['phase', 'stack', 'AC-1'] }),
+      P({ id: 'c2', type: 'donut', span: 10, height: 'h-lg', title: '段均值占比', unit: 'percent',
+        items: [
+          { name: 'upstream', value: 52, color: PHASE_COLORS[3] },
+          { name: 'response', value: 28, color: PHASE_COLORS[4] },
+          { name: 'body_read', value: 8, color: PHASE_COLORS[0] },
+          { name: 'gateway', value: 6, color: PHASE_COLORS[1] },
+          { name: 'wait', value: 4, color: PHASE_COLORS[2] },
+          { name: 'finish', value: 2, color: PHASE_COLORS[5] }
+        ],
+        query: Q.phaseShare, threshold: '无阈值；用于快速判断主导段',
+        desc: '均值占比可堆叠；P95 占比不可堆叠。两者不要混用。',
+        tags: ['phase', 'share'] }),
+      P({ id: 'c3', type: 'line', span: 8, height: 'h-md', title: 'TTFT 分位（P50 / P95 / P99）', unit: 's',
+        series: [
+          { name: 'P50', color: C.blue, base: .72, amp: .12, noise: .05 },
+          { name: 'P95', color: C.orange, base: 2.1, amp: .3, noise: .12 },
+          { name: 'P99', color: C.magenta, base: 5.4, amp: .8, noise: .3 }
+        ],
+        thresholdValue: 3, thresholdLabel: '3s 告警线',
+        query: 'histogram_quantile(0.50/0.95/0.99, sum by (le) (rate(sub2api_request_phase_seconds_bucket{phase="headers_end"}[$__rate_interval])))',
+        threshold: 'P95 >3s 黄；>8s 红', desc: 'TTFT 只看最终 attempt 的首字节；空响应无首字节不参与。与「上游总耗时」不是一回事。',
+        tags: ['ttft'] }),
+      P({ id: 'c4', type: 'line', span: 8, height: 'h-md', title: '每方向字节速率', unit: 'Bps',
+        series: [
+          { name: 'in_wire', color: DIR_COLORS[0], base: 1.7e6, amp: .35e6, noise: .12e6 },
+          { name: 'req_upstream', color: DIR_COLORS[1], base: 1.45e6, amp: .3e6, noise: .1e6 },
+          { name: 'resp_upstream', color: DIR_COLORS[2], base: 2.5e6, amp: .55e6, noise: .18e6 },
+          { name: 'resp_downstream', color: DIR_COLORS[3], base: 2.2e6, amp: .5e6, noise: .16e6 },
+          { name: 'req_decoded', color: DIR_COLORS[4], base: 1.5e6, amp: .3e6, noise: .1e6 }
+        ],
+        query: Q.bytes, threshold: '无固定阈值；看方向间差异',
+        desc: '5 个方向的实际读写字节。resp_upstream 是解压后长度，无法与 wire 完全对账。',
+        tags: ['bytes'] }),
+      P({ id: 'c5', type: 'line', span: 8, height: 'h-md', title: '字节平衡（上游 vs 下发）', unit: 'Bps',
+        series: [
+          { name: 'resp_upstream', color: C.aqua, base: 2.5e6, amp: .55e6, noise: .18e6 },
+          { name: 'resp_downstream', color: C.yellow, base: 2.2e6, amp: .5e6, noise: .16e6 },
+          { name: 'difference', color: C.red, base: .3e6, amp: .1e6, noise: .04e6 }
+        ],
+        query: Q.bytes, threshold: '差额占比 >20% 告警',
+        desc: '差额是上游返回与客户端收到的差。协议转换、重试失败体、客户端 abort、网关截断都会造成差额；不能只看差额就下结论。',
+        tags: ['bytes', 'balance', 'AC-2'] }),
+      P({ id: 'c6', type: 'line', span: 8, height: 'h-md', title: '上游 − 下发差额占比', unit: 'percent',
+        series: [{ name: 'shortfall', color: C.red, base: 11.8, amp: 3.2, noise: 1.4, min: 0, max: 100 }],
+        thresholdValue: 20, thresholdLabel: '20% 告警线',
+        query: Q.byteDiff, threshold: '>20% 持续 15m 告警',
+        desc: '差额 / 上游字节。>20% 时结合 02 的客户端中断、错误根因和单请求样本判断，不直接等同“网关截断”。',
+        tags: ['bytes', 'shortfall'] }),
+      P({ id: 'c7', type: 'stack', span: 8, height: 'h-md', title: '失败根因速率（请求视角）', unit: 'reqps',
+        series: [
+          { name: 'upstream_rate_limit', color: C.orange, base: .07, amp: .02, noise: .01 },
+          { name: 'upstream_server_error', color: C.yellow, base: .04, amp: .012, noise: .008 },
+          { name: 'upstream_read_timeout', color: C.magenta, base: .02, amp: .008, noise: .005 },
+          { name: 'client_abort_during_response', color: C.violet, base: .018, amp: .006, noise: .004 },
+          { name: 'unknown', color: '#6c7278', base: .004, amp: .002, noise: .001 }
+        ],
+        query: Q.reasons, threshold: 'unknown 占比 >10% 告警',
+        desc: 'M-10 请求视角，含 0-attempt 的网关拒绝。与 M-4 的上游 attempt 视角不要混用。',
+        tags: ['failure_reason', 'M-10'] }),
+      P({ id: 'c8', type: 'line', span: 8, height: 'h-md', title: '账号失败率（Top 5）', unit: 'percent',
+        series: [
+          { name: 'lt', color: C.red, base: 8.9, amp: 2.2, noise: .8, min: 0, max: 100 },
+          { name: 'qyh', color: C.orange, base: 2.4, amp: .7, noise: .3, min: 0, max: 100 },
+          { name: 'xbw', color: C.yellow, base: 3.1, amp: .8, noise: .3, min: 0, max: 100 },
+          { name: 'hyb', color: C.blue, base: 1.2, amp: .3, noise: .15, min: 0, max: 100 },
+          { name: 'sun', color: C.aqua, base: .8, amp: .2, noise: .1, min: 0, max: 100 }
+        ],
+        query: Q.accountFail, threshold: '>20% 且样本 >20 告警',
+        desc: '按账号的失败率。低样本账号会出现 0% 或 100% 的噪声，必须结合样本量看。',
+        tags: ['account', 'failure'] }),
+      P({ id: 'c9', type: 'line', span: 8, height: 'h-md', title: '客户端中断（body_read / response）', unit: 'reqps',
+        series: [
+          { name: 'body_read', color: C.magenta, base: .018, amp: .006, noise: .004 },
+          { name: 'response', color: C.violet, base: .031, amp: .01, noise: .006 }
+        ],
+        query: Q.aborts, threshold: '中断占比 >5% 告警',
+        desc: '只统计确认的客户端断开；超时不在此列。response 段的中断常伴随下游字节小于上游。',
+        tags: ['client_abort'] }),
+      P({ id: 'c10', type: 'bars', span: 8, height: 'h-md', title: '尝试结果分布', unit: 'count',
+        items: [
+          { name: 'first_success', value: 71.2, color: C.blue },
+          { name: 'retried_success', value: 18.4, color: C.yellow },
+          { name: 'all_failed', value: 10.4, color: C.violet }
+        ],
+        query: Q.attempts, threshold: 'retried_success 突然升高 → 上游不稳',
+        desc: '每网关请求一次：首次成功 / 重试后成功 / 全失败。all_failed 含 0-attempt 的网关拒绝。',
+        tags: ['attempts', 'M-6'] }),
+      P({ id: 'c11', type: 'stat', span: 8, height: 'h-md', title: '账号切换速率', unit: 'reqps',
+        value: '0.86 /min', delta: '+0.12', spark: [.4, .5, .6, .55, .7, .8, .75, .82, .9, .86], status: 'warn',
+        query: Q.switches, threshold: '突增时结合 failover 日志',
+        desc: '跨账号切换次数；同账号重试不算。切换速率上升通常意味着某些账号在持续失败。',
+        tags: ['switch', 'M-7'] }),
+      P({ id: 'c12', type: 'gauge', span: 8, height: 'h-lg', title: '数据完整性', unit: 'percent',
+        gauges: [
+          { label: 'request', value: 99.8, color: ST.good },
+          { label: 'account', value: 98.4, color: ST.good },
+          { label: 'bytes', value: 96.1, color: ST.warning },
+          { label: 'user', value: 100, color: ST.good }
+        ],
+        query: Q.coverage, threshold: '<80% 告警；-1 = 无样本',
+        desc: '覆盖不足时先看是哪个 kind：bytes 低会让带宽与差额面板失真；request 低说明有路径没接入埋点。',
+        tags: ['coverage', 'M-9'] }),
+      P({ id: 'c13', type: 'heatmap', span: 16, height: 'h-lg', title: '请求体大小分布', unit: 'count',
+        rows: ['>64 MB', '16–64 MB', '4–16 MB', '1–4 MB', '256 KB–1 MB', '64–256 KB', '16–64 KB', '<16 KB'],
+        query: 'sum by (le) (increase(sub2api_request_body_bytes_bucket[$__interval]))',
+        threshold: '>100 KB 占比 >5% 时关注',
+        desc: '按 endpoint_class 的请求体直方图。超大请求会拉长 body_read，并可能触发上游 413/超时。',
+        tags: ['body', 'heatmap', 'M-3'] }),
+      P({ id: 'c14', type: 'stat', span: 8, height: 'h-lg', title: '大请求体占比', unit: 'percent',
+        value: '4.8%', delta: '+0.6%', spark: [4.1, 4.3, 4.0, 4.4, 4.6, 4.5, 4.7, 4.9, 4.8, 4.8], status: 'warn',
+        sub: '>100 KB 4.8% · >1 MB 0.7% · >10 MB 0.02%',
+        query: 'sum(rate(sub2api_request_body_bytes_bucket{le="102400"}[5m])) / sum(rate(sub2api_request_body_bytes_count[5m]))',
+        threshold: '>100 KB >5% 黄；>10% 红',
+        desc: '大请求体与超时/5xx 的相关性要结合 02 的慢样本看，单看占比不能定性。',
+        tags: ['body', 'large'] }),
+      P({ id: 'c15', type: 'table', span: 16, height: 'h-lg', title: '错误构成（platform × account × result）', unit: '',
+        columns: [
+          { label: '平台', key: 'platform' }, { label: '账号', key: 'account' },
+          { label: 'result', key: 'result' }, { label: '次数', key: 'count', cls: 'r' },
+          { label: '占比', key: 'rate', cls: 'r' }
+        ],
+        rows: [
+          { platform: 'anthropic', account: 'lt', result: 'upstream_error', count: '184', rate: '8.9%' },
+          { platform: 'anthropic', account: 'lt', result: 'timeout', count: '62', rate: '3.0%' },
+          { platform: 'openai', account: 'qyh', result: 'upstream_error', count: '51', rate: '2.4%' },
+          { platform: 'anthropic', account: 'xbw', result: 'upstream_error', count: '33', rate: '3.1%' },
+          { platform: 'gemini', account: 'szy', result: 'client_abort', count: '12', rate: '1.7%' },
+          { platform: 'openai', account: 'yyp', result: 'rejected', count: '9', rate: '0.9%' }
+        ],
+        query: 'PG 按 platform/account/result 聚合 ops_request_transfer_samples',
+        threshold: '单账号单 result >5% 关注',
+        desc: '错误构成表用于定位“集中在谁”。count 是窗口内样本数，rate 是该账号请求占比。',
+        tags: ['errors', 'table'] }),
+      P({ id: 'c16', type: 'table', span: 14, height: 'h-table', title: '慢样本 Top 40（PG 明细）', unit: '',
+        columns: [
+          { label: '时间', key: 'time' }, { label: 'total', key: 'total', cls: 'r' },
+          { label: 'body_read', key: 'body', cls: 'r' }, { label: 'wait', key: 'wait', cls: 'r' },
+          { label: 'upstream', key: 'up', cls: 'r' }, { label: 'TTFT', key: 'ttft', cls: 'r' },
+          { label: 'response', key: 'resp', cls: 'r' }, { label: 'result', key: 'result' },
+          { label: '账号', key: 'account' }, { label: '模型', key: 'model' }
+        ],
+        rows: [
+          { time: '13:42:18', total: '58.4s', body: '0.2s', wait: '0.0s', up: '12.4s', ttft: '8.1s', resp: '45.8s', result: 'success', account: 'lt', model: 'claude-sonnet-4.5' },
+          { time: '13:38:02', total: '41.2s', body: '9.8s', wait: '0.0s', up: '3.1s', ttft: '2.0s', resp: '28.3s', result: 'success', account: 'sun', model: 'claude-opus-5' },
+          { time: '13:35:47', total: '37.6s', body: '0.1s', wait: '6.2s', up: '1.2s', ttft: '0.9s', resp: '30.1s', result: 'success', account: 'hyb', model: 'gpt-5-codex' },
+          { time: '13:31:09', total: '32.0s', body: '0.3s', wait: '0.0s', up: '30.4s', ttft: '12.6s', resp: '1.3s', result: 'timeout', account: 'lt', model: 'claude-haiku-4.5' },
+          { time: '13:28:55', total: '28.7s', body: '18.2s', wait: '0.0s', up: '2.2s', ttft: '1.4s', resp: '8.3s', result: 'client_abort', account: 'qyh', model: 'gemini-2.5-pro' },
+          { time: '13:24:31', total: '25.4s', body: '0.2s', wait: '0.0s', up: '4.8s', ttft: '2.2s', resp: '20.4s', result: 'success', account: 'xf', model: 'claude-sonnet-4.5' },
+          { time: '13:21:12', total: '22.9s', body: '0.1s', wait: '2.1s', up: '8.4s', ttft: '3.0s', resp: '12.3s', result: 'upstream_error', account: 'lt', model: 'claude-opus-5' },
+          { time: '13:18:40', total: '21.3s', body: '0.2s', wait: '0.0s', up: '1.1s', ttft: '0.8s', resp: '20.0s', result: 'success', account: 'szy', model: 'gemini-2.5-flash' }
+        ],
+        query: Q.slow, threshold: 'LIMIT 40；按 total_ms 降序',
+        desc: 'PG 明细，用来把“哪一段慢”落到单请求。不展示 IP；不假设样本可代表总体分位。',
+        tags: ['PG', 'slow', 'drill'] }),
+      P({ id: 'c17', type: 'bars', span: 10, height: 'h-table', title: '单请求分段分解（选中样本）', unit: 'ms',
+        items: [
+          { name: 'body_read', value: 200, color: PHASE_COLORS[0] },
+          { name: 'gateway', value: 80, color: PHASE_COLORS[1] },
+          { name: 'wait', value: 0, color: PHASE_COLORS[2] },
+          { name: 'upstream', value: 12400, color: PHASE_COLORS[3] },
+          { name: 'response', value: 45800, color: PHASE_COLORS[4] },
+          { name: 'finish', value: 120, color: PHASE_COLORS[5] }
+        ],
+        query: 'SELECT body_read_ms, gateway_ms, wait_ms, upstream_ms, headers_end_ms, response_ms, finish_ms FROM ops_request_transfer_samples WHERE request_id = $request',
+        threshold: '主导段即第一嫌疑；结合 headers_end 看 TTFT',
+        desc: '选中 Top 40 中的一行后展示该请求的真实分解。总和应等于 total_ms；不等说明有未归属时间。',
+        tags: ['PG', 'single-request'] }),
+      P({ id: 'c18', type: 'text', span: 16, height: 'h-md', title: '判定树（与 01 Playbook 同源）', unit: '',
+        html: `<h4>慢请求定位</h4>
+          <ul>
+            <li><code>body_read</code> 大 → 客户端上行慢 / 请求体巨大：看请求体分布与大请求占比。</li>
+            <li><code>wait</code> 大 → 用户/账号并发满：看 03 的在途与并发利用率，以及 05 的队列深度。</li>
+            <li><code>upstream</code> 大 + <code>headers_end</code> 也大 → 上游迟迟不回响应头：看该账号 P95 TTFT、429/529。</li>
+            <li><code>response</code> 大 → 上游流式慢或下游慢读：对比 resp_upstream / resp_downstream。</li>
+            <li><code>gateway</code> 大 → 我们自己的开销：看 GC、DB、限流中间件。</li>
+          </ul>`,
+        query: '—', threshold: '—', desc: '文字面板；上线后放在 02 底部，作为值班 SOP。',
+        tags: ['playbook'] }),
+      P({ id: 'c19', type: 'text', span: 8, height: 'h-md', title: '口径与“不可信数字”', unit: '',
+        html: `<h4>先看这三条再下结论</h4>
+          <ul>
+            <li>各段 <span class="k">P95 不能相加</span>；只有互斥段的均值/单请求分解可以堆叠。</li>
+            <li><code>headers_end</code> 与 <code>upstream</code> <span class="k">重叠</span>，不参与段堆叠。</li>
+            <li>字节差 ≠ 截断；先看 <code>failure_reason</code>，再看单请求样本。</li>
+            <li>PG 明细是<span class="warn">样本</span>，用于个例钻取，不用于总体分位。</li>
+          </ul>`,
+        query: '—', threshold: '—', desc: '把容易误读的数字集中在面板上说明，避免值班时把相关当因果。',
+        tags: ['caveat'] })
+    ]
+  },
+  {
+    id: 'nodes', num: '03', title: '03 · 上游节点', short: '上游节点',
+    subtitle: '哪个账号/模型档位最差，该不该摘除或降权。',
+    refresh: '30s', tags: ['Prometheus + PostgreSQL', '10 个账号', '30s 刷新'],
+    panels: [
+      P({ id: 'n1', type: 'table', span: 24, height: 'h-table', title: '账号健康矩阵', unit: '',
+        columns: [
+          { label: '账号', key: 'account' }, { label: '平台', key: 'platform' },
+          { label: 'QPS', key: 'qps', cls: 'r' }, { label: 'P95 TTFT', key: 'ttft', cls: 'r' },
+          { label: '失败率', key: 'fail', cls: 'r' }, { label: '带宽', key: 'bw', cls: 'r' },
+          { label: '在途', key: 'inflight', cls: 'r' }, { label: '并发上限', key: 'limit', cls: 'r' },
+          { label: '今日请求', key: 'req', cls: 'r' }, { label: '状态', key: 'status' }
+        ],
+        rows: [
+          { account: 'sun', platform: 'anthropic', qps: '1.82', ttft: '1.42s', fail: '0.8%', bw: '612 KB/s', inflight: '4', limit: '8', req: '4,218', status: { v: '正常', c: 'good' } },
+          { account: 'hyb', platform: 'anthropic', qps: '1.44', ttft: '2.10s', fail: '1.2%', bw: '488 KB/s', inflight: '3', limit: '8', req: '3,502', status: { v: '正常', c: 'good' } },
+          { account: 'qyh', platform: 'openai', qps: '1.33', ttft: '1.86s', fail: '2.4%', bw: '402 KB/s', inflight: '3', limit: '6', req: '3,114', status: { v: '观察', c: 'warn' } },
+          { account: 'lt', platform: 'anthropic', qps: '1.02', ttft: '4.62s', fail: '8.9%', bw: '301 KB/s', inflight: '5', limit: '6', req: '2,408', status: { v: '降权候选', c: 'crit' } },
+          { account: 'xf', platform: 'openai', qps: '.88', ttft: '2.35s', fail: '1.8%', bw: '255 KB/s', inflight: '2', limit: '6', req: '1,996', status: { v: '正常', c: 'good' } },
+          { account: 'szy', platform: 'gemini', qps: '.62', ttft: '1.98s', fail: '0.9%', bw: '188 KB/s', inflight: '1', limit: '4', req: '1,402', status: { v: '正常', c: 'good' } },
+          { account: 'xbw', platform: 'anthropic', qps: '.44', ttft: '2.72s', fail: '3.1%', bw: '144 KB/s', inflight: '1', limit: '4', req: '998', status: { v: '观察', c: 'warn' } },
+          { account: 'yyp', platform: 'openai', qps: '.31', ttft: '2.05s', fail: '1.1%', bw: '96 KB/s', inflight: '1', limit: '4', req: '704', status: { v: '正常', c: 'good' } }
+        ],
+        query: 'Prom: M-4/M-11 by account；PG: accounts.concurrency + 今日 usage_logs',
+        threshold: '失败率 >20% 且样本 >20 → 告警；P95 TTFT >8s 关注',
+        desc: '行=账号；摘除/降权前确认样本量与持续时间。低 QPS 账号的百分比噪声大。',
+        tags: ['account', 'matrix'] }),
+      P({ id: 'n2', type: 'line', span: 8, height: 'h-md', title: '账号 QPS', unit: 'reqps',
+        series: [
+          { name: 'sun', color: C.blue, base: 1.82, amp: .3, noise: .1 },
+          { name: 'hyb', color: C.orange, base: 1.44, amp: .25, noise: .08 },
+          { name: 'qyh', color: C.aqua, base: 1.33, amp: .22, noise: .08 },
+          { name: 'lt', color: C.yellow, base: 1.02, amp: .2, noise: .06 },
+          { name: 'xf', color: C.magenta, base: .88, amp: .18, noise: .06 }
+        ],
+        query: Q.accountQps, threshold: '无固定阈值；看份额与倾斜',
+        desc: '每账号的上游尝试 QPS（含重试）。与「网关请求 QPS」不同。',
+        tags: ['account', 'qps'] }),
+      P({ id: 'n3', type: 'line', span: 8, height: 'h-md', title: '账号失败率', unit: 'percent',
+        series: [
+          { name: 'lt', color: C.red, base: 8.9, amp: 2.2, noise: .8, min: 0, max: 100 },
+          { name: 'xbw', color: C.yellow, base: 3.1, amp: .8, noise: .3, min: 0, max: 100 },
+          { name: 'qyh', color: C.orange, base: 2.4, amp: .7, noise: .3, min: 0, max: 100 },
+          { name: 'hyb', color: C.blue, base: 1.2, amp: .3, noise: .15, min: 0, max: 100 },
+          { name: 'sun', color: C.aqua, base: .8, amp: .2, noise: .1, min: 0, max: 100 }
+        ],
+        query: Q.accountFail, threshold: '>20% 且样本 >20 告警',
+        desc: '失败率 = 该账号非 success 尝试 / 该账号全部尝试。重试失败会推高该值。',
+        tags: ['account', 'failure'] }),
+      P({ id: 'n4', type: 'line', span: 8, height: 'h-md', title: '账号 P95 TTFT', unit: 's',
+        series: [
+          { name: 'lt', color: C.red, base: 4.62, amp: .9, noise: .35 },
+          { name: 'xbw', color: C.yellow, base: 2.72, amp: .5, noise: .2 },
+          { name: 'hyb', color: C.blue, base: 2.10, amp: .4, noise: .15 },
+          { name: 'sun', color: C.aqua, base: 1.42, amp: .3, noise: .1 }
+        ],
+        thresholdValue: 3, thresholdLabel: '3s',
+        query: Q.accountTtft, threshold: 'P95 >3s 关注；>8s 红',
+        desc: 'M-11 是每 attempt 的 TTFT 直方图，不是每请求；重试会贡献多个样本。',
+        tags: ['account', 'ttft', 'M-11'] }),
+      P({ id: 'n5', type: 'stack', span: 12, height: 'h-md', title: '账号带宽（Top 5）', unit: 'Bps',
+        series: [
+          { name: 'sun', color: C.blue, base: 6.1e5, amp: 1.2e5, noise: .4e5 },
+          { name: 'hyb', color: C.orange, base: 4.9e5, amp: 1e5, noise: .3e5 },
+          { name: 'qyh', color: C.aqua, base: 4.0e5, amp: .8e5, noise: .3e5 },
+          { name: 'lt', color: C.yellow, base: 3.0e5, amp: .6e5, noise: .2e5 },
+          { name: 'xf', color: C.magenta, base: 2.6e5, amp: .5e5, noise: .2e5 }
+        ],
+        query: 'sum by (account) (rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[$__rate_interval]))',
+        threshold: '无固定阈值；看单账号是否吃掉带宽',
+        desc: '按账号的下发字节速率（M-2 没有 account 标签，需按请求上下文分桶；实现为每账号聚合计数）。',
+        tags: ['account', 'bytes'] }),
+      P({ id: 'n6', type: 'bars', span: 12, height: 'h-md', title: '在途与并发利用率', unit: 'percent',
+        items: [
+          { name: 'lt', value: 83, color: ST.critical },
+          { name: 'sun', value: 50, color: ST.good },
+          { name: 'hyb', value: 38, color: ST.good },
+          { name: 'qyh', value: 50, color: ST.good },
+          { name: 'xf', value: 33, color: ST.good },
+          { name: 'szy', value: 25, color: ST.good }
+        ],
+        max: 100,
+        query: 'in_flight(account) / accounts.concurrency * 100',
+        threshold: '>80% 黄；>95% 红',
+        desc: '在途 = 正在该账号上执行的 attempt；利用率接近 100% 时新增请求会进入 wait。',
+        tags: ['account', 'inflight'] }),
+      P({ id: 'n7', type: 'line', span: 16, height: 'h-md', title: '重试与降权信号', unit: 'percent',
+        series: [
+          { name: 'retried_success 占比', color: C.yellow, base: 18.4, amp: 4, noise: 1.2, min: 0, max: 100 },
+          { name: 'all_failed 占比', color: C.red, base: 10.4, amp: 2.5, noise: .9, min: 0, max: 100 },
+          { name: '账号切换占比', color: C.violet, base: 6.2, amp: 1.6, noise: .6, min: 0, max: 100 }
+        ],
+        query: Q.attempts + ' + rate(sub2api_account_switches_total[5m]) / rate(sub2api_gateway_requests_total[5m])', threshold: 'retried_success 持续升高 → 上游不稳；切换占比突增 → 账号故障',
+        desc: '辅助判断“该不该摘”：重试后成功比例高说明账号仍可用但慢；全失败比例高且集中在单账号才考虑降权。',
+        tags: ['retry', 'switch'] }),
+      P({ id: 'n8', type: 'table', span: 8, height: 'h-md', title: '今日请求 / Token / 成本', unit: '',
+        columns: [
+          { label: '账号', key: 'account' }, { label: '请求', key: 'req', cls: 'r' },
+          { label: 'Token', key: 'token', cls: 'r' }, { label: '成本', key: 'cost', cls: 'r' }
+        ],
+        rows: [
+          { account: 'sun', req: '4,218', token: '3.42M', cost: '$48.20' },
+          { account: 'hyb', req: '3,502', token: '2.88M', cost: '$39.62' },
+          { account: 'qyh', req: '3,114', token: '2.41M', cost: '$31.08' },
+          { account: 'lt', req: '2,408', token: '1.96M', cost: '$27.44' },
+          { account: 'xf', req: '1,996', token: '1.55M', cost: '$21.30' },
+          { account: 'szy', req: '1,402', token: '1.12M', cost: '$14.88' }
+        ],
+        query: 'PG: usage_logs 按 account_id 聚合今日请求/token/total_cost',
+        threshold: '无阈值；用于成本与容量',
+        desc: 'PG 口径是 usage_logs 落库样本，与 Prometheus 的请求数不可直接对账。',
+        tags: ['PG', 'cost'] }),
+      P({ id: 'n9', type: 'table', span: 24, height: 'h-md', title: '模型档位对比', unit: '',
+        columns: [
+          { label: 'model_class', key: 'model' }, { label: '请求', key: 'req', cls: 'r' },
+          { label: '成功率', key: 'ok', cls: 'r' }, { label: 'P95 TTFT', key: 'ttft', cls: 'r' },
+          { label: '平均响应体', key: 'bytes', cls: 'r' }, { label: '主要失败', key: 'reason' },
+          { label: '状态', key: 'status' }
+        ],
+        rows: [
+          { model: 'claude', req: '12,482', ok: '99.1%', ttft: '2.34s', bytes: '186 KB', reason: 'upstream_rate_limit', status: { v: '正常', c: 'good' } },
+          { model: 'codex', req: '8,104', ok: '98.7%', ttft: '1.92s', bytes: '142 KB', reason: 'upstream_read_timeout', status: { v: '正常', c: 'good' } },
+          { model: 'gpt', req: '6,732', ok: '99.4%', ttft: '1.68s', bytes: '98 KB', reason: 'upstream_server_error', status: { v: '观察', c: 'warn' } },
+          { model: 'gemini', req: '3,218', ok: '99.6%', ttft: '1.44s', bytes: '74 KB', reason: 'client_abort', status: { v: '正常', c: 'good' } },
+          { model: 'other', req: '804', ok: '97.2%', ttft: '3.10s', bytes: '212 KB', reason: 'unknown', status: { v: '观察', c: 'warn' } }
+        ],
+        query: 'sum by (model_class, result) (rate(sub2api_model_requests_total[5m])) + M-11',
+        threshold: '单档成功率 <99% 观察；unknown >10% 告警',
+        desc: '模型按 4+1 档聚合，不使用原始 model 标签。请求数是每 attempt 计数，重试会重复。',
+        tags: ['model_class', 'M-5'] })
+    ]
+  },
+  {
+    id: 'users', num: '04', title: '04 · 用户/密钥', short: '用户/密钥',
+    subtitle: '某用户/密钥的流量、成本、慢请求明细。只做 PG 面板。',
+    refresh: '1m', tags: ['PostgreSQL 只读', '变量：$user / $api_key', '1m 刷新'],
+    panels: [
+      P({ id: 'u1', type: 'line', span: 12, height: 'h-md', title: '用户请求量', unit: 'count',
+        series: [
+          { name: 'user: alice', color: C.blue, base: 42, amp: 9, noise: 4 },
+          { name: 'user: bob', color: C.orange, base: 28, amp: 6, noise: 3 },
+          { name: 'user: carol', color: C.aqua, base: 16, amp: 4, noise: 2 }
+        ],
+        query: Q.users, threshold: '无阈值；用于份额与突增',
+        desc: 'PG 5 分钟桶。变量 $user 为空（-1）时显示 Top 用户；选中后只看该用户。',
+        tags: ['PG', 'user'] }),
+      P({ id: 'u2', type: 'statgrid', span: 12, height: 'h-md', title: '今日 Token / 成本', unit: '',
+        items: [
+          { label: 'Token', value: '1.24M', sub: '输入 .82M · 输出 .42M', status: 'good' },
+          { label: '成本', value: '$18.42', sub: '缓存节省 $4.10', status: 'good' },
+          { label: '缓存命中', value: '38.6%', sub: 'cache_read / input', status: 'good' },
+          { label: '请求', value: '4,218', sub: 'PG usage_logs', status: 'good' }
+        ],
+        query: 'SELECT sum(input_tokens+output_tokens), sum(total_cost), sum(cache_read_tokens)/sum(input_tokens), count(*) FROM usage_logs WHERE ...',
+        threshold: '无阈值；用于成本核对',
+        desc: 'PG 口径，含缓存 token；与账单系统的最终金额可能有四舍五入差异。',
+        tags: ['PG', 'cost'] }),
+      P({ id: 'u3', type: 'table', span: 8, height: 'h-md', title: 'API Key 流量', unit: '',
+        columns: [
+          { label: 'Key', key: 'key' }, { label: '请求', key: 'req', cls: 'r' },
+          { label: 'Token', key: 'token', cls: 'r' }, { label: '失败', key: 'fail', cls: 'r' }
+        ],
+        rows: [
+          { key: 'prod-main', req: '2,840', token: '2.1M', fail: '0.8%' },
+          { key: 'ci-runner', req: '912', token: '.64M', fail: '2.1%' },
+          { key: 'dev-local', req: '466', token: '.31M', fail: '1.2%' },
+          { key: 'test-key', req: '88', token: '.06M', fail: '0.0%' }
+        ],
+        query: 'SELECT api_key_id, count(*), sum(tokens), fail_rate FROM usage_logs WHERE ... GROUP BY 1',
+        threshold: '单 Key 失败率 >5% 关注',
+        desc: 'Key 名称是用户可改的展示名，不作为 Prometheus 标签；只在 PG 面板出现。',
+        tags: ['PG', 'api_key'] }),
+      P({ id: 'u4', type: 'table', span: 16, height: 'h-md', title: '慢请求明细（>30s）', unit: '',
+        columns: [
+          { label: '时间', key: 'time' }, { label: '用户', key: 'user' },
+          { label: 'Key', key: 'key' }, { label: '模型', key: 'model' },
+          { label: '耗时', key: 'dur', cls: 'r' }, { label: 'TTFT', key: 'ttft', cls: 'r' },
+          { label: '请求体', key: 'body', cls: 'r' }, { label: '结果', key: 'result' }
+        ],
+        rows: [
+          { time: '13:42:18', user: 'alice', key: 'prod-main', model: 'claude-sonnet-4.5', dur: '58.4s', ttft: '8.1s', body: '128 KB', result: 'success' },
+          { time: '13:38:02', user: 'bob', key: 'ci-runner', model: 'claude-opus-5', dur: '41.2s', ttft: '2.0s', body: '2.4 MB', result: 'success' },
+          { time: '13:35:47', user: 'alice', key: 'prod-main', model: 'gpt-5-codex', dur: '37.6s', ttft: '0.9s', body: '884 KB', result: 'success' },
+          { time: '13:31:09', user: 'carol', key: 'dev-local', model: 'claude-haiku-4.5', dur: '32.0s', ttft: '12.6s', body: '42 KB', result: 'timeout' },
+          { time: '13:28:55', user: 'bob', key: 'ci-runner', model: 'gemini-2.5-pro', dur: '28.7s', ttft: '1.4s', body: '6.1 MB', result: 'client_abort' }
+        ],
+        query: Q.slowUsers, threshold: 'LIMIT 20；不展示 IP',
+        desc: '按 duration_ms 降序的 PG 明细。IP 字段全是 Cloudflare 边缘 IP，按 Q10 决定不展示。',
+        tags: ['PG', 'slow', 'user'] }),
+      P({ id: 'u5', type: 'line', span: 12, height: 'h-md', title: '用户延迟分位', unit: 's',
+        series: [
+          { name: 'P50', color: C.blue, base: .82, amp: .18, noise: .07 },
+          { name: 'P95', color: C.orange, base: 3.4, amp: .7, noise: .25 },
+          { name: 'P99', color: C.magenta, base: 12.6, amp: 2.4, noise: .9 }
+        ],
+        thresholdValue: 30, thresholdLabel: '30s 慢请求',
+        query: 'SELECT percentile_cont(0.5/0.95/0.99) WITHIN GROUP (ORDER BY duration_ms) FROM usage_logs WHERE ...',
+        threshold: 'P95 >30s 关注',
+        desc: 'PG 精确分位，基于 usage_logs 全量样本（不是采样）。与 Prometheus 的 HTTP 延迟口径不同。',
+        tags: ['PG', 'latency'] }),
+      P({ id: 'u6', type: 'bars', span: 12, height: 'h-md', title: '用户错误构成', unit: 'count',
+        items: [
+          { name: 'timeout', value: 42, color: C.yellow },
+          { name: 'upstream_error', value: 31, color: C.orange },
+          { name: 'client_abort', value: 18, color: C.magenta },
+          { name: 'rejected', value: 9, color: C.red },
+          { name: 'gateway_error', value: 3, color: C.violet }
+        ],
+        query: 'SELECT result, count(*) FROM usage_logs WHERE ... GROUP BY result',
+        threshold: '无阈值；用于选择下钻方向',
+        desc: '用户维度只看 PG 的 result，不细分 failure_reason（12 类只在 02 的链路面板展开）。',
+        tags: ['PG', 'errors'] })
+    ]
+  },
+  {
+    id: 'host', num: '05', title: '05 · 宿主与应用', short: '宿主与应用',
+    subtitle: '机器不行还是程序不行。宿主资源 + 应用系统参数同屏。',
+    refresh: '30s', tags: ['node-exporter', 'ops_system_metrics', 'go/process', '30s 刷新'],
+    panels: [
+      P({ id: 'h1', type: 'line', span: 8, height: 'h-md', title: '宿主 CPU 使用率', unit: 'percent',
+        series: [{ name: 'CPU', color: C.blue, base: 42, amp: 8, noise: 3, min: 0, max: 100 }],
+        thresholdValue: 80, thresholdLabel: '80%',
+        query: Q.hostCpu, threshold: '>80% 黄；>95% 红',
+        desc: '2 vCPU 机器的整机 CPU。process_* 是应用进程，不能与整机百分比直接对比。',
+        tags: ['node', 'cpu'] }),
+      P({ id: 'h2', type: 'line', span: 8, height: 'h-md', title: '宿主内存', unit: 'percent',
+        series: [
+          { name: 'used', color: C.orange, base: 71, amp: 5, noise: 2, min: 0, max: 100 },
+          { name: 'available', color: C.aqua, base: 29, amp: 5, noise: 2, min: 0, max: 100 }
+        ],
+        thresholdValue: 92, thresholdLabel: '可用 <8%',
+        query: Q.hostMem, threshold: 'MemAvailable <8% 告警',
+        desc: 'swap 已用 800MB+ 时，内存压力会先体现在 load 与响应抖动，而不是 OOM。',
+        tags: ['node', 'memory'] }),
+      P({ id: 'h3', type: 'gauge', span: 8, height: 'h-md', title: '根分区使用率', unit: 'percent',
+        gauges: [{ label: '/ 使用率', value: 64, color: ST.warning }],
+        query: Q.hostDisk, threshold: '可用 <15% 告警',
+        desc: '只代表根分区；Prometheus TSDB 与备份目录若分开挂载需另看。',
+        tags: ['node', 'disk'] }),
+      P({ id: 'h4', type: 'line', span: 8, height: 'h-md', title: '磁盘 IO', unit: 'Bps',
+        series: [
+          { name: 'read', color: C.blue, base: 2.1e6, amp: .6e6, noise: .3e6 },
+          { name: 'write', color: C.orange, base: 1.2e6, amp: .4e6, noise: .2e6 }
+        ],
+        query: 'rate(node_disk_read_bytes_total[5m]), rate(node_disk_written_bytes_total[5m])',
+        threshold: '无固定阈值；写放大时关注 TSDB/PG',
+        desc: '宿主磁盘吞吐。Prometheus 压缩/快照与 PG WAL 都会造成写峰值。',
+        tags: ['node', 'diskio'] }),
+      P({ id: 'h5', type: 'line', span: 8, height: 'h-md', title: '宿主网卡（排除虚拟设备）', unit: 'Bps',
+        series: [
+          { name: 'receive', color: C.aqua, base: 3.4e6, amp: .8e6, noise: .3e6 },
+          { name: 'transmit', color: C.magenta, base: 4.1e6, amp: 1e6, noise: .35e6 }
+        ],
+        query: Q.hostNet, threshold: '无固定阈值；与网关字节交叉验证',
+        desc: '整机聚合，排除 lo/veth/docker/bridge。与网关自报字节口径不同，不可精确对账。',
+        tags: ['node', 'network'] }),
+      P({ id: 'h6', type: 'line', span: 8, height: 'h-md', title: 'load5 / 核数', unit: 'x',
+        series: [{ name: 'load per core', color: C.yellow, base: 1.4, amp: .4, noise: .15, min: 0 }],
+        thresholdValue: 2, thresholdLabel: '2×vCPU',
+        query: 'node_load5 / count without(cpu)(node_cpu_seconds_total{mode="idle"})',
+        threshold: '>2 持续 15m 告警',
+        desc: '按核数归一化的 load，避免硬编码 2 核。>2 说明有明显排队。',
+        tags: ['node', 'load'] }),
+      P({ id: 'h7', type: 'line', span: 8, height: 'h-md', title: 'goroutines', unit: 'count',
+        series: [{ name: 'goroutines', color: C.blue, base: 620, amp: 80, noise: 30 }],
+        query: Q.goroutines, threshold: '持续上升 → 泄漏；突增 → 阻塞',
+        desc: 'Go 运行时 goroutine 数。与并发队列深度一起看，区分“真并发”与“卡住”。',
+        tags: ['go', 'runtime'] }),
+      P({ id: 'h8', type: 'line', span: 8, height: 'h-md', title: 'Go 堆内存', unit: 'bytes',
+        series: [
+          { name: 'heap inuse', color: C.aqua, base: 1.6e8, amp: .3e8, noise: .1e8 },
+          { name: 'heap sys', color: C.violet, base: 2.4e8, amp: .3e8, noise: .1e8 }
+        ],
+        query: Q.goMem, threshold: '接近容器 limit 时关注 GC',
+        desc: 'Go heap 不等于 RSS；容器内存 limit 是 RSS 口径。',
+        tags: ['go', 'memory'] }),
+      P({ id: 'h9', type: 'stat', span: 8, height: 'h-md', title: '进程 RSS', unit: 'bytes',
+        value: '186 MB', delta: '+4.2 MB', spark: [172, 176, 174, 178, 180, 183, 181, 184, 185, 186], status: 'good',
+        query: Q.rss, threshold: '接近容器 limit 时告警',
+        desc: '应用进程 RSS，含 Go runtime 与未归还内存；与 node 的整机内存不同口径。',
+        tags: ['process', 'rss'] }),
+      P({ id: 'h10', type: 'line', span: 8, height: 'h-md', title: 'DB 连接', unit: 'count',
+        series: [
+          { name: 'active', color: C.blue, base: 6, amp: 2, noise: 1 },
+          { name: 'idle', color: C.aqua, base: 12, amp: 3, noise: 1.5 }
+        ],
+        query: Q.dbConn, threshold: 'active 接近池上限 → 排队',
+        desc: '来自 ops_system_metrics 的应用侧连接数；与 PG 侧 pg_stat_activity 可能有时差。',
+        tags: ['app', 'db'] }),
+      P({ id: 'h11', type: 'stat', span: 4, height: 'h-md', title: 'Redis 状态', unit: '',
+        value: 'OK', delta: 'PING 1.2ms', spark: [1.0, 1.1, 1.2, 1.1, 1.3, 1.2, 1.1, 1.2, 1.3, 1.2], sub: '连接池 8/32', status: 'good',
+        query: 'ops_system_metrics.redis_ok', threshold: '非 1 → 红',
+        desc: '应用探活结果，不代表 Redis 内部指标；连接池接近上限时需看应用队列。',
+        tags: ['app', 'redis'] }),
+      P({ id: 'h12', type: 'line', span: 6, height: 'h-md', title: '并发队列深度', unit: 'count',
+        series: [{ name: 'queue depth', color: C.orange, base: 3, amp: 2, noise: 1.2, min: 0 }],
+        query: Q.queue, threshold: '持续 >10 关注 wait 段',
+        desc: '应用调度队列深度；与 02 的 wait 段、03 的并发利用率互相印证。',
+        tags: ['app', 'queue'] }),
+      P({ id: 'h13', type: 'line', span: 6, height: 'h-md', title: '应用 QPS / TPS', unit: 'reqps',
+        series: [
+          { name: 'QPS', color: C.blue, base: 7.2, amp: 1.2, noise: .4 },
+          { name: 'TPS', color: C.magenta, base: 1.8, amp: .3, noise: .1 }
+        ],
+        query: Q.appQps, threshold: '无固定阈值；对照业务告警',
+        desc: 'ops_system_metrics 的应用口径，与 Prometheus 的 HTTP QPS 不可对账。',
+        tags: ['app', 'qps'] }),
+      P({ id: 'h14', type: 'line', span: 8, height: 'h-table', title: '账号切换计数', unit: 'count',
+        series: [{ name: 'switch/5m', color: C.violet, base: 12, amp: 4, noise: 2, min: 0 }],
+        query: Q.switchCount, threshold: '突增 → 账号故障',
+        desc: '应用侧每分钟聚合的切换次数；与 M-7 的 Prometheus 计数口径不同，不可对账。',
+        tags: ['app', 'switch'] }),
+      P({ id: 'h15', type: 'table', span: 16, height: 'h-table', title: '应用系统参数（窗口聚合）', unit: '',
+        columns: [
+          { label: '时间', key: 'time' }, { label: 'CPU', key: 'cpu', cls: 'r' },
+          { label: '内存', key: 'mem', cls: 'r' }, { label: 'DB', key: 'db' },
+          { label: 'Redis', key: 'redis' }, { label: 'goroutines', key: 'go', cls: 'r' },
+          { label: '队列', key: 'q', cls: 'r' }, { label: '切换', key: 'sw', cls: 'r' }
+        ],
+        rows: [
+          { time: '13:44', cpu: '38%', mem: '72%', db: { v: 'OK', c: 'good' }, redis: { v: 'OK', c: 'good' }, go: '618', q: '3', sw: '12' },
+          { time: '13:43', cpu: '41%', mem: '72%', db: { v: 'OK', c: 'good' }, redis: { v: 'OK', c: 'good' }, go: '624', q: '4', sw: '14' },
+          { time: '13:42', cpu: '46%', mem: '73%', db: { v: 'OK', c: 'good' }, redis: { v: 'OK', c: 'good' }, go: '631', q: '6', sw: '18' },
+          { time: '13:41', cpu: '44%', mem: '72%', db: { v: 'OK', c: 'good' }, redis: { v: 'OK', c: 'good' }, go: '626', q: '5', sw: '15' },
+          { time: '13:40', cpu: '39%', mem: '71%', db: { v: 'OK', c: 'good' }, redis: { v: 'OK', c: 'good' }, go: '620', q: '3', sw: '11' }
+        ],
+        query: 'SELECT observed_at, cpu_usage_percent, memory_usage_percent, db_ok, redis_ok, goroutine_count, concurrency_queue_depth, account_switch_count FROM ops_system_metrics WHERE $__timeFilter(observed_at) ORDER BY observed_at DESC',
+        threshold: 'db/redis 非 OK → 红',
+        desc: '应用侧每分钟聚合值，和宿主/进程指标语义不同；表头注明“窗口聚合值”。',
+        tags: ['app', 'table'] })
+    ]
+  }
+];
+
+/* =========================================================
+   渲染：看板 / 面板
+   ========================================================= */
+const root = $('#dashRoot');
+const tabs = $('#tabs');
+let activeDash = 'overview';
+const built = new Set();
+
+function buildTabs() {
+  tabs.innerHTML = '';
+  DASHBOARDS.forEach((d, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (d.id === activeDash ? ' active' : '');
+    b.dataset.dash = d.id;
+    b.innerHTML = `<span class="num">${d.num}</span>${esc(d.short)}<span class="count">${d.panels.length}</span>`;
+    b.addEventListener('click', () => showDash(d.id));
+    tabs.appendChild(b);
+  });
+  const spacer = document.createElement('div');
+  spacer.className = 'tabs-spacer';
+  tabs.appendChild(spacer);
+  const legend = document.createElement('div');
+  legend.style.cssText = 'display:flex;gap:10px;align-items:center;color:var(--muted);font-size:10.5px;padding-right:4px';
+  legend.innerHTML = `<span><span class="dot good"></span> 正常</span><span><span class="dot warn"></span> 退化</span><span><span class="dot crit"></span> 故障</span>`;
+  tabs.appendChild(legend);
+}
+
+function showDash(id) {
+  if (!DASHBOARDS.some(d => d.id === id)) id = 'overview';
+  activeDash = id;
+  if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
+  $$('.tab', tabs).forEach(t => t.classList.toggle('active', t.dataset.dash === id));
+  const d = DASHBOARDS.find(x => x.id === id);
+  $$('.dash', root).forEach(s => { s.hidden = s.dataset.dash !== id; });
+  if (!built.has(id)) { renderDash(d); built.add(id); }
+  const sec = $(`.dash[data-dash="${id}"]`, root);
+  if (sec) rerenderCharts(sec);
+}
+
+function renderDash(d) {
+  const sec = document.createElement('section');
+  sec.className = 'dash';
+  sec.dataset.dash = d.id;
+  const varHtml = d.id === 'users'
+    ? `<div class="var"><span class="k">用户</span><select><option>全部用户</option><option>alice</option><option>bob</option><option>carol</option></select></div>
+       <div class="var"><span class="k">API Key</span><select><option>全部 Key</option><option>prod-main</option><option>ci-runner</option><option>dev-local</option></select></div>`
+    : `<div class="var"><span class="k">范围</span><select><option>最近 6 小时</option><option>最近 1 小时</option><option>最近 24 小时</option></select></div>`;
+  sec.innerHTML = `
+    <div class="dash-head">
+      <div>
+        <div class="dash-title">${esc(d.title)} ${d.hot ? '<span class="tag hot">头号看板</span>' : ''}</div>
+        <div class="dash-sub">${esc(d.subtitle)}</div>
+        <div class="dash-tags">${d.tags.map(t => `<span class="tag ${t === '头号看板' ? 'hot' : ''}">${esc(t)}</span>`).join('')}</div>
+      </div>
+      <div class="vars">
+        ${varHtml}
+        <div class="var"><span class="k">刷新</span><select><option>${esc(d.refresh)}</option><option>关闭</option></select></div>
+      </div>
+    </div>
+    <div class="grid"></div>`;
+  root.appendChild(sec);
+  const grid = $('.grid', sec);
+  d.panels.forEach(p => {
+    const el = document.createElement('article');
+    el.className = `panel ${p.height} s${p.span}`;
+    el.dataset.panel = p.id;
+    grid.appendChild(el);
+    renderPanel(p, el);
+  });
+}
+
+function renderPanel(p, host) {
+  const canTable = ['line', 'stack', 'donut', 'bars', 'heatmap'].includes(p.type);
+  host.innerHTML = `
+    <div class="panel-head">
+      <div class="panel-title" title="${esc(p.title)}">${esc(p.title)}</div>
+      <div class="panel-actions">
+        ${canTable ? '<button class="mini btn-view" title="切换表格视图">≡</button>' : ''}
+        <button class="mini btn-info" title="查看口径、查询与阈值">ⓘ</button>
+      </div>
+    </div>
+    <div class="panel-desc">${esc(p.desc)}</div>
+    <div class="panel-body"></div>`;
+  const body = $('.panel-body', host);
+  renderBody(p, body);
+  const info = $('.btn-info', host);
+  if (info) info.addEventListener('click', () => openDrawer(p));
+  const view = $('.btn-view', host);
+  if (view) {
+    let table = false;
+    view.addEventListener('click', () => {
+      table = !table;
+      view.textContent = table ? '▤' : '≡';
+      view.title = table ? '切回图表' : '切换表格视图';
+      if (table) renderChartTable(p, body);
+      else { body.innerHTML = ''; renderBody(p, body); }
+    });
+  }
+}
+
+function renderBody(p, body) {
+  switch (p.type) {
+    case 'stat': return renderStat(p, body);
+    case 'statgrid': return renderStatGrid(p, body);
+    case 'line':
+    case 'stack': return renderLine(p, body);
+    case 'bars': return renderBars(p, body);
+    case 'donut': return renderDonut(p, body);
+    case 'table': return renderTable(p, body);
+    case 'heatmap': return renderHeatmap(p, body);
+    case 'gauge': return renderGauge(p, body);
+    case 'text': return renderText(p, body);
+  }
+}
+
+/* ---------- Stat ---------- */
+function renderStat(p, body) {
+  const status = p.status || 'good';
+  const statusText = { good: '正常', warn: '退化', crit: '故障' }[status];
+  const value = p.value || '—';
+  const [num, ...rest] = value.split(' ');
+  const unit = rest.join(' ');
+  const spark = p.spark ? sparkline(p.spark, status) : '';
+  body.innerHTML = `
+    <div class="stat-main">
+      <div>
+        <div class="stat-value">${esc(num)}${unit ? `<span class="u">${esc(unit)}</span>` : ''}</div>
+        <div class="stat-sub">
+          <span class="stat-status ${status}"><span class="dot ${status === 'crit' ? 'crit' : status}"></span>${statusText}</span>
+          ${p.delta ? `<span class="delta ${p.delta.startsWith('+') ? (p.id === 'k4' ? 'up' : 'up') : 'down'}">${esc(p.delta)}</span>` : ''}
+        </div>
+      </div>
+      ${spark}
+    </div>
+    <div class="stat-sub">${esc(p.sub || '')}</div>`;
+}
+
+function renderStatGrid(p, body) {
+  body.innerHTML = `<div class="statgrid">${(p.items || []).map(it => `
+    <div class="cell">
+      <div class="k">${esc(it.label)}</div>
+      <div class="v">${esc(it.value)}</div>
+      <div class="s">${esc(it.sub || '')}</div>
+    </div>`).join('')}</div>`;
+}
+
+function sparkline(data, status) {  const w = 96, h = 38, pad = 3;
+  const min = Math.min(...data), max = Math.max(...data), span = Math.max(1e-9, max - min);
+  const pts = data.map((v, i) => {
+    const x = pad + i * (w - pad * 2) / (data.length - 1);
+    const y = h - pad - (v - min) / span * (h - pad * 2);
+    return [x, y];
+  });
+  const d = pts.map((pt, i) => `${i ? 'L' : 'M'}${pt[0].toFixed(1)},${pt[1].toFixed(1)}`).join(' ');
+  const color = status === 'crit' ? ST.critical : status === 'warn' ? ST.warning : C.blue;
+  const area = `${d} L${pts[pts.length - 1][0].toFixed(1)},${h - pad} L${pts[0][0].toFixed(1)},${h - pad} Z`;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <path d="${area}" fill="${color}" opacity=".10"></path>
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
+  </svg>`;
+}
+
+/* ---------- Line / Stack ---------- */
+function prepareSeries(p) {
+  return p.series.map((s, i) => {
+    const data = s.data || genData(hash(p.id + s.name + i), s.base, s.amp, s.noise, s.spikes || [], s.min ?? 0, s.max ?? Infinity);
+    return { ...s, data };
+  });
+}
+
+function renderLine(p, body) {
+  body.innerHTML = `
+    <div class="chart-wrap">
+      <div class="legend">${p.series.map(s => `<span class="item"><span class="sw" style="background:${s.color}"></span>${esc(s.name)}</span>`).join('')}</div>
+      <div class="chart"><div class="chart-tip"></div></div>
+    </div>`;
+  const chart = $('.chart', body);
+  drawLineChart(p, chart);
+  if (chart._ro) chart._ro.disconnect();
+  const ro = new ResizeObserver(() => drawLineChart(p, chart));
+  ro.observe(chart);
+  chart._ro = ro;
+}
+
+function drawLineChart(p, chart) {
+  const series = prepareSeries(p);
+  const n = series[0].data.length;
+  const w = Math.max(120, chart.clientWidth);
+  const h = Math.max(80, chart.clientHeight);
+  const m = { l: 42, r: 12, t: 8, b: 22 };
+  const iw = w - m.l - m.r, ih = h - m.t - m.b;
+  let maxV, minV = 0;
+  if (p.percent) { minV = 0; maxV = 100; }
+  if (p.stacked) {
+    const sums = Array.from({ length: n }, (_, i) => series.reduce((a, s) => a + s.data[i], 0));
+    maxV = Math.max(...sums);
+  } else {
+    maxV = Math.max(...series.flatMap(s => s.data));
+  }
+  maxV = maxV <= 0 ? 1 : maxV * 1.08;
+  if (p.percent) maxV = 100;
+  const x = i => m.l + (n <= 1 ? 0 : i * iw / (n - 1));
+  const y = v => m.t + ih - (v - minV) / (maxV - minV) * ih;
+  const ticks = 4;
+  let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(p.title)}">`;
+  for (let i = 0; i <= ticks; i++) {
+    const v = minV + (maxV - minV) * i / ticks;
+    const yy = y(v);
+    svg += `<line class="gridline" x1="${m.l}" y1="${yy.toFixed(1)}" x2="${w - m.r}" y2="${yy.toFixed(1)}"></line>`;
+    svg += `<text class="axis" x="${m.l - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${esc(compact(v, p.unit))}</text>`;
+  }
+  for (let i = 0; i <= 4; i++) {
+    const idx = Math.round((n - 1) * i / 4);
+    svg += `<text class="axis" x="${x(idx).toFixed(1)}" y="${h - 6}" text-anchor="${i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}">${TL[idx]}</text>`;
+  }
+  if (p.thresholdValue !== undefined) {
+    const yy = y(p.thresholdValue);
+    if (yy >= m.t && yy <= m.t + ih) {
+      svg += `<line class="threshold-line" x1="${m.l}" y1="${yy.toFixed(1)}" x2="${w - m.r}" y2="${yy.toFixed(1)}"></line>`;
+      svg += `<text class="threshold-label" x="${w - m.r - 2}" y="${(yy - 3).toFixed(1)}" text-anchor="end">${esc(p.thresholdLabel || '')}</text>`;
+    }
+  }
+  if (p.stacked) {
+    let cum = new Array(n).fill(0);
+    series.forEach((s, si) => {
+      const top = s.data.map((v, i) => cum[i] + v);
+      let d = `M${x(0).toFixed(1)},${y(cum[0]).toFixed(1)}`;
+      for (let i = 1; i < n; i++) d += ` L${x(i).toFixed(1)},${y(cum[i]).toFixed(1)}`;
+      for (let i = n - 1; i >= 0; i--) d += ` L${x(i).toFixed(1)},${y(top[i]).toFixed(1)}`;
+      d += ' Z';
+      svg += `<path d="${d}" fill="${s.color}" opacity=".82" stroke="${s.color}" stroke-width=".7"></path>`;
+      cum = top;
+    });
+  } else {
+    series.forEach(s => {
+      let d = '';
+      s.data.forEach((v, i) => { d += `${i ? ' L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`; });
+      if (series.length === 1) {
+        const area = `${d} L${x(n - 1).toFixed(1)},${(m.t + ih).toFixed(1)} L${x(0).toFixed(1)},${(m.t + ih).toFixed(1)} Z`;
+        svg += `<path d="${area}" fill="${s.color}" opacity=".08"></path>`;
+      }
+      svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>`;
+    });
+  }
+  // hover layers
+  svg += `<line class="hover-line" x1="0" y1="${m.t}" x2="0" y2="${m.t + ih}" stroke="rgba(255,255,255,.28)" stroke-width="1" style="display:none"></line>`;
+  series.forEach(s => { svg += `<circle class="hv-dot" r="3.2" fill="${s.color}" stroke="#181b1f" stroke-width="2" style="display:none"></circle>`; });
+  svg += `<rect class="hover-zone" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent"></rect>`;
+  svg += '</svg>';
+  chart.innerHTML = svg + '<div class="chart-tip"></div>';
+  const tip = $('.chart-tip', chart);
+  const zone = $('.hover-zone', chart);
+  const line = $('.hover-line', chart);
+  const dots = $$('.hv-dot', chart);
+  zone.addEventListener('mousemove', ev => {
+    const rect = chart.getBoundingClientRect();
+    const px = ev.clientX - rect.left;
+    let idx = Math.round((px - m.l) / iw * (n - 1));
+    idx = Math.max(0, Math.min(n - 1, idx));
+    const xx = x(idx);
+    line.style.display = '';
+    line.setAttribute('x1', xx); line.setAttribute('x2', xx);
+    let rows = '';
+    let cum = 0;
+    series.forEach((s, si) => {
+      let v = s.data[idx];
+      if (p.stacked) { cum += v; v = cum; }
+      const yy = y(v);
+      dots[si].style.display = '';
+      dots[si].setAttribute('cx', xx); dots[si].setAttribute('cy', yy);
+      rows += `<div class="r"><span class="n"><span class="sw" style="background:${s.color}"></span>${esc(s.name)}</span><b>${esc(fmt(s.data[idx], p.unit))}</b></div>`;
+    });
+    tip.innerHTML = `<div class="t">${TL[idx]}</div>${rows}`;
+    tip.style.display = 'block';
+    const tw = 170;
+    tip.style.left = Math.min(Math.max(4, px + 12), w - tw - 4) + 'px';
+    tip.style.top = '8px';
+  });
+  zone.addEventListener('mouseleave', () => {
+    tip.style.display = 'none';
+    line.style.display = 'none';
+    dots.forEach(d => d.style.display = 'none');
+  });
+}
+
+function rerenderCharts(sec) {
+  $$('.panel', sec).forEach(host => {
+    const p = findPanel(host.dataset.panel);
+    if (!p) return;
+    if (p.type === 'line' || p.type === 'stack') {
+      const chart = $('.chart', host);
+      if (chart && chart.clientWidth) drawLineChart(p, chart);
+    }
+  });
+}
+
+function findPanel(id) {
+  for (const d of DASHBOARDS) { const p = d.panels.find(x => x.id === id); if (p) return p; }
+  return null;
+}
+
+/* ---------- Bars ---------- */
+function renderBars(p, body) {
+  const items = p.items || [];
+  const max = p.max || Math.max(...items.map(i => i.value), 1);
+  body.innerHTML = `<div class="bars">${items.map(it => {
+    const pct = Math.max(1, Math.min(100, it.value / max * 100));
+    return `<div class="bar-row">
+      <div class="bar-label" title="${esc(it.name)}">${esc(it.name)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${it.color}"></div></div>
+      <div class="bar-val">${esc(fmt(it.value, p.unit === 'ms' ? 'ms' : p.unit))}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+/* ---------- Donut ---------- */
+function renderDonut(p, body) {
+  const items = p.items || [];
+  const total = items.reduce((a, b) => a + b.value, 0);
+  const size = 132, r = 50, cx = size / 2, cy = size / 2, circ = 2 * Math.PI * r;
+  let off = 0;
+  let segs = '';
+  items.forEach(it => {
+    const len = it.value / total * circ;
+    segs += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${it.color}" stroke-width="14"
+      stroke-dasharray="${Math.max(1, len - 2).toFixed(2)} ${(circ - len + 2).toFixed(2)}"
+      stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"></circle>`;
+    off += len;
+  });
+  body.innerHTML = `<div class="donut-wrap">
+    <div class="donut" style="width:${size}px;height:${size}px">
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(p.title)}">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#22262b" stroke-width="14"></circle>${segs}
+      </svg>
+      <div class="donut-center"><div class="v">100%</div><div class="l">6 段</div></div>
+    </div>
+    <div class="legend vertical">${items.map(it => `<span class="item"><span><span class="sw" style="background:${it.color}"></span> ${esc(it.name)}</span><span class="val">${it.value}%</span></span>`).join('')}</div>
+  </div>`;
+}
+
+/* ---------- Table ---------- */
+function renderTable(p, body) {
+  const cols = p.columns || [];
+  const rows = p.rows || [];
+  const head = cols.map(c => `<th class="${c.cls || ''}">${esc(c.label)}</th>`).join('');
+  const bodyRows = rows.map(r => `<tr>${cols.map(c => {
+    const v = r[c.key];
+    if (v && typeof v === 'object' && v.v !== undefined) {
+      return `<td class="${c.cls || ''}"><span class="pill-s ${v.c || 'muted'}">${esc(v.v)}</span></td>`;
+    }
+    return `<td class="${c.cls || ''}">${esc(v ?? '—')}</td>`;
+  }).join('')}</tr>`).join('');
+  body.innerHTML = `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${bodyRows}</tbody></table></div>
+    <div class="table-foot"><span>显示 ${rows.length}${p.id === 'c16' ? ' / 40' : ''} 行</span><span>${p.source}</span></div>`;
+}
+
+/* ---------- Table view for charts ---------- */
+function renderChartTable(p, body) {
+  let head = '', rows = '';
+  if (p.type === 'donut' || p.type === 'bars') {
+    const items = p.items || [];
+    head = '<th>名称</th><th class="r">值</th>';
+    rows = items.map(it => `<tr><td>${esc(it.name)}</td><td class="r">${esc(it.value)}${p.unit === 'percent' ? '%' : ''}</td></tr>`).join('');
+  } else if (p.type === 'heatmap') {
+    head = '<th>分桶</th><th class="r">最近窗口样本</th>';
+    rows = (p.rows || []).map((r, i) => `<tr><td>${esc(r)}</td><td class="r">${(i + 2) * 17}</td></tr>`).join('');
+  } else {
+    const series = prepareSeries(p);
+    const idx = [0, 12, 24, 36, 48, 60];
+    head = '<th>时间</th>' + series.map(s => `<th class="r">${esc(s.name)}</th>`).join('');
+    rows = idx.map(i => `<tr><td>${TL[i]}</td>${series.map(s => `<td class="r">${esc(fmt(s.data[i], p.unit))}</td>`).join('')}</tr>`).join('');
+  }
+  body.innerHTML = `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="table-foot"><span>表格视图 · 最近 6 个采样点</span><span>${p.source}</span></div>`;
+}
+
+/* ---------- Heatmap ---------- */
+function renderHeatmap(p, body) {
+  const cols = 24, rows = p.rows || [];
+  const vals = rows.map((_, ri) => Array.from({ length: cols }, (_, ci) => {
+    const base = (rows.length - ri) * 6;
+    return Math.max(0, Math.round(base + Math.sin(ci / 3 + ri) * 12 + (ci === 14 ? 38 : 0)));
+  }));
+  const max = Math.max(...vals.flat(), 1);
+  let cells = '';
+  rows.forEach((r, ri) => {
+    cells += `<div class="hm-label">${esc(r)}</div>`;
+    vals[ri].forEach((v, ci) => { cells += `<div class="hm-cell" style="background:${heat(v / max)}" title="${esc(r)} · ${TL[Math.round(ci * 60 / (cols - 1))]} · ${v}"></div>`; });
+  });
+  const xLabels = Array.from({ length: 6 }, (_, i) => TL[Math.round(i * 60 / 5)]);
+  body.innerHTML = `<div class="heatmap">
+    <div class="hm-grid" style="grid-template-columns:58px repeat(${cols}, 1fr)">${cells}</div>
+    <div class="hm-x" style="grid-template-columns:repeat(${cols},1fr)">${xLabels.map(l => `<span>${l}</span>`).join('')}</div>
+    <div class="hm-legend"><span>低</span><span class="hm-scale"></span><span>高</span><span style="margin-left:auto">窗口样本数</span></div>
+  </div>`;
+}
+
+/* ---------- Gauge ---------- */
+function renderGauge(p, body) {
+  const gauges = p.gauges || [{ label: p.title, value: 64, color: ST.warning }];
+  body.innerHTML = `<div class="gauge-wrap">${gauges.map(g => {
+    const value = Math.max(0, Math.min(100, g.value));
+    return `<div>
+      <div class="gauge-top"><span class="gauge-label">${esc(g.label)}</span><span class="gauge-value">${value}%</span></div>
+      <div class="gauge-track" style="margin-top:5px">
+        <div class="gauge-zone" style="width:70%;background:${ST.good}"></div>
+        <div class="gauge-zone" style="width:18%;background:${ST.warning}"></div>
+        <div class="gauge-zone" style="width:12%;background:${ST.critical}"></div>
+        <div class="gauge-pointer" style="left:${value}%"></div>
+      </div>
+      <div class="gauge-ticks"><span>0%</span><span>70%</span><span>88%</span><span>100%</span></div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+/* ---------- Text ---------- */
+function renderText(p, body) {
+  body.innerHTML = `<div class="text-panel">${p.html || ''}</div>`;
+}
+
+/* =========================================================
+   Drawer / 交互
+   ========================================================= */
+function openDrawer(p) {
+  $('#drawerTitle').textContent = p.title;
+  $('#drawerMeta').innerHTML = `
+    <div class="row"><span class="k">类型</span><span class="v">${esc(p.type)}${p.stacked ? ' · stack' : ''}</span></div>
+    <div class="row"><span class="k">数据源</span><span class="v">${esc(p.source)}</span></div>
+    <div class="row"><span class="k">单位</span><span class="v">${esc(p.unit || '—')}</span></div>
+    <div class="row"><span class="k">布局</span><span class="v">span ${p.span} / 24 · ${esc(p.height)}</span></div>`;
+  $('#drawerDesc').textContent = p.desc || '—';
+  $('#drawerQuery').textContent = p.query || '—';
+  $('#drawerThreshold').textContent = p.threshold || '—';
+  $('#drawerTags').innerHTML = (p.tags || []).map(t => `<span class="badge ${t === '头号看板' ? 'accent' : ''}">${esc(t)}</span>`).join('') || '<span class="badge">—</span>';
+  document.body.classList.add('drawer-open');
+  $('#drawer').setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  document.body.classList.remove('drawer-open');
+  $('#drawer').setAttribute('aria-hidden', 'true');
+}
+$('#drawerClose').addEventListener('click', closeDrawer);
+$('#drawerOverlay').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+$('#btnDesc').addEventListener('click', () => {
+  document.body.classList.toggle('show-desc');
+  const on = document.body.classList.contains('show-desc');
+  $('#btnDesc').textContent = on ? '隐藏口径' : '显示口径';
+  toast(on ? '已在每个面板内展开口径说明' : '已收起口径说明');
+});
+$('#btnHideReview').addEventListener('click', () => { $('#reviewBanner').style.display = 'none'; });
+$('#btnReview').addEventListener('click', () => {
+  $('#reviewBanner').style.display = 'flex';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+let toastTimer;
+function toast(msg) {
+  $('#toast').textContent = msg;
+  document.body.classList.add('toast-on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => document.body.classList.remove('toast-on'), 1600);
+}
+
+/* =========================================================
+   启动
+   ========================================================= */
+buildTabs();
+showDash((location.hash || '#overview').slice(1));
+window.addEventListener('hashchange', () => showDash((location.hash || '#overview').slice(1)));
+const params = new URLSearchParams(location.search);
+if (params.get('noanim') === '1') document.documentElement.classList.add('no-anim');
+if (params.get('desc') === '1') {
+  document.body.classList.add('show-desc');
+  $('#btnDesc').textContent = '隐藏口径';
+}
+if (params.get('panel')) {
+  const p = findPanel(params.get('panel'));
+  if (p) setTimeout(() => openDrawer(p), 250);
+}
+window.addEventListener('resize', () => {
+  const sec = $(`.dash[data-dash="${activeDash}"]`, root);
+  if (sec) rerenderCharts(sec);
+});
+</script>
+</body>
+</html>

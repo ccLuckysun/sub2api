@@ -1,0 +1,577 @@
+{
+  "uid": "sub2api-v2-nodes",
+  "title": "03 · 上游节点",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "allowUiUpdates": false,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "tags": [
+    "sub2api",
+    "v2"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "账号健康矩阵 · Top 40",
+      "type": "table",
+      "description": "行=账号；摘除/降权前确认样本量与持续时间。低 QPS 账号的百分比噪声大。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 使用 PG 请求样本（非 attempt），受落库覆盖率影响。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT account_id, max(platform) AS platform, count(*) AS requests, count(*) FILTER (WHERE result != 'success')*100.0/count(*) AS failure_percent, percentile_cont(0.95) WITHIN GROUP (ORDER BY headers_end_ms) AS request_ttft_p95_ms FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) GROUP BY account_id ORDER BY requests DESC LIMIT 40",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "账号 QPS",
+      "type": "timeseries",
+      "description": "每账号的上游尝试 QPS（含重试）。与「网关请求 QPS」不同。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 账号启动时快照最多十个；新增/改名重启前为 unknown。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(sum by (account)(rate(sub2api_upstream_requests_total[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (account)(rate(sub2api_upstream_requests_total[$__rate_interval]))))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "账号失败率",
+      "type": "timeseries",
+      "description": "失败率 = 该账号非 success 尝试 / 该账号全部尝试。重试失败会推高该值。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 账号启动时快照最多十个；新增/改名重启前为 unknown。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 10,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(sum by (account)(rate(sub2api_upstream_requests_total{result!=\"success\"}[5m])) / clamp_min(sum by (account)(rate(sub2api_upstream_requests_total[5m])),1e-9)*100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by (account)(rate(sub2api_upstream_requests_total{result!=\"success\"}[5m])) / clamp_min(sum by (account)(rate(sub2api_upstream_requests_total[5m])),1e-9)*100))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "账号 P95 TTFT",
+      "type": "timeseries",
+      "description": "M-11 是每 attempt 的 TTFT 直方图，不是每请求；重试会贡献多个样本。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 账号启动时快照最多十个；新增/改名重启前为 unknown。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(histogram_quantile(0.95, sum by (le,account)(rate(sub2api_upstream_ttft_seconds_bucket[$__rate_interval])))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (histogram_quantile(0.95, sum by (le,account)(rate(sub2api_upstream_ttft_seconds_bucket[$__rate_interval])))))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "账号带宽（Top 5）",
+      "type": "timeseries",
+      "description": "按账号的下发字节速率（M-2 没有 account 标签，需按请求上下文分桶；实现为每账号聚合计数）。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 使用 PG 请求样本（非 attempt），受落库覆盖率影响。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT $__timeGroupAlias(observed_at,'1m'), account_id::text AS metric, sum(bytes_resp_downstream)/60.0 AS bytes_per_second FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) GROUP BY 1,2 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "在途与并发利用率",
+      "type": "text",
+      "description": "在途 = 正在该账号上执行的 attempt；利用率接近 100% 时新增请求会进入 wait。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "未采集：当前契约没有账号在途/并发利用率指标，不能从请求完成样本推算实时在途。"
+      }
+    },
+    {
+      "id": 7,
+      "title": "重试与降权信号",
+      "type": "timeseries",
+      "description": "辅助判断“该不该摘”：重试后成功比例高说明账号仍可用但慢；全失败比例高且集中在单账号才考虑降权。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(sum by(outcome)(rate(sub2api_attempts_total[$__rate_interval])) / clamp_min(sum(rate(sub2api_attempts_total[$__rate_interval])),1e-9)*100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by(outcome)(rate(sub2api_attempts_total[$__rate_interval])) / clamp_min(sum(rate(sub2api_attempts_total[$__rate_interval])),1e-9)*100))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(sum(rate(sub2api_account_switches_total[$__rate_interval])) / clamp_min(sum(rate(sub2api_gateway_requests_total[$__rate_interval])),1e-9)*100) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum(rate(sub2api_account_switches_total[$__rate_interval])) / clamp_min(sum(rate(sub2api_gateway_requests_total[$__rate_interval])),1e-9)*100))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "title": "今日请求 / Token / 成本 · Top 40",
+      "type": "table",
+      "description": "PG 口径是 usage_logs 落库样本，与 Prometheus 的请求数不可直接对账。 口径按 V2 契约；缺序列显示未采集，0 不代表请求成功。 PG 最小查询间隔 1m；混合看板刷新限制见本地验收文档。",
+      "datasource": {
+        "type": "postgres",
+        "uid": "sub2api-pg"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 26,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sub2api-pg"
+          },
+          "rawSql": "SELECT account_id,count(*) AS requests,sum(input_tokens+output_tokens) AS tokens,sum(total_cost) AS cost FROM usage_logs WHERE created_at >= date_trunc('day',now()) GROUP BY account_id ORDER BY requests DESC LIMIT 40",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 9,
+      "title": "模型档位对比",
+      "type": "table",
+      "description": "按 model_class/result 的上游 attempt 速率；M-11 无 model_class 标签，因此不展示模型 TTFT，重试会重复计数。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "(sum by(model_class,result)(rate(sub2api_model_requests_total[$__rate_interval]))) or (label_replace(vector(0), \"collection\", \"未采集\", \"\", \"\") unless on() (sum by(model_class,result)(rate(sub2api_model_requests_total[$__rate_interval]))))",
+          "legendFormat": "{{collection}} {{account}} {{phase}} {{result}} {{direction}} {{stage}} {{kind}} {{model_class}}",
+          "range": true,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {},
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "account",
+            "mode": "outer"
+          }
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "links": []
+}

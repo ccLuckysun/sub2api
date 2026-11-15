@@ -68,10 +68,20 @@ prepare_compose_helper() {
     local asset
     for asset in compose-deploy.sh docker-compose.monitoring.yml monitoring.env.example \
         monitoring/render-prometheus-config.sh monitoring/prometheus.yml.tmpl \
+        monitoring/prometheus/rules/slo.yml monitoring/prometheus/rules/chain.yml \
+        monitoring/prometheus/rules/infra.yml \
+        monitoring/alertmanager/alertmanager.yml.tmpl \
+        monitoring/alertmanager/templates/email.tmpl \
+        monitoring/sql/grafana-ro.sql \
         monitoring/backup/snapshot.sh monitoring/backup/crontab.example \
         monitoring/grafana/provisioning/datasources/prometheus.yml \
+        monitoring/grafana/provisioning/datasources/postgres.yml \
         monitoring/grafana/provisioning/dashboards/dashboards.yml \
-        monitoring/grafana/dashboards/sub2api-overview.json; do
+        monitoring/grafana/dashboards/01-overview.json \
+        monitoring/grafana/dashboards/02-chain.json \
+        monitoring/grafana/dashboards/03-nodes.json \
+        monitoring/grafana/dashboards/04-users.json \
+        monitoring/grafana/dashboards/05-host.json; do
         fetch_asset "$asset" "$asset"
     done
     chmod +x compose-deploy.sh monitoring/render-prometheus-config.sh monitoring/backup/snapshot.sh

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -44,17 +45,14 @@ func ProvideRouter(
 	compositeResolver *service.CompositeRouteResolver,
 	redisClient *redis.Client,
 	metricsMiddleware middleware2.MetricsMiddleware,
+	opsRuntime *monitoring.OpsRuntime,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	r := gin.New()
-	// Prometheus 指标中间件注册在 Recovery 之前（外层）：panic 场景下内层
-	// Recovery 先写出最终状态码，本中间件的 defer 随后记录正确状态。
-	// metrics_enabled=false 时传入 NoopMetricsMiddleware，行为与现状完全一致。
-	r.Use(gin.HandlerFunc(metricsMiddleware))
-	r.Use(middleware2.Recovery())
+	installObservability(r, cfg, metricsMiddleware, opsRuntime)
 	configureTrustedProxies(r, cfg.Server)
 
 	// Wire up websearch Manager builder so it initializes on startup and rebuilds on config save.
@@ -94,6 +92,14 @@ func ProvideRouter(
 	})
 
 	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
+}
+
+// installObservability establishes the unwind order: Recovery finishes first,
+// Ops finalizes with the panic marker/status, then baseline Metrics records it.
+func installObservability(r *gin.Engine, cfg *config.Config, metrics middleware2.MetricsMiddleware, ops *monitoring.OpsRuntime) {
+	r.Use(gin.HandlerFunc(metrics))
+	r.Use(middleware2.OpsMiddleware(cfg, ops))
+	r.Use(middleware2.Recovery())
 }
 
 func configureTrustedProxies(r *gin.Engine, cfg config.ServerConfig) {

@@ -12,11 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/tidwall/gjson"
@@ -59,8 +62,13 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	account *Account,
 	input anthropicPassthroughForwardInput,
 ) (*ForwardResult, error) {
+	ops := newCompatForwardOps(ctx, c, account)
+	if ops.rec != nil {
+		ctx = context.WithValue(ctx, compatForwardOpsContextKey{}, ops)
+	}
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
+		ops.fail(err, "", 0, "", false)
 		return nil, err
 	}
 	if tokenType != "apikey" {
@@ -88,6 +96,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	if input.Parsed != nil {
 		// 透传分支也会改写实际 wire body，成功 usage hash 依赖这里同步当前 body。
 		if err := input.Parsed.ReplaceBody(input.Body); err != nil {
+			ops.fail(err, "", 0, "", false)
 			return nil, err
 		}
 	}
@@ -99,21 +108,28 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		upstreamReq, wireBody, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
 		releaseUpstreamCtx()
 		if err != nil {
+			ops.fail(err, "", 0, "", false)
 			return nil, err
 		}
 		if input.Parsed != nil && !bytes.Equal(wireBody, input.Body) {
 			// build 阶段会按 beta 能力清理 body，发送前同步到 ParsedRequest 当前视图。
 			if err := input.Parsed.ReplaceBody(wireBody); err != nil {
+				ops.fail(err, "", 0, "", false)
 				return nil, err
 			}
 			input.Body = input.Parsed.Body.Bytes()
 		}
 
+		upstreamReq = ops.prepare(upstreamReq)
+		if ops.attempt != nil {
+			ctx = monitoring.WithAttempt(ctx, ops.attempt)
+		}
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}
+			ops.fail(err, "transport", 0, "", false)
 			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
 				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
 				Passthrough: true,
@@ -161,6 +177,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				logger.LegacyPrintf("service.gateway", "Anthropic passthrough account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
 				if err := sleepWithContext(ctx, delay); err != nil {
+					ops.fail(err, "", 0, "", false)
 					return nil, err
 				}
 				continue
@@ -171,7 +188,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		break
 	}
 	if resp == nil || resp.Body == nil {
-		return nil, errors.New("upstream request failed: empty response")
+		failure := errors.New("upstream request failed: empty response")
+		ops.fail(failure, "unknown", 0, "", false)
+		return nil, failure
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -203,13 +222,16 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 					return ""
 				}(),
 			})
+			ops.fail(nil, "headers", resp.StatusCode, compatOpsUpstreamCode(respBody), false)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
-		return s.handleRetryExhaustedError(ctx, resp, c, account, input.RequestModel)
+		return ops.consumeHTTPError(resp, func() (*ForwardResult, error) {
+			return s.handleRetryExhaustedError(ctx, resp, c, account, input.RequestModel)
+		})
 	}
 
 	if resp.StatusCode >= 400 && s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -239,6 +261,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				return ""
 			}(),
 		})
+		ops.fail(nil, "headers", resp.StatusCode, compatOpsUpstreamCode(respBody), false)
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           respBody,
@@ -247,15 +270,19 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}
 
 	if resp.StatusCode >= 400 {
-		return s.handleErrorResponse(ctx, resp, c, account, input.RequestModel)
+		return ops.consumeHTTPError(resp, func() (*ForwardResult, error) {
+			return s.handleErrorResponse(ctx, resp, c, account, input.RequestModel)
+		})
 	}
 
+	ops.use(resp)
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if input.RequestStream {
 		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
 		if err != nil {
+			ops.fail(err, "body", resp.StatusCode, ops.responseCode, streamResult != nil && streamResult.clientDisconnect)
 			// 流中断时保留已观测到的 usage 与错误一起返回，避免上游已计量的请求
 			// 完全漏记漏计费（issue #5148）。
 			if partial := partialStreamUsageResult(c, resp, streamResult, input.OriginalModel, input.RequestModel, input.StartTime, err); partial != nil {
@@ -269,6 +296,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	} else {
 		usage, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account)
 		if err != nil {
+			ops.fail(err, "body", 0, "", false)
 			return nil, err
 		}
 	}
@@ -276,6 +304,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		usage = &ClaudeUsage{}
 	}
 
+	ops.finish(&ForwardResult{ClientDisconnect: clientDisconnect}, nil)
 	return &ForwardResult{
 		RequestID:                     resp.Header.Get("x-request-id"),
 		UpstreamHeaders:               resp.Header,
@@ -544,6 +573,14 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				trimmed := strings.TrimSpace(data)
+				// Reuse the frame already read by the business loop. A structured
+				// error is evidence even though passthrough keeps its original bytes.
+				if ops, _ := ctx.Value(compatForwardOpsContextKey{}).(*compatForwardOps); ops != nil {
+					if gjson.Get(trimmed, "type").String() == "error" {
+						ops.responseCode = compatOpsUpstreamCode([]byte(trimmed))
+						ops.responseError = true
+					}
+				}
 				observer.ObserveAnthropic([]byte(trimmed))
 				if anthropicStreamEventIsTerminal("", trimmed) {
 					sawTerminalEvent = true
@@ -925,4 +962,164 @@ func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, 
 	if v := strings.TrimSpace(src.Get("x-request-id")); v != "" {
 		dst.Set("x-request-id", v)
 	}
+}
+
+// compatForwardOps is shared only by the three compatibility forwarding paths.
+// It observes the existing I/O and never reads bodies or chooses retry policy.
+type compatForwardOps struct {
+	rec            *monitoring.OpsRecorder
+	attempt        *monitoring.OpsAttempt
+	client         *gin.Context
+	account        *Account
+	proxyConnect   *HTTPUpstreamProxyConnectObservation
+	responseStatus int
+	responseCode   string
+	responseError  bool
+}
+
+type compatForwardOpsContextKey struct{}
+
+func newCompatForwardOps(ctx context.Context, c *gin.Context, account *Account) *compatForwardOps {
+	return &compatForwardOps{rec: monitoring.RecorderFromContext(ctx), client: c, account: account}
+}
+func (o *compatForwardOps) prepare(req *http.Request) *http.Request {
+	observeForwardOps(func() {
+		if o.rec == nil {
+			return
+		}
+		if o.attempt == nil {
+			o.attempt = o.rec.StartAttempt(o.account.Name)
+		}
+		if o.attempt != nil {
+			req = req.WithContext(monitoring.WithAttempt(req.Context(), o.attempt))
+			var ctx context.Context
+			ctx, o.proxyConnect = withHTTPUpstreamProxyConnectObservation(req.Context())
+			req = req.WithContext(ctx)
+		}
+	})
+	return req
+}
+func (o *compatForwardOps) use(resp *http.Response) {
+	o.responseStatus = resp.StatusCode
+	observeForwardOps(func() { o.attempt.UseResponseFor(monitoring.ResponseHandle(resp)) })
+}
+func (o *compatForwardOps) fail(err error, stage string, status int, code string, disconnected bool) {
+	observeForwardOps(func() {
+		if o.rec == nil {
+			return
+		}
+		if stage == "transport" {
+			stage = opsUpstreamTransportStage(err)
+			if proxyStatus := o.proxyConnect.failedStatus(); proxyStatus != 0 {
+				stage, status = "connect", proxyStatus
+			}
+		}
+		ev := monitoring.FailureEvidence{Stage: stage, StatusCode: status, UpstreamCode: code, ProxyUsed: o.account.ProxyID != nil && o.account.Proxy != nil}
+		var networkError net.Error
+		var dnsError *net.DNSError
+		switch {
+		case errors.As(err, &networkError) && networkError.Timeout():
+			ev.TransportKind = "timeout"
+		case errors.As(err, &dnsError):
+			ev.TransportKind = "dns"
+		case errors.Is(err, syscall.ECONNREFUSED):
+			ev.TransportKind = "refused"
+		case errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE):
+			ev.TransportKind = "reset"
+		case errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF):
+			ev.TransportKind = "eof"
+		case err != nil && strings.Contains(strings.ToLower(err.Error()), "tls"):
+			ev.TransportKind = "tls"
+		case errors.Is(err, errAnthropicNativeStreamIdle) || (err != nil && strings.Contains(strings.ToLower(err.Error()), "timeout")):
+			ev.TransportKind = "timeout"
+		default:
+			ev.TransportKind = "other"
+		}
+		result := "upstream_error"
+		if stage == "" {
+			result = "gateway_error"
+		}
+		if stage == "unknown" {
+			ev.Stage = ""
+		}
+		canceled := o.rec.ClientAborted() || disconnected || errors.Is(err, context.Canceled)
+		if o.client != nil && o.client.Request != nil {
+			canceled = canceled || errors.Is(o.client.Request.Context().Err(), context.Canceled)
+		}
+		if status < 400 && ev.TransportKind == "timeout" {
+			result = "timeout"
+		} else if status < 400 && canceled {
+			result = "client_abort"
+			ev.Stage = "response"
+			ev.ClientCanceled = true
+			o.rec.MarkClientAbort("response")
+		}
+		reason := monitoring.ClassifyFailure(result, ev)
+		if o.attempt == nil {
+			o.rec.MarkFailure(result, reason, ev)
+		} else {
+			o.attempt.Done(result, reason, ev)
+		}
+	})
+}
+func (o *compatForwardOps) finish(result *ForwardResult, err error) {
+	if err != nil {
+		var sseErr *sseStreamErrorEventError
+		if errors.As(err, &sseErr) {
+			o.fail(nil, "body", o.responseStatus, compatOpsUpstreamCode([]byte(sseErr.RawData)), false)
+			return
+		}
+		o.fail(err, "body", 0, "", result != nil && result.ClientDisconnect)
+		return
+	}
+	disconnected := o.rec.ClientAborted() || (result != nil && result.ClientDisconnect)
+	if o.client != nil && o.client.Request != nil {
+		disconnected = disconnected || errors.Is(o.client.Request.Context().Err(), context.Canceled)
+	}
+	if disconnected {
+		o.fail(nil, "response", 0, "", true)
+		return
+	}
+	if o.responseError {
+		o.fail(nil, "body", o.responseStatus, o.responseCode, false)
+		return
+	}
+	observeForwardOps(func() { o.attempt.Done("success", "", monitoring.FailureEvidence{}) })
+}
+
+// compatOpsUpstreamCode reuses evidence already read by the business consumer.
+func compatOpsUpstreamCode(body []byte) string {
+	if code := extractUpstreamErrorCode(body); code != "" {
+		return code
+	}
+	return strings.TrimSpace(gjson.GetBytes(body, "error.type").String())
+}
+
+// Capture only reads made by the existing error handler. This decorator neither
+// reads ahead nor changes the underlying Read/Close results.
+type compatOpsErrorBody struct {
+	io.ReadCloser
+	captured bytes.Buffer
+}
+
+func (b *compatOpsErrorBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if n > 0 {
+		_, _ = b.captured.Write(p[:n])
+	}
+	return n, err
+}
+func (o *compatForwardOps) consumeHTTPError(resp *http.Response, consume func() (*ForwardResult, error)) (*ForwardResult, error) {
+	var capture *compatOpsErrorBody
+	if o.rec != nil && resp.Body != nil {
+		capture = &compatOpsErrorBody{ReadCloser: resp.Body}
+		resp.Body = capture
+	}
+	result, err := consume()
+	code := ""
+	if capture != nil {
+		code = compatOpsUpstreamCode(capture.captured.Bytes())
+	}
+	o.fail(nil, "headers", resp.StatusCode, code, false)
+	return result, err
 }

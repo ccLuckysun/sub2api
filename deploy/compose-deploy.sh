@@ -95,13 +95,20 @@ if $MONITORING; then
   # still be able to read the explicitly managed public configuration assets.
   for dir in monitoring monitoring/grafana monitoring/grafana/provisioning \
       monitoring/grafana/provisioning/datasources monitoring/grafana/provisioning/dashboards \
-      monitoring/grafana/dashboards monitoring/backup; do
+      monitoring/grafana/dashboards monitoring/backup monitoring/prometheus \
+      monitoring/prometheus/rules monitoring/alertmanager monitoring/alertmanager/templates \
+      monitoring/sql; do
     [ ! -d "$dir" ] || chmod 755 "$dir"
   done
   for file in monitoring/prometheus.yml.tmpl \
+      monitoring/prometheus/rules/*.yml \
+      monitoring/alertmanager/alertmanager.yml.tmpl \
+      monitoring/alertmanager/templates/*.tmpl \
+      monitoring/sql/*.sql \
       monitoring/grafana/provisioning/datasources/prometheus.yml \
+      monitoring/grafana/provisioning/datasources/postgres.yml \
       monitoring/grafana/provisioning/dashboards/dashboards.yml \
-      monitoring/grafana/dashboards/sub2api-overview.json; do
+      monitoring/grafana/dashboards/*.json; do
     [ ! -f "$file" ] || chmod 644 "$file"
   done
   [ -f monitoring.env ] || : > monitoring.env
@@ -109,6 +116,10 @@ if $MONITORING; then
   if [ -z "$(setting GRAFANA_ADMIN_PASSWORD)" ]; then
     command -v openssl >/dev/null || fail 'openssl is required to generate the Grafana password'
     set_setting GRAFANA_ADMIN_PASSWORD "$(openssl rand -hex 24)"
+  fi
+  if [ -z "$(setting GRAFANA_PG_PASSWORD)" ]; then
+    command -v openssl >/dev/null || fail 'openssl is required to generate the Grafana PG password'
+    set_setting GRAFANA_PG_PASSWORD "$(openssl rand -hex 24)"
   fi
   # Keep previously enabled extensions on subsequent upgrades.
   [ "$(setting MONITORING_HOST_METRICS_ENABLED)" != true ] || HOST_METRICS=true
@@ -172,6 +183,19 @@ if $START; then
     ./sub2api-compose up -d --wait --wait-timeout 180 --force-recreate prometheus
   fi
   ./sub2api-compose up -d --wait --wait-timeout 180
+  if $MONITORING; then
+    # Provision/refresh the read-only Grafana role. psql runs as the application
+    # superuser inside the postgres container; password never appears in argv.
+    pg_user="$(./sub2api-compose exec -T postgres printenv POSTGRES_USER 2>/dev/null | tr -d '\r')"
+    pg_db="$(./sub2api-compose exec -T postgres printenv POSTGRES_DB 2>/dev/null | tr -d '\r')"
+    pg_user="${pg_user:-sub2api}"
+    pg_db="${pg_db:-sub2api}"
+    ./sub2api-compose exec -T postgres \
+      psql -X -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" \
+      -v password="$(setting GRAFANA_PG_PASSWORD)" \
+      < monitoring/sql/grafana-ro.sql
+    echo '[deploy] Grafana read-only role provisioned (grafana_ro).'
+  fi
   echo '[deploy] Services are ready. Use ./sub2api-compose for subsequent commands.'
 else
   echo '[deploy] Configuration validated; services were not started.'

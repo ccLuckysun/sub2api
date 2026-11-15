@@ -38,7 +38,12 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	account *Account,
 	body []byte,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (opsResult *OpenAIForwardResult, opsErr error) {
+	ctx, ops, opsOwner := beginOpenAIBridgeOps(ctx, c, account)
+	if opsOwner {
+		defer func() { finishOpenAIBridgeOps(ops, opsResult, opsErr) }()
+	}
+
 	startTime := time.Now()
 
 	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
@@ -100,14 +105,19 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return nil, err
 	}
 
+	upstreamReq = ops.prepare(upstreamReq)
+	ctx = ops.context(ctx)
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
+		ops.failure(err, "transport", 0, "")
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 	}
+	ops.response(resp)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
@@ -116,6 +126,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 
+	consumeOpenAIBridgeResponse(ops)
 	if clientStream {
 		return s.handleNativeAnthropicStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, reasoningEffort, startTime)
 	}
@@ -444,6 +455,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 				return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime), nil
 			}
 			if ev.err != nil {
+				openAIBridgeReadError(c, ev.err)
 				if sawTerminalEvent {
 					return s.nativeAnthropicStreamResult(c, resp, usage, firstTokenMs, clientDisconnected, originalModel, billingModel, upstreamModel, reasoningEffort, startTime), nil
 				}
@@ -465,6 +477,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
+				openAIBridgeSemantic(c, []byte(data))
 				trimmed := strings.TrimSpace(data)
 				observer.ObserveAnthropic([]byte(trimmed))
 				if anthropicStreamEventIsTerminal("", trimmed) {
@@ -486,9 +499,11 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				} else if _, err := io.WriteString(w, "\n"); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				} else if line == "" {
 					// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
@@ -531,6 +546,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			}
 			if _, err := fmt.Fprint(w, "event: ping\ndata: {\"type\": \"ping\"}\n\n"); err != nil {
 				clientDisconnected = true
+				openAIBridgeAbort(c)
 				logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during keepalive ping, continue draining upstream for usage: account=%d", account.ID)
 				continue
 			}

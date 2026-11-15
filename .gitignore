@@ -140,6 +140,14 @@ docs/*
 !docs/MONITORING_DEV_PLAN.md
 !docs/MONITORING_API.md
 !docs/MONITORING_VALIDATION.md
+!docs/MONITORING_V2_API.md
+!docs/MONITORING_V2_DEV_PLAN.md
+!docs/MONITORING_V2_TASKS.md
+!docs/MONITORING_V2_VALIDATION.md
+!docs/MONITORING_V2_W5_TASKS.md
+!docs/MONITORING_V2_W4_TASKS.md
+!docs/dashboard-v2.md
+!docs/dashboard-v2-mockup.html
 !docs/agent-resource-safety.md
 !docs/moego-json-batching.md
 !docs/admin-api-keys.md

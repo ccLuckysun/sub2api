@@ -86,6 +86,10 @@ const (
 	FieldDurationMs = "duration_ms"
 	// FieldFirstTokenMs holds the string denoting the first_token_ms field in the database.
 	FieldFirstTokenMs = "first_token_ms"
+	// FieldBodyBytes holds the string denoting the body_bytes field in the database.
+	FieldBodyBytes = "body_bytes"
+	// FieldGatewayLatencyMs holds the string denoting the gateway_latency_ms field in the database.
+	FieldGatewayLatencyMs = "gateway_latency_ms"
 	// FieldUserAgent holds the string denoting the user_agent field in the database.
 	FieldUserAgent = "user_agent"
 	// FieldIPAddress holds the string denoting the ip_address field in the database.
@@ -200,6 +204,8 @@ var Columns = []string{
 	FieldStream,
 	FieldDurationMs,
 	FieldFirstTokenMs,
+	FieldBodyBytes,
+	FieldGatewayLatencyMs,
 	FieldUserAgent,
 	FieldIPAddress,
 	FieldImageCount,
@@ -488,6 +494,16 @@ func ByDurationMs(opts ...sql.OrderTermOption) OrderOption {
 // ByFirstTokenMs orders the results by the first_token_ms field.
 func ByFirstTokenMs(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFirstTokenMs, opts...).ToFunc()
+}
+
+// ByBodyBytes orders the results by the body_bytes field.
+func ByBodyBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBodyBytes, opts...).ToFunc()
+}
+
+// ByGatewayLatencyMs orders the results by the gateway_latency_ms field.
+func ByGatewayLatencyMs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGatewayLatencyMs, opts...).ToFunc()
 }
 
 // ByUserAgent orders the results by the user_agent field.

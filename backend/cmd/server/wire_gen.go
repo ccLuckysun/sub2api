@@ -8,6 +8,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -21,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -339,10 +342,17 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
 	auditLogMiddleware := middleware.NewAuditLogMiddleware(auditLogService)
 	stepUpAuthMiddleware := middleware.NewStepUpAuthMiddleware(totpService, userService, settingService)
-	registryAndMetrics := monitoring.ProvideRegistryAndMetrics()
+	registryAndMetrics, err := monitoring.ProvideConfiguredRegistryAndMetrics(configConfig)
+	if err != nil {
+		return nil, err
+	}
 	metrics := monitoring.ProvideMetrics(registryAndMetrics)
 	metricsMiddleware := middleware.ProvideMetricsMiddleware(configConfig, metrics)
-	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, compositeRouteResolver, redisClient, metricsMiddleware)
+	accountLabels := provideAccountLabels(registryAndMetrics, db)
+	opsSampleWriter := provideOpsSampleWriter(configConfig, db)
+	opsSampleSink := provideOpsSampleSink(opsSampleWriter)
+	opsRuntime := monitoring.ProvideOpsRuntime(registryAndMetrics, accountLabels, opsSampleSink)
+	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, compositeRouteResolver, redisClient, metricsMiddleware, opsRuntime)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
 	prometheusRegistry := monitoring.ProvideRegistry(registryAndMetrics)
 	monitoringServer := monitoring.ProvideMetricsServer(configConfig, prometheusRegistry)
@@ -365,7 +375,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService, channelMonitorQuotaFetcher)
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, monitoringServer, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager)
+	mainApplicationCleanup := provideCleanup(client, redisClient, monitoringServer, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager)
+	v := provideOpsCleanup(mainApplicationCleanup, opsRuntime, opsSampleWriter)
 	application := &Application{
 		Server:        httpServer,
 		MetricsServer: monitoringServer,
@@ -384,6 +395,48 @@ type Application struct {
 	PromptAudit   *securityaudit.PromptService
 	PluginManager *service.PluginManager
 	Cleanup       func()
+}
+
+// provideAccountLabels reads one deterministic, immutable startup snapshot.
+// Never refresh at runtime: new/renamed/colliding accounts stay unknown.
+func provideAccountLabels(instruments *monitoring.RegistryAndMetrics, db *sql.DB) *monitoring.AccountLabels {
+	if instruments == nil || instruments.Ops == nil {
+		return nil
+	}
+	empty := func(err error) *monitoring.AccountLabels {
+		slog.Warn("ops account label snapshot unavailable; using unknown", "error", err)
+		return monitoring.NewAccountLabels(nil)
+	}
+	if db == nil {
+		return empty(fmt.Errorf("nil database"))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rows, err := db.QueryContext(ctx, "SELECT name FROM accounts WHERE deleted_at IS NULL ORDER BY id")
+	if err != nil {
+		return empty(err)
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return empty(err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return empty(err)
+	}
+	accounts := monitoring.NewAccountLabels(names)
+	labels := make(map[string]struct{})
+	for _, name := range names {
+		if label := accounts.Label(name); label != "unknown" {
+			labels[label] = struct{}{}
+		}
+	}
+	slog.Info("ops account label snapshot loaded", "accounts", len(labels))
+	return accounts
 }
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {
@@ -457,7 +510,7 @@ func provideCleanup(
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
-) func() {
+) applicationCleanup {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -797,4 +850,30 @@ func provideCleanup(
 			log.Printf("[Cleanup] All cleanup steps completed")
 		}
 	}
+}
+
+// applicationCleanup keeps the existing business cleanup constructor separate
+// from the V2 lifecycle wrapper in the Wire graph.
+type applicationCleanup func()
+
+func provideOpsCleanup(cleanup applicationCleanup, runtime *monitoring.OpsRuntime, writer *service.OpsSampleWriter) func() {
+	return func() { runtime.Stop(); writer.Stop(); cleanup() }
+}
+
+// provideOpsSampleWriter starts only for explicitly enabled sample persistence.
+// Recorder emission is wired separately; this provider performs no DB queries.
+func provideOpsSampleWriter(cfg *config.Config, db *sql.DB) *service.OpsSampleWriter {
+	if cfg == nil || !cfg.Monitoring.OpsMetricsEnabled || !cfg.Monitoring.OpsSamplesEnabled {
+		return nil
+	}
+	writer := service.NewOpsSampleWriter(repository.NewOpsSampleRepository(db))
+	writer.Start()
+	return writer
+}
+
+func provideOpsSampleSink(writer *service.OpsSampleWriter) monitoring.OpsSampleSink {
+	if writer == nil {
+		return nil
+	}
+	return writer
 }

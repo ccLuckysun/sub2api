@@ -133,6 +133,10 @@ type MonitoringConfig struct {
 	// MetricsEnabled toggles HTTP instrumentation and the /metrics server.
 	// Default false: no listener, no middleware, zero behavior change.
 	MetricsEnabled bool `mapstructure:"metrics_enabled"`
+	// OpsMetricsEnabled requires the baseline metrics endpoint.
+	OpsMetricsEnabled bool `mapstructure:"ops_metrics_enabled"`
+	// OpsSamplesEnabled requires V2 metrics instrumentation.
+	OpsSamplesEnabled bool `mapstructure:"ops_samples_enabled"`
 	// MetricsBind is the address the /metrics server listens on when enabled.
 	MetricsBind string `mapstructure:"metrics_bind"`
 }
@@ -1737,6 +1741,8 @@ func (r *RedisConfig) Address() string {
 }
 
 type OpsConfig struct {
+	// SampleRetentionDays defaults to 30; explicit zero requests TRUNCATE.
+	SampleRetentionDays int `mapstructure:"sample_retention_days"`
 	// Enabled controls whether ops features should run.
 	//
 	// NOTE: vNext still has a DB-backed feature flag (ops_monitoring_enabled) for runtime on/off.
@@ -2179,6 +2185,9 @@ func setDefaults() {
 	viper.SetDefault("server.h2c.max_upload_buffer_per_stream", 512<<10)   // 512KB
 
 	// Monitoring（Prometheus /metrics，默认关闭，向后兼容）
+	viper.SetDefault("monitoring.ops_metrics_enabled", false)
+	viper.SetDefault("monitoring.ops_samples_enabled", false)
+	viper.SetDefault("ops.sample_retention_days", 30)
 	viper.SetDefault("monitoring.metrics_enabled", false)
 	viper.SetDefault("monitoring.metrics_bind", DefaultMetricsBind)
 
@@ -2898,6 +2907,15 @@ func (c *Config) Validate() error {
 	}
 	if c.APIKeyCreate.MaxActivePerUser < 0 {
 		return fmt.Errorf("api_key_create.max_active_per_user must be non-negative")
+	}
+	if c.Monitoring.OpsMetricsEnabled && !c.Monitoring.MetricsEnabled {
+		return fmt.Errorf("monitoring.ops_metrics_enabled requires monitoring.metrics_enabled=true")
+	}
+	if c.Monitoring.OpsSamplesEnabled && !c.Monitoring.OpsMetricsEnabled {
+		return fmt.Errorf("monitoring.ops_samples_enabled requires monitoring.ops_metrics_enabled=true")
+	}
+	if c.Ops.SampleRetentionDays < 0 {
+		return fmt.Errorf("ops.sample_retention_days must be non-negative")
 	}
 	if c.Monitoring.MetricsEnabled {
 		if _, _, err := net.SplitHostPort(c.Monitoring.MetricsBind); err != nil {

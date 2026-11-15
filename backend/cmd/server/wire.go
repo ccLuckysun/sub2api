@@ -5,7 +5,10 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -48,6 +51,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Monitoring (Prometheus /metrics)
 		monitoring.ProviderSet,
+		provideAccountLabels,
+		provideOpsSampleWriter,
+		provideOpsSampleSink,
 
 		// Server layer ProviderSet
 		server.ProviderSet,
@@ -61,11 +67,54 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Cleanup function provider
 		provideCleanup,
+		provideOpsCleanup,
 
 		// Application struct
 		wire.Struct(new(Application), "Server", "MetricsServer", "PromptAudit", "PluginManager", "Cleanup"),
 	)
 	return nil, nil
+}
+
+// provideAccountLabels reads one deterministic, immutable startup snapshot.
+// Never refresh at runtime: new/renamed/colliding accounts stay unknown.
+func provideAccountLabels(instruments *monitoring.RegistryAndMetrics, db *sql.DB) *monitoring.AccountLabels {
+	if instruments == nil || instruments.Ops == nil {
+		return nil // V2 disabled: no database query or startup side effects.
+	}
+	empty := func(err error) *monitoring.AccountLabels {
+		slog.Warn("ops account label snapshot unavailable; using unknown", "error", err)
+		return monitoring.NewAccountLabels(nil)
+	}
+	if db == nil {
+		return empty(fmt.Errorf("nil database"))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rows, err := db.QueryContext(ctx, "SELECT name FROM accounts WHERE deleted_at IS NULL ORDER BY id")
+	if err != nil {
+		return empty(err)
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return empty(err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return empty(err)
+	}
+	accounts := monitoring.NewAccountLabels(names)
+	labels := make(map[string]struct{})
+	for _, name := range names {
+		if label := accounts.Label(name); label != "unknown" {
+			labels[label] = struct{}{}
+		}
+	}
+	slog.Info("ops account label snapshot loaded", "accounts", len(labels))
+	return accounts
 }
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {
@@ -139,7 +188,7 @@ func provideCleanup(
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
-) func() {
+) applicationCleanup {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -481,4 +530,30 @@ func provideCleanup(
 			log.Printf("[Cleanup] All cleanup steps completed")
 		}
 	}
+}
+
+// applicationCleanup keeps the existing business cleanup constructor separate
+// from the V2 lifecycle wrapper in the Wire graph.
+type applicationCleanup func()
+
+func provideOpsCleanup(cleanup applicationCleanup, runtime *monitoring.OpsRuntime, writer *service.OpsSampleWriter) func() {
+	return func() { runtime.Stop(); writer.Stop(); cleanup() }
+}
+
+// provideOpsSampleWriter starts only for explicitly enabled sample persistence.
+// Recorder emission is wired separately; this provider performs no DB queries.
+func provideOpsSampleWriter(cfg *config.Config, db *sql.DB) *service.OpsSampleWriter {
+	if cfg == nil || !cfg.Monitoring.OpsMetricsEnabled || !cfg.Monitoring.OpsSamplesEnabled {
+		return nil
+	}
+	writer := service.NewOpsSampleWriter(repository.NewOpsSampleRepository(db))
+	writer.Start()
+	return writer
+}
+
+func provideOpsSampleSink(writer *service.OpsSampleWriter) monitoring.OpsSampleSink {
+	if writer == nil {
+		return nil
+	}
+	return writer
 }

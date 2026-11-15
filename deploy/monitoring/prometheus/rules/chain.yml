@@ -1,0 +1,107 @@
+# Route 白名单随 backend/internal/server/routes/gateway.go 同步维护；不能用全局计数替代实例差集。
+{
+  "groups": [
+    {
+      "name": "sub2api-v2-chain",
+      "interval": "15s",
+      "rules": [
+        {
+          "alert": "Sub2apiSlowFirstByteP95",
+          "expr": "histogram_quantile(0.95, sum by (le)(rate(sub2api_request_phase_seconds_bucket{phase=\"headers_end\"}[10m]))) > 3",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Sub2apiSlowFirstByteP95",
+            "description": "实例 {{ $labels.instance }}：Sub2apiSlowFirstByteP95；请结合 V2 看板与样本核实。"
+          },
+          "for": "10m"
+        },
+        {
+          "alert": "Sub2apiUpstreamAccountFailing",
+          "expr": "sum by (account)(rate(sub2api_upstream_requests_total{result!=\"success\"}[5m])) / clamp_min(sum by (account)(rate(sub2api_upstream_requests_total[5m])),1e-9) > 0.2 and sum by (account)(increase(sub2api_upstream_requests_total[5m])) > 20",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Sub2apiUpstreamAccountFailing",
+            "description": "实例 {{ $labels.instance }}：Sub2apiUpstreamAccountFailing；请结合 V2 看板与样本核实。"
+          },
+          "for": "5m"
+        },
+        {
+          "alert": "Sub2apiGatewaySelfError",
+          "expr": "sum(rate(sub2api_gateway_requests_total{result=\"gateway_error\"}[5m])) > 0.05",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Sub2apiGatewaySelfError",
+            "description": "实例 {{ $labels.instance }}：Sub2apiGatewaySelfError；请结合 V2 看板与样本核实。"
+          },
+          "for": "5m"
+        },
+        {
+          "alert": "Sub2apiInstrumentationStalled",
+          "expr": "(sum by (instance) (increase(sub2api_http_requests_total{route=~\"/v1/messages|/v1/chat/completions|/chat/completions|/v1/responses|/antigravity/.*|/v1beta/.*\"}[3m])) > 0) unless on (instance) (sum by (instance) (increase(sub2api_request_phase_seconds_count[3m])) > 0)",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Sub2apiInstrumentationStalled",
+            "description": "实例 {{ $labels.instance }}：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。"
+          },
+          "for": "1m"
+        },
+        {
+          "alert": "Sub2apiMetricCoverageLow",
+          "expr": "sub2api_metric_coverage_ratio{kind=\"account\"} >= 0 and sub2api_metric_coverage_ratio{kind=\"account\"} < 0.8",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Sub2apiMetricCoverageLow",
+            "description": "实例 {{ $labels.instance }}：Sub2apiMetricCoverageLow；请结合 V2 看板与样本核实。"
+          },
+          "for": "30m"
+        },
+        {
+          "alert": "Sub2apiClientAbortSpike",
+          "expr": "sum(rate(sub2api_client_abort_total[10m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[10m])),1e-9) > 0.05",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Sub2apiClientAbortSpike",
+            "description": "实例 {{ $labels.instance }}：Sub2apiClientAbortSpike；请结合 V2 看板与样本核实。"
+          },
+          "for": "10m"
+        },
+        {
+          "alert": "Sub2apiDownstreamShortfall",
+          "expr": "(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_upstream\"}[10m])) - sum(rate(sub2api_transfer_bytes_total{direction=\"resp_downstream\"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction=\"resp_upstream\"}[10m])),1) > 0.2",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Sub2apiDownstreamShortfall",
+            "description": "实例 {{ $labels.instance }}：Sub2apiDownstreamShortfall；请结合 V2 看板与样本核实。"
+          },
+          "for": "15m"
+        },
+        {
+          "alert": "Sub2apiUnknownFailureHigh",
+          "expr": "sum(rate(sub2api_gateway_requests_total{failure_reason=\"unknown\"}[30m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[30m])),1e-9) > 0.1 and sum(increase(sub2api_gateway_requests_total[30m])) > 100",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Sub2apiUnknownFailureHigh",
+            "description": "实例 {{ $labels.instance }}：Sub2apiUnknownFailureHigh；请结合 V2 看板与样本核实。"
+          },
+          "for": "30m"
+        }
+      ]
+    }
+  ]
+}

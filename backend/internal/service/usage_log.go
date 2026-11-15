@@ -181,6 +181,8 @@ type UsageLog struct {
 	OpenAIWSMode       bool
 	NativeCompactionV2 bool
 	DurationMs         *int
+	BodyBytes          *int64
+	GatewayLatencyMs   *int64
 	FirstTokenMs       *int
 	UserAgent          *string
 	IPAddress          *string

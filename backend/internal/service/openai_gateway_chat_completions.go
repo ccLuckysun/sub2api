@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -72,7 +73,12 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 	compatPromptCacheTenantIsolated bool,
-) (*OpenAIForwardResult, error) {
+) (opsResult *OpenAIForwardResult, opsErr error) {
+	ctx, ops, opsOwner := beginOpenAIBridgeOps(ctx, c, account)
+	if opsOwner {
+		defer func() { finishOpenAIBridgeOps(ops, opsResult, opsErr) }()
+	}
+
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
@@ -361,10 +367,14 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	upstreamReq = ops.prepare(upstreamReq)
+	ctx = ops.context(ctx)
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
+		ops.failure(err, "transport", 0, "")
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
+	ops.response(resp)
 	defer func() {
 		cancelUpstream()
 		_ = resp.Body.Close()
@@ -373,6 +383,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg, completeErrorBody := s.readOpenAIUpstreamErrorWithCompleteness(resp)
+		ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
 			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
@@ -414,6 +425,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 	}
 
+	consumeOpenAIBridgeResponse(ops)
 	// 9. Handle normal response
 	var result *OpenAIForwardResult
 	var handleErr error
@@ -911,6 +923,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 
 		var event apicompat.ResponsesStreamEvent
+		openAIBridgeSemantic(c, []byte(payload))
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("openai chat_completions stream: failed to parse event",
 				zap.Error(err),
@@ -963,6 +976,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					// 无条件置位：成功路径防 finalizeStream 重复 [DONE]；写失败意味着连接已不可写，
 					// finalizeStream 的 [DONE] 同样发不出去，统一抑制。
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 				}
 				return true
 			}
@@ -999,6 +1013,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			} else if c != nil && c.Writer != nil && !clientDisconnected {
 				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					logger.L().Info("openai chat_completions stream: client disconnected while writing upstream error",
 						zap.String("request_id", requestID),
 					)
@@ -1032,6 +1047,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					for _, pending := range pendingSSE {
 						if _, err := fmt.Fprint(c.Writer, pending); err != nil {
 							clientDisconnected = true
+							openAIBridgeAbort(c)
 							logger.L().Info("openai chat_completions stream: client disconnected while flushing pending chunks",
 								zap.String("request_id", requestID),
 							)
@@ -1046,6 +1062,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					logger.L().Info("openai chat_completions stream: client disconnected, continuing to drain upstream for billing",
 						zap.String("request_id", requestID),
 					)
@@ -1085,6 +1102,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					for _, pending := range pendingSSE {
 						if _, err := fmt.Fprint(c.Writer, pending); err != nil {
 							clientDisconnected = true
+							openAIBridgeAbort(c)
 							logger.L().Info("openai chat_completions stream: client disconnected during pending final flush",
 								zap.String("request_id", requestID),
 							)
@@ -1099,6 +1117,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
+					openAIBridgeAbort(c)
 					logger.L().Info("openai chat_completions stream: client disconnected during final flush",
 						zap.String("request_id", requestID),
 					)
@@ -1115,6 +1134,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				for _, pending := range pendingSSE {
 					if _, err := fmt.Fprint(c.Writer, pending); err != nil {
 						clientDisconnected = true
+						openAIBridgeAbort(c)
 						logger.L().Info("openai chat_completions stream: client disconnected during final pending flush",
 							zap.String("request_id", requestID),
 						)
@@ -1130,6 +1150,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			writeStreamHeaders()
 			if _, err := fmt.Fprint(c.Writer, "data: [DONE]\n\n"); err != nil {
 				clientDisconnected = true
+				openAIBridgeAbort(c)
 				logger.L().Info("openai chat_completions stream: client disconnected during done flush",
 					zap.String("request_id", requestID),
 				)
@@ -1156,6 +1177,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 	processFrame := func(frame openAICompatSSEFrame) bool {
 		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+		openAIBridgeSemantic(c, []byte(payload))
 		if strings.TrimSpace(payload) == "[DONE]" {
 			return false
 		}
@@ -1268,6 +1290,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return missingTerminalErr()
 			}
 			if ev.err != nil {
+				openAIBridgeReadError(c, ev.err)
 				handleScanErr(ev.err)
 				if clientDisconnected || errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
 					return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
@@ -1319,6 +1342,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					zap.String("request_id", requestID),
 				)
 				clientDisconnected = true
+				openAIBridgeAbort(c)
 				continue
 			}
 			c.Writer.Flush()
@@ -1353,4 +1377,99 @@ func buildChatStreamErrorSSE(code, message string) string {
 		return "data: {\"error\":{\"type\":\"invalid_request_error\",\"code\":\"" + code + "\",\"message\":\"upstream error\"}}\n\n"
 	}
 	return "data: " + string(payload) + "\n\n"
+}
+
+// This context key marks an internal bridge call tree, rather than an inherited
+// attempt from an earlier handler iteration. Only its outermost call settles.
+type openAIBridgeOpsKey struct{}
+
+const openAIBridgeOpsGinKey = "monitoring_openai_bridge_ops"
+
+func openAIBridgeOpsFromContext(ctx context.Context) *openAIResponsesOps {
+	if ctx == nil {
+		return nil
+	}
+	ops, _ := ctx.Value(openAIBridgeOpsKey{}).(*openAIResponsesOps)
+	return ops
+}
+func beginOpenAIBridgeOps(ctx context.Context, c *gin.Context, a *Account) (context.Context, *openAIResponsesOps, bool) {
+	ops := openAIBridgeOpsFromContext(ctx)
+	owner := ops == nil
+	if owner {
+		ops = newOpenAIResponsesOps(ctx, c, a)
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx = context.WithValue(ctx, openAIBridgeOpsKey{}, ops)
+	}
+	// No response is locked before a recursive retry; local build failures retain
+	// the existing logical attempt but carry their own request-stage evidence.
+	ops.stage = ""
+	ops.handle = nil
+	ops.status = 0
+	ops.code = ""
+	ops.cause = nil
+	if c != nil {
+		c.Set(openAIBridgeOpsGinKey, ops)
+	}
+	return ctx, ops, owner
+}
+func consumeOpenAIBridgeResponse(ops *openAIResponsesOps) {
+	ops.stage = "body"
+	observeForwardOps(func() { ops.attempt.UseResponseFor(ops.handle) })
+}
+func openAIBridgeOpsForConsumer(c *gin.Context) *openAIResponsesOps {
+	if c == nil {
+		return nil
+	}
+	value, _ := c.Get(openAIBridgeOpsGinKey)
+	ops, _ := value.(*openAIResponsesOps)
+	if ops == nil || ops.rec == nil {
+		return nil
+	}
+	return ops
+}
+func openAIBridgeAbort(c *gin.Context) {
+	if ops := openAIBridgeOpsForConsumer(c); ops != nil {
+		observeForwardOps(func() { ops.rec.MarkClientAbort("response") })
+	}
+}
+func openAIBridgeReadError(c *gin.Context, err error) {
+	if err == nil || errors.Is(err, io.EOF) {
+		return
+	}
+	if ops := openAIBridgeOpsForConsumer(c); ops != nil {
+		ops.cause = err
+	}
+}
+func openAIBridgeSemantic(c *gin.Context, payload []byte) {
+	if ops := openAIBridgeOpsForConsumer(c); ops != nil {
+		if code := openAIResponsesOpsCode(payload); code != "" {
+			ops.code = code
+		}
+	}
+}
+
+func finishOpenAIBridgeOps(ops *openAIResponsesOps, result *OpenAIForwardResult, err error) {
+	// Cancellation of a detached upstream operation alone does not establish a
+	// client disconnect. Keep the business error while classifying that evidence
+	// as unknown unless the request context or a downstream write proves abort.
+	cause := ops.cause
+	if cause == nil {
+		cause = err
+	}
+	observationErr := err
+	// Raw SSE consumption preserves usage and a nil business error on some read
+	// failures. Settle their saved evidence without changing that return value.
+	if observationErr == nil && result != nil {
+		observationErr = ops.cause
+	}
+	clientCanceled := ops.rec.ClientAborted()
+	if ops.client != nil && ops.client.Request != nil {
+		clientCanceled = clientCanceled || errors.Is(ops.client.Request.Context().Err(), context.Canceled)
+	}
+	if observationErr != nil && errors.Is(cause, context.Canceled) && !clientCanceled {
+		ops.cause = errors.New("upstream operation canceled without client cancellation")
+	}
+	ops.finish(result, observationErr)
 }

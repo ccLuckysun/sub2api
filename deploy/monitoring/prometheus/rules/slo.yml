@@ -1,0 +1,35 @@
+# Route 白名单随 backend/internal/server/routes/gateway.go 同步维护；不能用全局计数替代实例差集。
+{
+  "groups": [
+    {
+      "name": "sub2api-v2-slo",
+      "interval": "15s",
+      "rules": [
+        {
+          "alert": "Sub2apiTargetDown",
+          "expr": "up{job=\"sub2api\"} == 0",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Sub2apiTargetDown",
+            "description": "实例 {{ $labels.instance }}：Sub2apiTargetDown；请结合 V2 看板与样本核实。"
+          },
+          "for": "2m"
+        },
+        {
+          "alert": "Sub2apiErrorRateHigh",
+          "expr": "sum(rate(sub2api_http_requests_total{status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(sub2api_http_requests_total[5m])),1e-9) > 0.01",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Sub2apiErrorRateHigh",
+            "description": "实例 {{ $labels.instance }}：Sub2apiErrorRateHigh；请结合 V2 看板与样本核实。"
+          },
+          "for": "10m"
+        }
+      ]
+    }
+  ]
+}

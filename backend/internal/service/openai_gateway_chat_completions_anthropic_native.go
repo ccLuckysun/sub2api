@@ -40,7 +40,12 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	account *Account,
 	body []byte,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (opsResult *OpenAIForwardResult, opsErr error) {
+	ctx, ops, opsOwner := beginOpenAIBridgeOps(ctx, c, account)
+	if opsOwner {
+		defer func() { finishOpenAIBridgeOps(ops, opsResult, opsErr) }()
+	}
+
 	startTime := time.Now()
 
 	// 1. Parse Chat Completions request
@@ -120,14 +125,19 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
 
+	upstreamReq = ops.prepare(upstreamReq)
+	ctx = ops.context(ctx)
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
+		ops.failure(err, "transport", 0, "")
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 	}
+	ops.response(resp)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
@@ -135,6 +145,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
 
+	consumeOpenAIBridgeResponse(ops)
 	// Bill the Anthropic effort actually sent upstream (for example xhigh → max).
 	reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, upstreamModel)
@@ -201,6 +212,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 			}
 			logReadErr(rerr)
 			streamStatus.readErr = rerr
+			openAIBridgeReadError(c, rerr)
 			break
 		}
 		// SSE 规范允许 `event:xxx`（冒号后无空格）：Kimi 等 Anthropic 兼容上游
@@ -216,6 +228,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 			}
 			logReadErr(rerr)
 			streamStatus.readErr = rerr
+			openAIBridgeReadError(c, rerr)
 			break
 		}
 		payload, ok := extractOpenAISSEDataLine(dataLine)
@@ -224,6 +237,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 		}
 
 		var event apicompat.AnthropicStreamEvent
+		openAIBridgeSemantic(c, []byte(payload))
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
@@ -413,6 +427,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
 			clientDisconnected = true
+			openAIBridgeAbort(c)
 			return false
 		}
 		return false
@@ -465,6 +480,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			}
 			logReadErr(rerr)
 			streamStatus.readErr = rerr
+			openAIBridgeReadError(c, rerr)
 			break
 		}
 		if _, ok := extractOpenAISSEEventLine(line); !ok {
@@ -479,6 +495,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			// EOF / 读错误：事件行后流终止，进入 finalize。
 			logReadErr(rerr)
 			streamStatus.readErr = rerr
+			openAIBridgeReadError(c, rerr)
 			break
 		}
 		payload, ok := extractOpenAISSEDataLine(dataLine)
@@ -487,6 +504,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		}
 
 		var event apicompat.AnthropicStreamEvent
+		openAIBridgeSemantic(c, []byte(payload))
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}

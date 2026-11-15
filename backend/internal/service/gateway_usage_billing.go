@@ -43,13 +43,15 @@ type RecordUsageInput struct {
 	APIKey             *APIKey
 	User               *User
 	Account            *Account
-	Subscription       *UserSubscription  // 可选：订阅信息
-	PricingAt          time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
-	InboundEndpoint    string             // 入站端点（客户端请求路径）
-	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
-	UserAgent          string             // 请求的 User-Agent
-	IPAddress          string             // 请求的客户端 IP 地址
-	SessionID          string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
+	Subscription       *UserSubscription // 可选：订阅信息
+	PricingAt          time.Time         // token 售价固定时刻；零值保持既有的记录时刻语义
+	InboundEndpoint    string            // 入站端点（客户端请求路径）
+	UpstreamEndpoint   string            // 上游端点（标准化后的上游路径）
+	UserAgent          string            // 请求的 User-Agent
+	IPAddress          string            // 请求的客户端 IP 地址
+	SessionID          string            // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
+	BodyBytes          *int64
+	GatewayLatencyMs   *int64
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
@@ -657,6 +659,8 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
 		Result:             input.Result,
+		BodyBytes:          input.BodyBytes,
+		GatewayLatencyMs:   input.GatewayLatencyMs,
 		APIKey:             input.APIKey,
 		User:               input.User,
 		Account:            input.Account,
@@ -688,6 +692,8 @@ type recordUsageCoreInput struct {
 	UserAgent          string
 	IPAddress          string
 	SessionID          string
+	BodyBytes          *int64
+	GatewayLatencyMs   *int64
 	RequestPayloadHash string
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
@@ -1325,6 +1331,8 @@ func (s *GatewayService) buildRecordUsageLog(
 		)
 	}
 	usageLog := &UsageLog{
+		BodyBytes:                input.BodyBytes,
+		GatewayLatencyMs:         input.GatewayLatencyMs,
 		UserID:                   user.ID,
 		APIKeyID:                 apiKey.ID,
 		AccountID:                account.ID,

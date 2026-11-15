@@ -17,6 +17,7 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
 | `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
+| `dev.sh` | Local Docker development lifecycle: `up` / `stop` / `status` / `logs` / `rebuild` |
 | `apple-container.sh` | Native Apple `container` lifecycle script |
 | `APPLE_CONTAINER.md` | Apple `container` deployment and operations guide |
 | `.env.example` | Container environment variables template |
@@ -28,6 +29,49 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | `DATAMANAGEMENTD_CN.md` | datamanagementd 部署与联动说明（中文） |
 | `config.example.yaml` | Example configuration file |
 | `EDGE_SECURITY.md` | Reverse proxy, CDN/WAF, trusted proxy, and ingress hardening guide |
+
+---
+
+## Local Docker Development (one-key start/stop)
+
+`dev.sh` runs the source-build stack (`docker-compose.dev.yml`) plus the monitoring
+stack (`docker-compose.monitoring.yml`) as one Compose project, so day-to-day work
+needs two commands:
+
+```bash
+cd deploy
+./dev.sh up            # build from ../ source and start everything, then print URLs
+./dev.sh status        # containers, health, published ports
+./dev.sh stop          # stop containers, keep data and containers
+```
+
+Everything else:
+
+```bash
+./dev.sh up --no-build         # reuse the existing image (fast restart)
+./dev.sh up --app-only         # only sub2api + postgres + redis, no Grafana/Prometheus
+./dev.sh up --foreground       # run in the foreground and stream logs
+./dev.sh restart sub2api       # restart containers without rebuilding
+./dev.sh rebuild sub2api       # recompile the image after Go changes
+./dev.sh logs sub2api -f       # follow logs (also: postgres, redis, grafana, prometheus)
+./dev.sh shell postgres        # open /bin/sh inside a container
+./dev.sh down                  # remove containers, keep volumes
+./dev.sh reset --yes           # remove containers AND volumes (deletes local data)
+./dev.sh url                   # panel URLs and where the credentials live
+```
+
+Notes:
+
+- Configuration and secrets come from `deploy/monitoring.env` (gitignored). On a
+  fresh checkout create the stack once with
+  `./compose-deploy.sh --monitoring --compose-file docker-compose.dev.yml --project-name deploy`
+  and `dev.sh` reuses exactly what that produced.
+- `up` refuses to start when `SERVER_PORT` (default 8080) or `GRAFANA_PORT`
+  (default 3000) is held by a non-container process — an `ssh -L 3000:...` tunnel
+  is the usual culprit. Either stop that tunnel or move the stack:
+  `SERVER_PORT=8081 GRAFANA_PORT=3001 ./dev.sh up`.
+- `stop` keeps containers so the next `up` is instant; `down` removes them;
+  only `reset --yes` deletes data.
 
 ---
 
@@ -656,3 +700,11 @@ gateway:
 **Cipher Suites (TLS 1.2):** `49195`, `49196`, `49199`, `49200` (ECDHE variants)
 
 **Curves:** `29` (X25519), `23` (P-256), `24` (P-384), `25` (P-521)
+
+### Monitoring V2 as code
+
+监控 overlay 现包含 Prometheus、Alertmanager、Grafana，配合业务基础栈共六个常驻容器；`--host-metrics` / `--backup` 保留可选 profile。Prometheus 默认 15s 抓取、90d/8GB retention；五张 V2 看板由 `monitoring/grafana/build-dashboards.py` 生成，修改后执行 `--check`。
+
+只读 PG 角色、SMTP 占位配置、实际工具输出、30 组规则测试矩阵、896m 内存账与已知偏差见 [MONITORING_LOCAL.md](MONITORING_LOCAL.md#v2-w5-本地验收2026-11-14)。`monitoring.env` 中填写 `GRAFANA_PG_PASSWORD` / `ALERT_SMTP_*`；先完成 M3 表迁移与 `monitoring/sql/grafana-ro.sql` 初始化。单独 overlay 不构成完整 Compose 项目，需与 dev/local 基础 Compose 合并校验；旧 V1 JSON 在 backup 中，不被 V2 provider 加载。混合看板的 PG `interval=1m` 是查询步长，Grafana 实际按看板刷新。
+
+W5 审核修复后的看板刷新为 02=10s、其余（含 04）=30s，PG interval 仍为 1m。运行 `python3 deploy/tests/monitoring-v2-dashboard-test.py` 可复验五张看板结构、覆盖率百分比映射、54 条 PromQL 语法与 11 组查询回归（缺序列/真实零值、负载标签匹配、已有 256 KiB 桶）。

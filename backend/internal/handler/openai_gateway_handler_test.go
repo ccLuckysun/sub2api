@@ -2498,9 +2498,24 @@ func TestOpenAIResponsesWebSocket_NativeLaterTurnUsageLimitDoesNotReplayFirstMes
 	}
 }
 
-func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, followups []string, handshakeLimit bool) {
+func TestOpenAIResponsesWebSocket_OpsSwitchRequiresNextForward(t *testing.T) {
+	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeCtxPool} {
+		for _, scenario := range []string{"exhausted", "budget_zero", "canceled"} {
+			t.Run(mode+"/"+scenario, func(t *testing.T) {
+				runOpenAIResponsesWebSocketUsageLimitCase(t, mode, nil, false, scenario)
+			})
+		}
+	}
+}
+
+func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, followups []string, handshakeLimit bool, opsScenarios ...string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	scenario := ""
+	if len(opsScenarios) > 0 {
+		scenario = opsScenarios[0]
+	}
+	requestCancel := make(chan context.CancelFunc, 1)
 
 	firstHitCh := make(chan []byte, len(followups)+1)
 	secondHitCh := make(chan []byte, 1)
@@ -2526,6 +2541,10 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 				return
 			}
 			firstHitCh <- payload
+			if scenario == "canceled" {
+				(<-requestCancel)()
+				return
+			}
 			if turn < len(followups) {
 				output := `[]`
 				if turn > 0 {
@@ -2626,6 +2645,9 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
 	cfg.Gateway.MaxAccountSwitches = 3
 
+	if scenario == "exhausted" {
+		accounts = accounts[:1]
+	}
 	accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accounts}
 	rateLimitSvc := service.NewRateLimitService(accountRepo, nil, cfg, nil, nil)
 	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
@@ -2671,6 +2693,12 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 		maxAccountSwitches:  3,
 	}
 
+	if scenario == "exhausted" {
+		h.maxAccountSwitches = 1
+	} else if scenario == "budget_zero" {
+		h.maxAccountSwitches = 0
+	}
+
 	apiKey := &service.APIKey{
 		ID:      1802,
 		GroupID: &groupID,
@@ -2678,6 +2706,7 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
 	}
 	router := gin.New()
+	assertSwitchCount := installOpsSwitchRecorder(t, router)
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.User.ID, Concurrency: 1})
@@ -2685,6 +2714,12 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 	})
 	handlerDone := make(chan struct{})
 	router.GET("/openai/v1/responses", func(c *gin.Context) {
+		if scenario == "canceled" {
+			ctx, cancel := context.WithCancel(c.Request.Context())
+			defer cancel()
+			c.Request = c.Request.WithContext(ctx)
+			requestCancel <- cancel
+		}
 		h.ResponsesWebSocket(c)
 		close(handlerDone)
 	})
@@ -2722,7 +2757,11 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 	readCtx, cancelRead := context.WithTimeout(context.Background(), 5*time.Second)
 	_, event, err := clientConn.Read(readCtx)
 	cancelRead()
-	if len(followups) > 0 {
+	if scenario == "canceled" {
+		require.Error(t, err)
+	} else if scenario != "" {
+		require.Equal(t, coderws.StatusTryAgainLater, coderws.CloseStatus(err))
+	} else if len(followups) > 0 {
 		require.Equal(t, coderws.StatusTryAgainLater, coderws.CloseStatus(err), "a later-turn limit must not turn into a successful replay: %s", event)
 		require.ErrorContains(t, err, "rate limit")
 	} else {
@@ -2743,7 +2782,7 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 		require.Equal(t, int32(2), firstConnections.Load(), "the same account must reject the replacement handshake")
 	}
 	require.Len(t, firstHitCh, expectedFrames)
-	if len(followups) > 0 {
+	if len(followups) > 0 || scenario != "" {
 		require.Zero(t, secondConnections.Load(), "the replacement account must not receive the original connection message")
 		require.Empty(t, secondHitCh)
 	} else {
@@ -2753,7 +2792,15 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 			t.Fatal("等待第二个上游收到重放首帧超时")
 		}
 	}
-	require.Equal(t, []int64{int64(9902)}, accountRepo.rateLimitedIDs)
+	if scenario != "canceled" {
+		require.Equal(t, []int64{int64(9902)}, accountRepo.rateLimitedIDs)
+	}
+	if len(followups) == 0 && scenario == "" {
+		assertSwitchCount(1)
+	} else {
+		assertSwitchCount(0)
+	}
+
 }
 
 func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClientForOneFailover(t *testing.T) {
@@ -2899,6 +2946,7 @@ func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClien
 	}
 	handlerDone := make(chan struct{})
 	router := gin.New()
+	assertSwitchCount := installOpsSwitchRecorder(t, router)
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.User.ID, Concurrency: 1})
@@ -2960,6 +3008,8 @@ func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClien
 	require.Equal(t, int32(1), firstConnections.Load())
 	require.Equal(t, int32(1), secondConnections.Load())
 	require.NotContains(t, accountRepo.rateLimitedIDs, int64(9913), "healthy failover account must not be penalized")
+	assertSwitchCount(1)
+
 }
 
 func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSUsageLogCase) openAIResponsesWSUsageLogResult {

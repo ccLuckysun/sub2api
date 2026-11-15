@@ -1,0 +1,109 @@
+# Authorized W5 deviation: API §9 retains mode on RHS and fails vector matching.
+# Remove cpu AND mode; normal node_load5 has no mode label.
+# Route 白名单随 backend/internal/server/routes/gateway.go 同步维护；不能用全局计数替代实例差集。
+{
+  "groups": [
+    {
+      "name": "sub2api-v2-infra",
+      "interval": "15s",
+      "rules": [
+        {
+          "alert": "NodeExporterDown",
+          "expr": "absent(up{job=\"node\"}) or up{job=\"node\"} == 0",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "NodeExporterDown",
+            "description": "实例 {{ $labels.instance }}：NodeExporterDown；请结合 V2 看板与样本核实。"
+          },
+          "for": "5m"
+        },
+        {
+          "alert": "NodeDiskLow",
+          "expr": "node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} < 0.15",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "NodeDiskLow",
+            "description": "实例 {{ $labels.instance }}：NodeDiskLow；请结合 V2 看板与样本核实。"
+          },
+          "for": "10m"
+        },
+        {
+          "alert": "NodeMemoryPressure",
+          "expr": "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.08",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "NodeMemoryPressure",
+            "description": "实例 {{ $labels.instance }}：NodeMemoryPressure；请结合 V2 看板与样本核实。"
+          },
+          "for": "10m"
+        },
+        {
+          "alert": "NodeLoadHigh",
+          "expr": "node_load5 / count without(cpu, mode)(node_cpu_seconds_total{mode=\"idle\"}) > 2",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "NodeLoadHigh",
+            "description": "实例 {{ $labels.instance }}：NodeLoadHigh；请结合 V2 看板与样本核实。"
+          },
+          "for": "15m"
+        },
+        {
+          "alert": "PrometheusRuleEvalFailures",
+          "expr": "rate(prometheus_rule_evaluation_failures_total[10m]) > 0",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "PrometheusRuleEvalFailures",
+            "description": "实例 {{ $labels.instance }}：PrometheusRuleEvalFailures；请结合 V2 看板与样本核实。"
+          },
+          "for": "10m"
+        },
+        {
+          "alert": "PrometheusTsdbCompactionFailed",
+          "expr": "rate(prometheus_tsdb_compactions_failed_total[15m]) > 0",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "PrometheusTsdbCompactionFailed",
+            "description": "实例 {{ $labels.instance }}：PrometheusTsdbCompactionFailed；请结合 V2 看板与样本核实。"
+          },
+          "for": "15m"
+        },
+        {
+          "alert": "PrometheusTargetMissing",
+          "expr": "absent(up{job=\"sub2api\"}) or absent(up{job=\"prometheus\"}) or absent(up{job=\"alertmanager\"}) or up == 0",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "PrometheusTargetMissing",
+            "description": "实例 {{ $labels.instance }}：PrometheusTargetMissing；请结合 V2 看板与样本核实。"
+          },
+          "for": "10m"
+        },
+        {
+          "alert": "AlertmanagerDown",
+          "expr": "up{job=\"alertmanager\"} == 0",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "AlertmanagerDown",
+            "description": "实例 {{ $labels.instance }}：AlertmanagerDown；请结合 V2 看板与样本核实。"
+          },
+          "for": "5m"
+        }
+      ]
+    }
+  ]
+}

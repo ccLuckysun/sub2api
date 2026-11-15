@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -17,7 +18,7 @@ import (
 // It preserves Gin's broken-pipe handling by not attempting to write a response
 // when the client connection is already gone.
 func Recovery() gin.HandlerFunc {
-	return gin.CustomRecoveryWithWriter(gin.DefaultErrorWriter, func(c *gin.Context, recovered any) {
+	recovery := gin.CustomRecoveryWithWriter(gin.DefaultErrorWriter, func(c *gin.Context, recovered any) {
 		recoveredErr, _ := recovered.(error)
 
 		if isBrokenPipe(recoveredErr) {
@@ -28,6 +29,7 @@ func Recovery() gin.HandlerFunc {
 			return
 		}
 
+		c.Set(monitoring.OpsPanicKey, true)
 		if c.Writer.Written() {
 			c.Abort()
 			return
@@ -42,6 +44,19 @@ func Recovery() gin.HandlerFunc {
 		)
 		c.Abort()
 	})
+	return func(c *gin.Context) {
+		recovery(c)
+		// Gin handles unwrapped broken-pipe panics internally, bypassing the
+		// custom callback. Both paths leave an error and preserve the response.
+		if rec := monitoring.RecorderFromContext(c.Request.Context()); rec != nil {
+			for _, recorded := range c.Errors {
+				if isBrokenPipe(recorded.Err) {
+					safeObserve(func() { rec.MarkClientAbort("response") })
+					break
+				}
+			}
+		}
+	}
 }
 
 func isBrokenPipe(err error) bool {

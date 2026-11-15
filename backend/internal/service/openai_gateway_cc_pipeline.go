@@ -252,9 +252,20 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	ops := openAIBridgeOpsFromContext(ctx)
+	if ops != nil {
+		upstreamReq = ops.prepare(upstreamReq)
+		ctx = ops.context(ctx)
+	}
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
+		if ops != nil {
+			ops.failure(err, "transport", 0, "")
+		}
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+	}
+	if ops != nil {
+		ops.response(resp)
 	}
 	return resp, nil
 }

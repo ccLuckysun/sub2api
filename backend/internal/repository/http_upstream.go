@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
@@ -304,6 +305,34 @@ func (s *httpUpstreamService) upstreamDrainTimeout() time.Duration {
 	return pkghttputil.DefaultUpstreamDrainTimeout
 }
 
+// Isolate observation failures without recovering or changing business I/O.
+func observeHTTPUpstreamOps(observe func()) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("HTTP upstream ops observation failed", "panic", recovered)
+		}
+	}()
+	observe()
+}
+
+// upstreamOpsHandleKey carries the first physical send through RoundTripper.
+// Fallback transports create a new handle for their additional physical send.
+type upstreamOpsHandleKey struct{}
+
+// opsIdentityBody preserves an existing observer through cancellation or error
+// body replay decorators, without installing a second byte-counting layer.
+type opsIdentityBody struct {
+	io.ReadCloser
+	observation monitoring.OpsObservation
+}
+
+func (b *opsIdentityBody) OpsObservationDirection() string {
+	return b.observation.OpsObservationDirection()
+}
+func (b *opsIdentityBody) OpsResponseHandle() *monitoring.OpsResponse {
+	return b.observation.OpsResponseHandle()
+}
+
 // doUpstreamRequest owns cancellation for one attempt, without cancelling the
 // caller's context (which may be detached for billing or reused for retries).
 func doUpstreamRequest(client *http.Client, req *http.Request, drainTimeouts ...time.Duration) (*http.Response, error) {
@@ -312,13 +341,38 @@ func doUpstreamRequest(client *http.Client, req *http.Request, drainTimeouts ...
 		drainTimeout = drainTimeouts[0]
 	}
 	ctx, cancel := pkghttputil.NewUpstreamAttemptContext(req.Context(), drainTimeout)
+	rec := monitoring.RecorderFromContext(ctx)
+	attempt := monitoring.AttemptFromContext(ctx)
+	var handle *monitoring.OpsResponse
+	if attempt != nil {
+		observeHTTPUpstreamOps(func() {
+			service.NoteHTTPUpstreamProxyConnectResponse(ctx, 0)
+			handle = attempt.Sent()
+			ctx = context.WithValue(ctx, upstreamOpsHandleKey{}, handle)
+			monitoring.ObserveHTTPRequest(rec, req)
+		})
+	}
 	resp, err := servertiming.Do(client, req.WithContext(ctx))
 	if err != nil {
+		observeHTTPUpstreamOps(func() { attempt.BodyDoneFor(handle, err) })
 		cancel()
 		return resp, err
 	}
-	decompressResponseBody(resp)
+	var existing *monitoring.OpsResponse
+	observeHTTPUpstreamOps(func() { existing = monitoring.ResponseHandle(resp) })
+	var observation monitoring.OpsObservation
+	if existing != nil {
+		observation, _ = resp.Body.(monitoring.OpsObservation)
+	} else {
+		observeHTTPUpstreamOps(func() { attempt.NoteHeadersFor(handle, resp.StatusCode) })
+		decompressResponseBody(resp)
+	}
 	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
+	if existing != nil {
+		resp.Body = &opsIdentityBody{ReadCloser: resp.Body, observation: observation}
+	} else if attempt != nil {
+		observeHTTPUpstreamOps(func() { resp.Body = monitoring.ObserveResponseBody(rec, attempt, handle, resp.Body) })
+	}
 	return resp, nil
 }
 
@@ -405,32 +459,69 @@ func httpClientWithGrokAccessDeniedFallback(client *http.Client) *http.Client {
 }
 
 func (t *grokAccessDeniedFallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	rec := monitoring.RecorderFromContext(req.Context())
+	attempt := monitoring.AttemptFromContext(req.Context())
+	handle, _ := req.Context().Value(upstreamOpsHandleKey{}).(*monitoring.OpsResponse)
 	resp, err := t.base.RoundTrip(req)
 	if err != nil || !isGrokCLIAccessDeniedFallbackCandidate(req, resp) {
 		return resp, err
 	}
 
+	// The existing fallback predicate inspects the raw body. Only identity bodies
+	// can be observed here without changing that predicate's decoding behavior.
+	// Encoded candidates remain unchanged and are observed after decoding by Do.
+	observeHTTPUpstreamOps(func() { attempt.NoteHeadersFor(handle, resp.StatusCode) })
+	var originalObservation monitoring.OpsObservation
+	encoding := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	if attempt != nil && (encoding == "" || encoding == "identity") {
+		observeHTTPUpstreamOps(func() { resp.Body = monitoring.ObserveResponseBody(rec, attempt, handle, resp.Body) })
+		originalObservation, _ = resp.Body.(monitoring.OpsObservation)
+	}
 	body, ok := bufferSmallResponseBody(resp, grokFallbackBodyLimit)
+	if originalObservation != nil {
+		// bufferSmallResponseBody replaces Body with a replay/prefix. Forward the
+		// original identity so cached bytes are never counted a second time.
+		resp.Body = &opsIdentityBody{ReadCloser: resp.Body, observation: originalObservation}
+	}
 	if !ok || !isGrokCLICompatibilityAccessDenied(body) {
 		return resp, nil
 	}
-
 	fallbackReq, err := newGrokOfficialAPIFallbackRequest(req)
 	if err != nil {
 		return resp, nil
 	}
+	var fallbackHandle *monitoring.OpsResponse
+	if attempt != nil {
+		observeHTTPUpstreamOps(func() {
+			fallbackHandle = attempt.Sent()
+			monitoring.ObserveHTTPRequest(rec, fallbackReq)
+		})
+	}
 	fallbackResp, fallbackErr := t.base.RoundTrip(fallbackReq)
 	if fallbackErr != nil {
+		observeHTTPUpstreamOps(func() { attempt.BodyDoneFor(fallbackHandle, fallbackErr) })
 		slog.Debug("grok_cli_access_denied_api_fallback_failed", "path", req.URL.EscapedPath(), "error", fallbackErr)
 		return resp, nil
 	}
+	observeHTTPUpstreamOps(func() { attempt.NoteHeadersFor(fallbackHandle, fallbackResp.StatusCode) })
 	if fallbackResp.StatusCode < http.StatusOK || fallbackResp.StatusCode >= http.StatusMultipleChoices {
 		if fallbackResp.Body != nil {
+			// No new reads: the existing branch only closes this unconsumed response.
+			if attempt != nil {
+				observeHTTPUpstreamOps(func() {
+					fallbackResp.Body = monitoring.ObserveResponseBody(rec, attempt, fallbackHandle, fallbackResp.Body)
+				})
+			}
 			_ = fallbackResp.Body.Close()
 		}
 		return resp, nil
 	}
-
+	if attempt != nil {
+		decompressResponseBody(fallbackResp)
+		observeHTTPUpstreamOps(func() {
+			fallbackResp.Body = monitoring.ObserveResponseBody(rec, attempt, fallbackHandle, fallbackResp.Body)
+		})
+	}
 	if resp.Body != nil {
 		_ = resp.Body.Close()
 	}
@@ -1391,13 +1482,14 @@ func newUpstreamDialer() *net.Dialer {
 //   - ResponseHeaderTimeout: 等待响应头超时（不影响流式传输）
 func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMode string) (*http.Transport, error) {
 	transport := &http.Transport{
-		DialContext:           newUpstreamDialer().DialContext,
-		TLSHandshakeTimeout:   defaultUpstreamTLSHandshakeTimeout,
-		MaxIdleConns:          settings.maxIdleConns,
-		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
-		MaxConnsPerHost:       settings.maxConnsPerHost,
-		IdleConnTimeout:       settings.idleConnTimeout,
-		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+		OnProxyConnectResponse: observeProxyConnectResponse,
+		DialContext:            newUpstreamDialer().DialContext,
+		TLSHandshakeTimeout:    defaultUpstreamTLSHandshakeTimeout,
+		MaxIdleConns:           settings.maxIdleConns,
+		MaxIdleConnsPerHost:    settings.maxIdleConnsPerHost,
+		MaxConnsPerHost:        settings.maxConnsPerHost,
+		IdleConnTimeout:        settings.idleConnTimeout,
+		ResponseHeaderTimeout:  settings.responseHeaderTimeout,
 	}
 	switch protocolMode {
 	case upstreamProtocolModeLongStreamH2, upstreamProtocolModeOpenAIH2:
@@ -1419,6 +1511,15 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		return nil, err
 	}
 	return transport, nil
+}
+
+// Retain status for classification without replacing net/http's CONNECT error,
+// consuming its response body, or changing its connection lifecycle.
+func observeProxyConnectResponse(ctx context.Context, _ *url.URL, _ *http.Request, response *http.Response) error {
+	observeHTTPUpstreamOps(func() {
+		service.NoteHTTPUpstreamProxyConnectResponse(ctx, response.StatusCode)
+	})
+	return nil
 }
 
 // enableHTTP2KeepAlive 在 http.Transport 上显式配置 HTTP/2 并启用连接健康探测。
@@ -1509,6 +1610,22 @@ type trackedBody struct {
 	io.ReadCloser // 原始响应体
 	once          sync.Once
 	onClose       func() // 关闭时的回调函数
+}
+
+// Preserve observation identity through in-flight tracking without reading or
+// adding another observation layer. Unobserved bodies retain no identity.
+func (b *trackedBody) OpsObservationDirection() string {
+	if observation, ok := b.ReadCloser.(monitoring.OpsObservation); ok {
+		return observation.OpsObservationDirection()
+	}
+	return ""
+}
+
+func (b *trackedBody) OpsResponseHandle() *monitoring.OpsResponse {
+	if observation, ok := b.ReadCloser.(monitoring.OpsObservation); ok {
+		return observation.OpsResponseHandle()
+	}
+	return nil
 }
 
 // Close 关闭响应体并执行回调
