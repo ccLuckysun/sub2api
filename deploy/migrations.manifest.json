@@ -1515,7 +1515,7 @@
     {
       "filename": "251_ops_v2_samples.sql",
       "version": "251",
-      "sha256": "e85ba9ce2b8043a2cc24aaaf107b1ce54a0ae413ecae22f824d92cc485ad8b23"
+      "sha256": "f85a67f9c554321041e2ea27683d1fd5ea13a8a4164525fe795d221455e95e97"
     },
     {
       "filename": "252_add_usage_logs_v2_fields.sql",

@@ -3,6 +3,37 @@
 -- Required observation/request identity fields intentionally have no defaults.
 -- Existing incompatible types/constraints require a separate pre-deployment audit;
 -- adding a missing required field to populated legacy data must fail, not invent it.
+--
+-- A release built from the earlier monitoring lineage already created
+-- ops_request_transfer_samples with a different shape (sample_id uuid PRIMARY KEY,
+-- NOT NULL started_at/result/result_basis/timeline). PostgreSQL cannot add a second
+-- primary key, and those NOT NULL legacy columns have no default for new inserts, so
+-- such a table is renamed aside (rows kept for audit) before the new shape is created.
+-- The rename must also move the pkey constraint name, otherwise the new table cannot
+-- reuse "ops_request_transfer_samples_pkey".
+DO $legacy$
+DECLARE
+  legacy_table TEXT := format('ops_request_transfer_samples_legacy_%s', to_char(now(), 'YYYYMMDD_HH24MISS'));
+BEGIN
+  IF to_regclass('public.ops_request_transfer_samples') IS NOT NULL
+     AND EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'ops_request_transfer_samples'
+         AND column_name = 'sample_id')
+     AND NOT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'ops_request_transfer_samples'
+         AND column_name = 'id') THEN
+    EXECUTE format('ALTER TABLE public.ops_request_transfer_samples RENAME TO %I', legacy_table);
+    EXECUTE format('ALTER TABLE public.%I RENAME CONSTRAINT ops_request_transfer_samples_pkey TO %I',
+                   legacy_table, legacy_table || '_pkey');
+    RAISE NOTICE 'ops_request_transfer_samples: incompatible legacy table renamed to %', legacy_table;
+  END IF;
+END
+$legacy$;
+
 CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
   id BIGSERIAL PRIMARY KEY,
   observed_at TIMESTAMPTZ NOT NULL,
@@ -23,7 +54,7 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 );
 
 ALTER TABLE ops_request_transfer_samples
-    ADD COLUMN IF NOT EXISTS id BIGSERIAL PRIMARY KEY,
+    ADD COLUMN IF NOT EXISTS id BIGSERIAL,
     ADD COLUMN IF NOT EXISTS observed_at TIMESTAMPTZ NOT NULL,
     ADD COLUMN IF NOT EXISTS request_id TEXT NOT NULL,
     ADD COLUMN IF NOT EXISTS user_id BIGINT,
@@ -63,6 +94,20 @@ ALTER TABLE ops_request_transfer_samples
     ADD COLUMN IF NOT EXISTS bytes_resp_upstream_source TEXT,
     ADD COLUMN IF NOT EXISTS bytes_resp_downstream_source TEXT,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- PRIMARY KEY is declared inline by CREATE TABLE; only a table that predates it
+-- (existing column set without any primary key) needs it added here.
+DO $pk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.ops_request_transfer_samples'::regclass
+      AND contype = 'p') THEN
+    ALTER TABLE public.ops_request_transfer_samples
+      ADD CONSTRAINT ops_request_transfer_samples_pkey PRIMARY KEY (id);
+  END IF;
+END
+$pk$;
 
 -- Keep the initial index budget to the three contract query paths (section 7.4).
 -- A time-leading index does not eliminate sorting for ORDER BY total_ms DESC.
