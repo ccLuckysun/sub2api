@@ -47,7 +47,8 @@ class MonitoringDeployment(unittest.TestCase):
         (self.work / '.env').write_bytes(self.business_env)
         self.env = os.environ.copy()
         for key in ['COMPOSE_FILE', 'COMPOSE_PROFILES', 'COMPOSE_PROJECT_NAME',
-                    'GRAFANA_ADMIN_PASSWORD', 'MONITORING_HOST_METRICS_ENABLED',
+                    'GRAFANA_ADMIN_PASSWORD', 'GRAFANA_PG_PASSWORD', 'MONITORING_HOST_METRICS_ENABLED',
+                    'MONITORING_BACKUP_ENABLED', 'SUB2API_DEV_ENV_FILE',
                     'NODE_EXPORTER_HOST_IP', 'PROM_SCRAPE_INTERVAL', 'PROM_SCRAPE_TIMEOUT',
                     'POSTGRES_PASSWORD', 'REDIS_PASSWORD', 'MONITORING_ENV_FILE']:
             self.env.pop(key, None)
@@ -76,7 +77,7 @@ class MonitoringDeployment(unittest.TestCase):
         bindir.mkdir()
         shim = bindir / 'docker'
         shim.write_text('''#!/usr/bin/env python3
-import json,os,sys
+import json,os,subprocess,sys
 from pathlib import Path
 args=sys.argv[1:]
 with open(os.environ['DOCKER_EVENT_LOG'],'a') as f: f.write(json.dumps(args)+'\\n')
@@ -97,17 +98,52 @@ if args[0]=='exec' and args[1]=='existing-postgres':
     sys.stdout.buffer.write(b'PGDMP-fixture'); sys.exit(0)
 if args[0]=='logs': sys.exit(0)
 if args[0]=='compose':
-    if 'up' in args: sys.exit(int(os.environ.get('FAIL_UP','0')))
-    if 'exec' in args: print('{}'); sys.exit(0)
+    if 'up' in args:
+        sys.exit(int(os.environ.get('FAIL_UP','0')) or int(os.environ.get('FAIL_WAIT_FOR') in args))
+    if 'run' in args and args[-1]=='snapshots-init': sys.exit(0)
+    if 'exec' in args:
+        index=args.index('exec')
+        service,command,*params=args[index+2:]
+        if service=='postgres' and command=='printenv':
+            print({'POSTGRES_USER':'fixture_user','POSTGRES_DB':'fixture_db'}[params[0]]); sys.exit(0)
+        if service=='grafana' and command=='sh':
+            config=subprocess.check_output([os.environ['REAL_DOCKER'],*args[:index],
+                                            'config','--format','json'])
+            grafana_env={key:value.replace('$$','$') for key,value in
+                         json.loads(config)['services']['grafana']['environment'].items()}
+            os.execvpe(command,[command,*params],dict(os.environ,**grafana_env))
+        if service=='postgres' and command=='sh':
+            os.execvp(command,[command,*params])
+        if service=='sub2api' and command=='printenv' and params==['MONITORING_METRICS_ENABLED']:
+            print(os.environ.get('FIXTURE_METRICS_ENABLED','true')); sys.exit(0)
+        if service=='prometheus' and command=='sh':
+            sys.exit(int(os.environ.get('FAIL_APP_METRICS','0')))
+        raise SystemExit('Unexpected Compose exec: '+str(args))
+    if 'config' not in args and 'version' not in args:
+        raise SystemExit('Unexpected Compose command: '+str(args))
 os.execv(os.environ['REAL_DOCKER'],[os.environ['REAL_DOCKER'],*args])
 ''')
         shim.chmod(0o755)
+        psql = bindir / 'psql'
+        psql.write_text('''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+Path(os.environ['PSQL_CAPTURE']).write_text(json.dumps({
+    'args':sys.argv[1:], 'credential':os.environ['GRAFANA_PG_PASSWORD'], 'sql':sys.stdin.read(),
+}))
+''')
+        psql.chmod(0o755)
+        self.psql_capture = self.root / 'psql.json'
         self.env.update(PATH=str(bindir) + os.pathsep + self.env['PATH'],
                         DOCKER_EVENT_LOG=str(self.log), REAL_DOCKER=DOCKER,
+                        PSQL_CAPTURE=str(self.psql_capture),
                         FAKE_WORKDIR=str(self.work),
                         FAKE_CONFIG_FILES=str(self.work / 'docker-compose.yml') + ',' + str(self.work / 'caddy.yml'))
 
-    def remote_fixture(self):
+    def docker_events(self):
+        return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+    def remote_fixture(self, mode='monitoring'):
         self.install_docker_shim()
         (self.work / 'caddy.yml').write_text('services:\n  caddy:\n    image: caddy:2\n')
         stage = self.root / 'upload'
@@ -117,10 +153,10 @@ os.execv(os.environ['REAL_DOCKER'],[os.environ['REAL_DOCKER'],*args])
             for name in ASSETS:
                 archive.add(DEPLOY / name, arcname=name)
         self.env['SUB2API_BACKUP_DIR'] = str(self.root)
-        return ['bash', DEPLOY / 'remote-deploy.sh', '1.0.1', stage, 'monitoring',
+        return ['bash', DEPLOY / 'remote-deploy.sh', '1.0.1', stage, mode,
                 'existing-app', 'existing-postgres', 'example/sub2api']
 
-    def test_five_services_and_idempotent_credentials(self):
+    def test_six_services_and_idempotent_credentials(self):
         self.configure('--monitoring', '--image', 'example/sub2api:1.0.1')
         first_env = (self.work / 'monitoring.env').read_bytes()
         self.assertEqual((self.work / 'monitoring.env').stat().st_mode & 0o777, 0o600)
@@ -129,6 +165,7 @@ os.execv(os.environ['REAL_DOCKER'],[os.environ['REAL_DOCKER'],*args])
         self.assertEqual(config['services']['sub2api']['environment']['DATABASE_PASSWORD'], self.business_env.decode().splitlines()[0].split('=', 1)[1])
         self.assertEqual(config['services']['grafana']['ports'][0]['host_ip'], '127.0.0.1')
         self.assertNotIn('ports', config['services']['prometheus'])
+        self.assertIn('http://localhost:9093/-/ready', config['services']['alertmanager']['healthcheck']['test'])
         self.assertEqual(config['services']['sub2api']['environment']['MONITORING_METRICS_ENABLED'], 'true')
         self.assertNotIn('job_name: node', (self.work / 'monitoring/prometheus.yml').read_text())
         # Re-rendering identical content must keep the inode used by a bind mount.
@@ -139,6 +176,17 @@ os.execv(os.environ['REAL_DOCKER'],[os.environ['REAL_DOCKER'],*args])
         self.assertEqual((self.work / 'monitoring/prometheus.yml').stat().st_ino, inode)
         self.assertEqual((self.work / '.env').read_bytes(), self.business_env)
         self.assertIn('grafana', self.config()['services'])
+
+    def test_metrics_check_rejects_incompatible_image_unless_explicitly_disabled(self):
+        self.install_docker_shim()
+        self.configure('--monitoring')
+        self.env['FAIL_APP_METRICS'] = '1'
+        command = ['bash', self.work / 'compose-deploy.sh', '--check-monitoring']
+        result = self.run_command(command, success=False)
+        self.assertIn('image lacks the V2 monitoring baseline', result.stderr)
+        self.env['FIXTURE_METRICS_ENABLED'] = 'false'
+        result = self.run_command(command)
+        self.assertIn('explicitly disabled', result.stdout)
 
     def test_shell_only_business_environment_without_dotenv(self):
         (self.work / '.env').unlink()
@@ -206,16 +254,18 @@ os.execv(os.environ['REAL_DOCKER'],[os.environ['REAL_DOCKER'],*args])
     def test_remote_preserves_project_files_and_only_recreates_app_and_monitoring(self):
         command = self.remote_fixture()
         p = self.run_command(command)
-        events = [json.loads(line) for line in self.log.read_text().splitlines()]
+        events = self.docker_events()
         tag_index = next(i for i, e in enumerate(events) if e[0] == 'tag')
         load_index = next(i for i, e in enumerate(events) if e[0] == 'load')
         self.assertLess(tag_index, load_index)
         self.assertEqual(events[tag_index][1], 'sha256:old-running-image')
         ups = [e for e in events if e[0] == 'compose' and 'up' in e]
-        self.assertEqual(len(ups), 2)
+        self.assertEqual([command[command.index('--force-recreate') + 1:] for command in ups],
+                         [['sub2api'], ['prometheus', 'alertmanager'], ['grafana']])
         for command in ups:
             tail = command[command.index('up') + 1:]
             self.assertIn('--no-deps', tail)
+            self.assertIn('--wait', tail)
             self.assertNotIn('postgres', tail)
             self.assertNotIn('redis', tail)
             self.assertNotIn('caddy', tail)
@@ -225,6 +275,150 @@ os.execv(os.environ['REAL_DOCKER'],[os.environ['REAL_DOCKER'],*args])
         self.run_command(['bash', '-n', rollback])
         self.assertIn('rollback-', rollback.read_text())
         self.assertNotIn('GRAFANA_ADMIN_PASSWORD=', p.stdout)
+
+    def test_remote_waits_for_alertmanager_and_does_not_report_success_on_failure(self):
+        command = self.remote_fixture()
+        self.env['FAIL_WAIT_FOR'] = 'alertmanager'
+        result = self.run_command(command, success=False)
+        self.assertIn('Rollback application:', result.stdout)
+        self.assertNotIn('Deployment complete.', result.stdout)
+        self.assertFalse(self.psql_capture.exists())
+
+    def test_remote_archives_retired_source_dashboard_before_upgrade(self):
+        command = self.remote_fixture()
+        relative = 'monitoring/grafana/dashboards/02-chain.json'
+        retired = self.work / relative
+        original = b'{"title":"Legacy chain dashboard"}\n'
+        retired.write_bytes(original)
+        result = self.run_command(command)
+        self.assertIn('Archived retired dashboard:', result.stdout)
+        self.assertIn('Deployment complete.', result.stdout)
+        self.assertFalse(retired.exists())
+        archived, = self.work.glob('sub2api-retired-dashboards-*/02-chain.json')
+        self.assertEqual(archived.read_bytes(), original)
+        self.assertEqual(archived.parent.stat().st_mode & 0o777, 0o700)
+        backup, = self.work.glob('sub2api-deploy-config-*.tar.gz')
+        with tarfile.open(backup) as archive:
+            self.assertEqual(archive.extractfile(relative).read(), original)
+
+    def test_remote_will_not_move_a_symlink_at_the_retired_dashboard_path(self):
+        command = self.remote_fixture()
+        retired = self.work / 'monitoring/grafana/dashboards/02-chain.json'
+        retired.symlink_to('02-requests.json')
+        result = self.run_command(command, success=False)
+        self.assertIn('Cannot archive unexpected file type:', result.stderr)
+        self.assertTrue(retired.is_symlink())
+        self.assertFalse(any(event[0] != 'inspect' for event in self.docker_events()))
+
+    def test_remote_starts_enabled_profiles_and_initializes_snapshots_first(self):
+        command = self.remote_fixture()
+        (self.work / 'monitoring.env').write_text(
+            'MONITORING_HOST_METRICS_ENABLED=true\nMONITORING_BACKUP_ENABLED=true\n')
+        self.run_command(command)
+        mutations = [event for event in self.docker_events()
+                     if event[0] == 'compose' and ('up' in event or 'run' in event)]
+        self.assertEqual(len(mutations), 4)
+        self.assertEqual(mutations[1][mutations[1].index('run'):],
+                         ['run', '--rm', '--no-deps', '-T', 'snapshots-init'])
+        self.assertEqual(mutations[2][-3:], ['prometheus', 'alertmanager', 'node-exporter'])
+        self.assertEqual(mutations[3][-2:], ['grafana', 'backup'])
+        for event in mutations:
+            self.assertIn('--no-deps', event)
+            self.assertIn('host-metrics', event)
+            self.assertIn('backup', event)
+
+    def test_remote_app_only_needs_no_monitoring_env_or_db_role(self):
+        self.run_command(self.remote_fixture('app-only'))
+        ups = [event for event in self.docker_events() if event[0] == 'compose' and 'up' in event]
+        self.assertEqual(len(ups), 1)
+        self.assertEqual(ups[0][-1], 'sub2api')
+        self.assertFalse((self.work / 'monitoring.env').exists())
+        self.assertFalse(self.psql_capture.exists())
+
+    def test_remote_app_only_recovers_missing_managed_env_for_existing_monitoring(self):
+        command = self.remote_fixture('app-only')
+        self.env['FAKE_CONFIG_FILES'] += ',' + str(self.work / 'docker-compose.monitoring.yml')
+        self.env['FAKE_ENV_FILES'] = ','.join(str(self.work / file) for file in ['.env', 'monitoring.env'])
+        self.run_command(command)
+        self.assertTrue((self.work / 'monitoring.env').exists())
+        self.assertEqual(self.config()['services']['sub2api']['environment']['DATABASE_PASSWORD'],
+                         self.business_env.decode().splitlines()[0].split('=', 1)[1])
+        self.assertTrue(self.psql_capture.exists())
+
+    def test_db_role_uses_effective_compose_credential_only_on_stdin(self):
+        self.install_docker_shim()
+        env_file = self.work / 'monitoring.env'
+        dotenv_credential = 'quoted DOTENV # not a comment $literal \\ test'
+        env_file.write_text(f"GRAFANA_PG_PASSWORD='{dotenv_credential}'\n")
+        self.configure('--monitoring')
+        for expected in [dotenv_credential, "override with spaces 'quotes' \\ and $literal"]:
+            with self.subTest(expected=expected):
+                if expected != dotenv_credential:
+                    self.env['GRAFANA_PG_PASSWORD'] = expected
+                result = self.run_command([self.work / 'compose-deploy.sh', '--setup-grafana-db'])
+                captured = json.loads(self.psql_capture.read_text())
+                self.assertEqual(captured['credential'], expected)
+                self.assertEqual(captured['args'], ['-X', '-v', 'ON_ERROR_STOP=1', '-U', 'fixture_user',
+                                                     '-d', 'fixture_db'])
+                sql = (self.work / 'monitoring/sql/grafana-ro.sql').read_text()
+                self.assertEqual(captured['sql'], '\\getenv password GRAFANA_PG_PASSWORD\n' + sql)
+                self.assertNotIn(expected, result.stdout + result.stderr + self.log.read_text())
+
+    def test_db_role_rejects_multiline_credential_before_psql(self):
+        self.install_docker_shim()
+        self.configure('--monitoring')
+        self.env['GRAFANA_PG_PASSWORD'] = 'fixture-with-trailing-newline\n'
+        result = self.run_command([self.work / 'compose-deploy.sh', '--setup-grafana-db'], success=False)
+        self.assertIn('must be configured and single-line', result.stderr)
+        self.assertFalse(self.psql_capture.exists())
+
+    def test_db_role_stdin_transport_with_real_psql(self):
+        self.install_docker_shim()
+        self.configure('--monitoring')
+        self.env['GRAFANA_PG_PASSWORD'] = "  literal with 'quotes', \\backslash and $dollar  "
+        sql = self.work / 'monitoring/sql/grafana-ro.sql'
+        sql.write_text("SELECT :'password';\n")
+        self.run_command([self.work / 'compose-deploy.sh', '--setup-grafana-db'])
+        captured = json.loads(self.psql_capture.read_text())
+        transport = next(event for event in self.docker_events()
+                         if 'exec' in event and 'postgres' in event and 'sh' in event)
+        shell = transport[transport.index('exec') + 3:]
+        result = subprocess.run([DOCKER, 'run', '--rm', '-i', '--network', 'none',
+                                 '--user', 'postgres', '--entrypoint', 'sh', 'postgres:18-alpine', '-ec',
+                                 'export PGDATA="$(mktemp -d)"; initdb -A trust >/dev/null; '
+                                 'pg_ctl -l "$PGDATA/server.log" -o "-c listen_addresses=" -w start >/dev/null; '
+                                 'createuser fixture_user; createdb -O fixture_user fixture_db; exec "$@"',
+                                 'fixture', *shell],
+                                input=captured['credential'] + '\n' + captured['sql'],
+                                text=True, capture_output=True, env=self.env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(self.env['GRAFANA_PG_PASSWORD'], result.stdout)
+
+    def test_local_deploy_rebinds_rules_even_when_rendered_config_is_unchanged(self):
+        self.install_docker_shim()
+        self.configure('--monitoring')
+        rendered = self.work / 'monitoring/prometheus.yml'
+        inode = rendered.stat().st_ino
+        rules = self.work / 'monitoring/prometheus/rules/slo.yml'
+        replacement = rules.with_suffix('.tmp')
+        replacement.write_text(rules.read_text() + '\n# replacement fixture\n')
+        replacement.replace(rules)
+        self.run_command([self.work / 'compose-deploy.sh', '--project-name', 'monitoring-regression'])
+        self.assertEqual(rendered.stat().st_ino, inode)
+        self.assertTrue(any('--force-recreate' in event and event[-1] == 'prometheus'
+                            for event in self.docker_events()))
+
+    def test_dev_wrapper_layers_env_and_enables_only_configured_profiles(self):
+        self.install_docker_shim()
+        for name in ['dev.sh', 'docker-compose.dev.yml']:
+            shutil.copy2(DEPLOY / name, self.work / name)
+        override = self.work / 'dev-monitoring.env'
+        self.env['SUB2API_DEV_ENV_FILE'] = str(override)
+        override.write_text('GRAFANA_ADMIN_PASSWORD=fixture\nMONITORING_BACKUP_ENABLED=true\n')
+        self.run_command([self.work / 'dev.sh', 'config'])
+        config = self.docker_events()[-1]
+        self.assertEqual(config[1:5], ['--env-file', '.env', '--env-file', str(override)])
+        self.assertEqual(config[config.index('--profile'):], ['--profile', 'backup', 'config', '-q'])
 
     def test_remote_preserves_custom_business_environment_files(self):
         command = self.remote_fixture()
@@ -482,6 +676,8 @@ esac
                    DOCKER_EVENT_LOG=str(log), MONITORING_HOST_METRICS_ENABLED='false')
         # File-by-file installers do not fetch .gitkeep placeholders. Preparation
         # must create readable optional provisioning roots even under umask 077.
+        renderer = work / 'monitoring/render-prometheus-config.sh'
+        renderer.chmod(0o700)
         for directory in ('plugins', 'alerting'):
             optional = work / 'monitoring/grafana/provisioning' / directory
             if optional.exists():
@@ -490,6 +686,7 @@ esac
                                  str(work / 'compose-deploy.sh'), '--monitoring', '--no-start'],
                                 env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(renderer.stat().st_mode & 0o777, 0o755)
         for directory in ('plugins', 'alerting'):
             optional = work / 'monitoring/grafana/provisioning' / directory
             self.assertTrue(optional.is_dir(), directory)
@@ -523,7 +720,7 @@ esac
     def test_actual_release_tar_excludes_macos_metadata_recursively(self):
         # Execute only the real local tar stanza, never the build/SSH/deploy script.
         script = (REPO / 'deploy-us1.sh').read_text()
-        start = script.index('COPYFILE_DISABLE=1 tar ')
+        start = script.index('TAR_METADATA_FLAGS=()')
         command = script[start:script.index('\nREMOTE_DIR=', start)]
         deploy = self.root / 'deploy'
         for name in ASSETS:
@@ -537,12 +734,16 @@ esac
                           deploy / 'monitoring/grafana/provisioning']:
             (directory / '.DS_Store').write_bytes(b'metadata')
             (directory / '._dashboard.json').write_bytes(b'appledouble')
+        if shutil.which('xattr'):
+            subprocess.run(['xattr', '-w', 'com.sub2api.fixture', 'metadata',
+                            str(deploy / 'monitoring/grafana/dashboards/01-overview.json')], check=True)
         env = dict(os.environ, LOCAL_DIR=str(self.root))
         result = subprocess.run(['bash', '-ec', command], cwd=self.root, env=env,
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         with tarfile.open(self.root / 'monitoring-assets.tar.gz') as archive:
             names = archive.getnames()
+            self.assertFalse(any('xattr' in key.lower() for member in archive for key in member.pax_headers))
         self.assertIn('monitoring/grafana/dashboard-preflight.sh', names)
         for name in self.NAMES:
             self.assertIn('monitoring/grafana/dashboards/' + name + '.json', names)
@@ -556,7 +757,7 @@ esac
         count = 0
         for path in paths:
             for line in path.read_text().splitlines():
-                if re.search(r'\btar\s+--exclude', line):
+                if re.search(r'\btar\s+.*--exclude', line):
                     count += 1
                     self.assertIn('COPYFILE_DISABLE=1', line)
                     self.assertIn("--exclude='._*'", line)

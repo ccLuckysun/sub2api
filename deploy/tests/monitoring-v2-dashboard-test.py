@@ -40,7 +40,7 @@ EXPECTED = {
     'host': dict(file='05-host.json', uid='sub2api-v2-host', count=23,
                  refresh='30s', time_from='now-1h', variables=[]),
     'request': dict(file='06-request.json', uid='sub2api-v2-request', count=10,
-                    refresh='30s', time_from='now-1h', variables=['request']),
+                    refresh='30s', time_from='now-1h', variables=['sample_id']),
 }
 
 
@@ -206,6 +206,10 @@ for pid in ['ov_cov', 'ov_coverage']:
                m.get('options', {}).get('-1') == {'text': '无样本', 'color': 'gray'}
                for m in mappings), (pid, mappings)
 print('PASS: coverage -1 mapping is 无样本/gray')
+detail_url = '/d/sub2api-v2-request?var-sample_id=${__value.raw}&from=${__from}&to=${__to}'
+anomalies = by_pid['ov_anom']
+assert override_prop(anomalies, '详情', 'links')[0]['url'] == detail_url
+assert 's.id::text AS "详情"' in anomalies['targets'][0]['rawSql']
 
 # 02: joined request table, ordered latest first, hard limit 200.
 for spec in specs:
@@ -223,14 +227,16 @@ compact = norm_sql(sql)
 # must remain NULL rather than attach a stale local row. LIMIT 1 avoids fanout.
 usage_join = norm_sql("""
 LEFT JOIN LATERAL (
-  SELECT ul.*
+  SELECT ul.upstream_model, ul.inbound_endpoint, ul.upstream_endpoint, ul.stream,
+         ul.billing_mode, ul.input_tokens, ul.output_tokens, ul.cache_read_tokens,
+         ul.cache_creation_tokens, ul.actual_cost, ul.ip_address, ul.user_agent
   FROM usage_logs ul
   WHERE ul.api_key_id = s.api_key_id
     AND (ul.request_id = 'client:' || s.client_request_id
          OR (NULLIF(s.client_request_id, '') IS NULL
              AND ul.request_id = 'local:' || s.request_id))
   ORDER BY (ul.request_id = 'client:' || s.client_request_id) DESC,
-           ul.created_at DESC
+           ul.created_at DESC, ul.id DESC
   LIMIT 1
 ) ul ON TRUE
 """)
@@ -240,13 +246,14 @@ assert ("OR (NULLIF(s.client_request_id, '') IS NULL AND "
 assert 'LEFT JOIN usage_logs ul ON' not in compact
 for join in [
     'LEFT JOIN users u ON u.id = s.user_id',
-    'LEFT JOIN api_keys k ON k.id = s.api_key_id',
+    'LEFT JOIN grafana_api_keys k ON k.id = s.api_key_id',
     'LEFT JOIN accounts a ON a.id = s.account_id',
     'LEFT JOIN groups g ON g.id = s.group_id',
 ]:
     assert join in compact, join
-assert re.search(r'ORDER BY s\.observed_at DESC LIMIT 200', compact)
-for token in ['$__timeFilter(s.observed_at)', '$user', '$api_key', "'$result'",
+assert 's.id::text AS "详情"' in compact and 'k.masked_key' in compact
+assert re.search(r'ORDER BY s\.observed_at DESC, s\.id DESC LIMIT 200', compact)
+for token in ['$__timeFilter(s.observed_at)', '$user', '$api_key', '${result:sqlstring}',
               '${model:sqlstring}', '${search:sqlstring}']:
     assert token in sql, token
 # A normal query option, not custom includeAll/allValue, ensures sqlstring
@@ -298,7 +305,7 @@ with sqlite3.connect(':memory:') as connection:
 assert table['options']['sortBy'] == [{'displayName': '时间', 'desc': True}]
 links = override_prop(table, '详情', 'links')
 assert override_prop(table, '详情', 'custom.cellOptions') == {'type': 'data-links'}
-assert links[0]['url'].startswith('/d/sub2api-v2-request?var-request=${__value.raw}')
+assert links[0]['url'] == detail_url
 assert by_pid['rq_legend']['options']['content'].count('span') >= 6
 print('PASS: 02 table joins five relations, ORDER BY observed_at DESC LIMIT 200, '
       'five variables and detail data-link')
@@ -329,8 +336,13 @@ tokens_sql = norm_sql(by_pid['dt_tokens']['targets'][0]['rawSql'])
 for column in ['input_tokens', 'output_tokens', 'cache_read_tokens',
                'cache_creation_tokens', 'actual_cost']:
     assert column in tokens_sql, column
-assert '${request:sqlstring}' in by_pid['dt_total']['targets'][0]['rawSql']
-print('PASS: 06 six-phase/bytes/token detail panels use ${request:sqlstring}')
+for panel in by_pid.values():
+    for target in panel.get('targets', []):
+        query = norm_sql(target['rawSql'])
+        assert 'WHERE s.id = CASE WHEN ${sample_id:sqlstring}' in query
+        assert 'request_id = ${' not in query and '$__timeFilter(s.observed_at)' in query
+assert 's.request_id AS "请求 ID"' in by_pid['dt_basic']['targets'][0]['rawSql']
+print('PASS: 06 six-phase/bytes/token detail panels use the unique sample ID')
 
 # Host load divides by the cpu count without the mode label; app info joins
 # three Prometheus frames by instance.

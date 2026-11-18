@@ -64,11 +64,14 @@ func (a *AccountLabels) Label(name string) string {
 // EndpointClass maps route paths/templates to the five endpoint classes.
 func EndpointClass(path string) string {
 	switch path {
-	case "/v1/messages", "/antigravity/v1/messages", "/v1/responses":
+	case "/v1/messages", "/antigravity/v1/messages",
+		"/v1/responses", "/responses", "/backend-api/codex/responses",
+		"/v1/responses/*subpath", "/responses/*subpath", "/backend-api/codex/responses/*subpath",
+		"/v1/responses/compact", "/responses/compact", "/backend-api/codex/responses/compact":
 		return "responses"
 	case "/v1/chat/completions", "/chat/completions":
 		return "chat"
-	case "/v1/embeddings":
+	case "/v1/embeddings", "/embeddings":
 		return "embeddings"
 	}
 	if strings.HasPrefix(path, "/v1/images/") {

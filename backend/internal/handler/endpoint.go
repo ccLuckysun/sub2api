@@ -89,7 +89,7 @@ func NormalizeInboundEndpoint(path string) string {
 		return EndpointSeedanceTasks
 	case strings.Contains(path, EndpointResponsesInputTokens) || isResponsesInputTokensAliasPath(path):
 		return EndpointResponsesInputTokens
-	case strings.Contains(path, EndpointEmbeddings):
+	case strings.Contains(path, EndpointEmbeddings) || strings.TrimRight(path, "/") == "/embeddings":
 		return EndpointEmbeddings
 	case strings.Contains(path, EndpointAlphaSearch) || isBareOrSubpathOf(strings.TrimRight(path, "/"), "/alpha/search") || isBareOrSubpathOf(strings.TrimRight(path, "/"), "/backend-api/codex/alpha/search"):
 		return EndpointAlphaSearch

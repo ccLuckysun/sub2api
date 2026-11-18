@@ -190,8 +190,14 @@ jobs:
             ~/.cache/go-build
           key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
+  monitoring-runtime:
+    needs: prepare
+    uses: ./.github/workflows/monitoring-runtime.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+
   release:
-    needs: [prepare, build-binaries]
+    needs: [prepare, build-binaries, monitoring-runtime]
     runs-on: ubuntu-latest
     permissions:
       contents: write

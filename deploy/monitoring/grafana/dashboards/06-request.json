@@ -82,7 +82,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nSELECT total_ms AS \"总耗时\"\nFROM ops_request_transfer_samples\nWHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)\nORDER BY observed_at DESC LIMIT 1\n",
+          "rawSql": "\nSELECT total_ms AS \"总耗时\"\nFROM ops_request_transfer_samples s\nWHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -167,7 +167,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nSELECT headers_end_ms AS \"TTFT\"\nFROM ops_request_transfer_samples\nWHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)\nORDER BY observed_at DESC LIMIT 1\n",
+          "rawSql": "\nSELECT headers_end_ms AS \"TTFT\"\nFROM ops_request_transfer_samples s\nWHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -263,7 +263,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nSELECT bytes_in_wire AS \"请求体\"\nFROM ops_request_transfer_samples\nWHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)\nORDER BY observed_at DESC LIMIT 1\n",
+          "rawSql": "\nSELECT bytes_in_wire AS \"请求体\"\nFROM ops_request_transfer_samples s\nWHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -348,7 +348,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nSELECT http_status AS \"HTTP 状态\"\nFROM ops_request_transfer_samples\nWHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)\nORDER BY observed_at DESC LIMIT 1\n",
+          "rawSql": "\nSELECT http_status AS \"HTTP 状态\"\nFROM ops_request_transfer_samples s\nWHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -444,7 +444,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nSELECT COALESCE(u.email, '#' || s.user_id) AS \"用户\",\n       COALESCE(k.name, '—') AS \"API 密钥\",\n       COALESCE(a.name, '—') AS \"账户\",\n       COALESCE(g.name, '—') AS \"分组\",\n       s.model AS \"模型\",\n       COALESCE(ul.upstream_model, '—') AS \"上游模型\",\n       COALESCE(ul.inbound_endpoint, s.endpoint, '—') AS \"入站端点\",\n       COALESCE(ul.upstream_endpoint, '—') AS \"上游端点\",\n       CASE WHEN ul.stream IS TRUE THEN '流式'\n            WHEN ul.stream IS FALSE THEN '非流式'\n            ELSE '—' END AS \"类型\",\n       COALESCE(ul.billing_mode, '—') AS \"计费模式\",\n       s.observed_at AS \"时间\",\n       s.node AS \"节点\",\n       ul.ip_address AS \"客户端 IP\",\n       ul.user_agent AS \"User-Agent\"\nFROM ops_request_transfer_samples s\nLEFT JOIN LATERAL (\n  SELECT ul.*\n  FROM usage_logs ul\n  WHERE ul.api_key_id = s.api_key_id\n    AND (ul.request_id = 'client:' || s.client_request_id\n         OR (NULLIF(s.client_request_id, '') IS NULL\n             AND ul.request_id = 'local:' || s.request_id))\n  ORDER BY (ul.request_id = 'client:' || s.client_request_id) DESC,\n           ul.created_at DESC\n  LIMIT 1\n) ul ON TRUE\nLEFT JOIN users u ON u.id = s.user_id\nLEFT JOIN api_keys k ON k.id = s.api_key_id\nLEFT JOIN accounts a ON a.id = s.account_id\nLEFT JOIN groups g ON g.id = s.group_id\nWHERE s.request_id = ${request:sqlstring} AND $__timeFilter(s.observed_at)\nORDER BY s.observed_at DESC\nLIMIT 1\n",
+          "rawSql": "\nSELECT COALESCE(u.email, '#' || s.user_id) AS \"用户\",\n       COALESCE(k.name, '—') AS \"API 密钥\",\n       COALESCE(a.name, '—') AS \"账户\",\n       COALESCE(g.name, '—') AS \"分组\",\n       s.request_id AS \"请求 ID\",\n       s.model AS \"模型\",\n       COALESCE(ul.upstream_model, '—') AS \"上游模型\",\n       COALESCE(ul.inbound_endpoint, s.endpoint, '—') AS \"入站端点\",\n       COALESCE(ul.upstream_endpoint, '—') AS \"上游端点\",\n       CASE WHEN ul.stream IS TRUE THEN '流式'\n            WHEN ul.stream IS FALSE THEN '非流式'\n            ELSE '—' END AS \"类型\",\n       COALESCE(ul.billing_mode, '—') AS \"计费模式\",\n       s.observed_at AS \"时间\",\n       s.node AS \"节点\",\n       ul.ip_address AS \"客户端 IP\",\n       ul.user_agent AS \"User-Agent\"\nFROM ops_request_transfer_samples s\nLEFT JOIN LATERAL (\n  SELECT ul.upstream_model, ul.inbound_endpoint, ul.upstream_endpoint, ul.stream,\n         ul.billing_mode, ul.input_tokens, ul.output_tokens, ul.cache_read_tokens,\n         ul.cache_creation_tokens, ul.actual_cost, ul.ip_address, ul.user_agent\n  FROM usage_logs ul\n  WHERE ul.api_key_id = s.api_key_id\n    AND (ul.request_id = 'client:' || s.client_request_id\n         OR (NULLIF(s.client_request_id, '') IS NULL\n             AND ul.request_id = 'local:' || s.request_id))\n  ORDER BY (ul.request_id = 'client:' || s.client_request_id) DESC,\n           ul.created_at DESC, ul.id DESC\n  LIMIT 1\n) ul ON TRUE\nLEFT JOIN users u ON u.id = s.user_id\nLEFT JOIN grafana_api_keys k ON k.id = s.api_key_id\nLEFT JOIN accounts a ON a.id = s.account_id\nLEFT JOIN groups g ON g.id = s.group_id\nWHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -522,6 +522,18 @@
               {
                 "id": "custom.width",
                 "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "请求 ID"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
               }
             ]
           },
@@ -715,7 +727,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nWITH r AS (\n  SELECT *\n  FROM ops_request_transfer_samples\n  WHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)\n  ORDER BY observed_at DESC\n  LIMIT 1\n), parts AS (\n  SELECT '读取请求体' AS phase, COALESCE(body_read_ms, 0) AS ms, total_ms FROM r\n  UNION ALL SELECT '槽位等待', COALESCE(wait_ms, 0), total_ms FROM r\n  UNION ALL SELECT '网关本地', COALESCE(gateway_ms, 0), total_ms FROM r\n  UNION ALL SELECT '上游耗时', COALESCE(upstream_ms, 0), total_ms FROM r\n  UNION ALL SELECT '响应传输', COALESCE(response_ms, 0), total_ms FROM r\n  UNION ALL SELECT '收尾', COALESCE(finish_ms, 0), total_ms FROM r\n)\nSELECT phase AS \"阶段\",\n       ms AS \"耗时\",\n       round(ms * 100.0 / NULLIF(total_ms, 0), 1) AS \"占比\"\nFROM parts\n",
+          "rawSql": "\nWITH r AS (\n  SELECT body_read_ms, wait_ms, gateway_ms, upstream_ms, response_ms, finish_ms, total_ms\n  FROM ops_request_transfer_samples s\n  WHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n), parts AS (\n  SELECT '读取请求体' AS phase, COALESCE(body_read_ms, 0) AS ms, total_ms FROM r\n  UNION ALL SELECT '槽位等待', COALESCE(wait_ms, 0), total_ms FROM r\n  UNION ALL SELECT '网关本地', COALESCE(gateway_ms, 0), total_ms FROM r\n  UNION ALL SELECT '上游耗时', COALESCE(upstream_ms, 0), total_ms FROM r\n  UNION ALL SELECT '响应传输', COALESCE(response_ms, 0), total_ms FROM r\n  UNION ALL SELECT '收尾', COALESCE(finish_ms, 0), total_ms FROM r\n)\nSELECT phase AS \"阶段\",\n       ms AS \"耗时\",\n       round(ms * 100.0 / NULLIF(total_ms, 0), 1) AS \"占比\"\nFROM parts\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -934,7 +946,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nWITH r AS (\n  SELECT *\n  FROM ops_request_transfer_samples\n  WHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)\n  ORDER BY observed_at DESC\n  LIMIT 1\n)\nSELECT * FROM (\n  SELECT '客户端请求体' AS \"方向\", bytes_in_wire AS \"字节\",\n         COALESCE(bytes_in_wire_status, 'unknown') AS \"状态\" FROM r\n  UNION ALL SELECT '解码后请求体', bytes_in_decoded, 'complete' FROM r\n  UNION ALL SELECT '发送上游请求体', bytes_up_req_total,\n         COALESCE(bytes_up_req_total_status, 'unknown') FROM r\n  UNION ALL SELECT '上游响应体（解压后）', bytes_resp_upstream,\n         COALESCE(bytes_resp_upstream_status, 'unknown') FROM r\n  UNION ALL SELECT '下发客户端响应体', bytes_resp_downstream,\n         COALESCE(bytes_resp_downstream_status, 'unknown') FROM r\n) x\n",
+          "rawSql": "\nWITH r AS (\n  SELECT bytes_in_wire, bytes_in_decoded, bytes_up_req_total, bytes_resp_upstream, bytes_resp_downstream,\n         bytes_in_wire_status, bytes_up_req_total_status, bytes_resp_upstream_status, bytes_resp_downstream_status\n  FROM ops_request_transfer_samples s\n  WHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n)\nSELECT '客户端请求体' AS \"方向\", bytes_in_wire AS \"字节\",\n       COALESCE(bytes_in_wire_status, 'unknown') AS \"状态\" FROM r\nUNION ALL SELECT '解码后请求体', bytes_in_decoded, 'complete' FROM r\nUNION ALL SELECT '发送上游请求体', bytes_up_req_total,\n       COALESCE(bytes_up_req_total_status, 'unknown') FROM r\nUNION ALL SELECT '上游响应体（解压后）', bytes_resp_upstream,\n       COALESCE(bytes_resp_upstream_status, 'unknown') FROM r\nUNION ALL SELECT '下发客户端响应体', bytes_resp_downstream,\n       COALESCE(bytes_resp_downstream_status, 'unknown') FROM r\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -1111,7 +1123,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nSELECT ul.input_tokens AS \"输入\",\n       ul.output_tokens AS \"输出\",\n       ul.cache_read_tokens AS \"缓存读\",\n       ul.cache_creation_tokens AS \"缓存写\",\n       ul.actual_cost AS \"费用\"\nFROM ops_request_transfer_samples s\nLEFT JOIN LATERAL (\n  SELECT ul.*\n  FROM usage_logs ul\n  WHERE ul.api_key_id = s.api_key_id\n    AND (ul.request_id = 'client:' || s.client_request_id\n         OR (NULLIF(s.client_request_id, '') IS NULL\n             AND ul.request_id = 'local:' || s.request_id))\n  ORDER BY (ul.request_id = 'client:' || s.client_request_id) DESC,\n           ul.created_at DESC\n  LIMIT 1\n) ul ON TRUE\nWHERE s.request_id = ${request:sqlstring} AND $__timeFilter(s.observed_at)\nORDER BY s.observed_at DESC\nLIMIT 1\n",
+          "rawSql": "\nSELECT ul.input_tokens AS \"输入\",\n       ul.output_tokens AS \"输出\",\n       ul.cache_read_tokens AS \"缓存读\",\n       ul.cache_creation_tokens AS \"缓存写\",\n       ul.actual_cost AS \"费用\"\nFROM ops_request_transfer_samples s\nLEFT JOIN LATERAL (\n  SELECT ul.upstream_model, ul.inbound_endpoint, ul.upstream_endpoint, ul.stream,\n         ul.billing_mode, ul.input_tokens, ul.output_tokens, ul.cache_read_tokens,\n         ul.cache_creation_tokens, ul.actual_cost, ul.ip_address, ul.user_agent\n  FROM usage_logs ul\n  WHERE ul.api_key_id = s.api_key_id\n    AND (ul.request_id = 'client:' || s.client_request_id\n         OR (NULLIF(s.client_request_id, '') IS NULL\n             AND ul.request_id = 'local:' || s.request_id))\n  ORDER BY (ul.request_id = 'client:' || s.client_request_id) DESC,\n           ul.created_at DESC, ul.id DESC\n  LIMIT 1\n) ul ON TRUE\nWHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -1318,7 +1330,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nSELECT CASE WHEN s.result = 'success' THEN '成功' ELSE '失败' END AS \"结果\",\n       CASE WHEN s.result = 'success' THEN '—' ELSE (CASE s.failure_reason\n  WHEN 'upstream_rate_limit' THEN '上游限流'\n  WHEN 'upstream_server_error' THEN '上游 5xx'\n  WHEN 'upstream_read_timeout' THEN '上游超时'\n  WHEN 'client_abort_during_response' THEN '客户端中断'\n  WHEN 'gateway_error' THEN '网关错误'\n  WHEN 'rejected' THEN '请求被拒'\n  WHEN 'unknown' THEN '未知'\n  ELSE COALESCE(s.failure_reason, s.result, 'unknown')\nEND) END AS \"失败原因\",\n       s.http_status AS \"HTTP 状态\",\n       s.attempt_count AS \"尝试次数\",\n       s.failed_attempts AS \"失败次数\",\n       s.node AS \"节点\"\nFROM ops_request_transfer_samples s\nWHERE s.request_id = ${request:sqlstring} AND $__timeFilter(s.observed_at)\nORDER BY s.observed_at DESC\nLIMIT 1\n",
+          "rawSql": "\nSELECT CASE WHEN s.result = 'success' THEN '成功' ELSE '失败' END AS \"结果\",\n       CASE WHEN s.result = 'success' THEN '—' ELSE (CASE s.failure_reason\n  WHEN 'upstream_rate_limit' THEN '上游限流'\n  WHEN 'upstream_server_error' THEN '上游 5xx'\n  WHEN 'upstream_read_timeout' THEN '上游超时'\n  WHEN 'client_abort_during_response' THEN '客户端中断'\n  WHEN 'gateway_error' THEN '网关错误'\n  WHEN 'rejected' THEN '请求被拒'\n  WHEN 'unknown' THEN '未知'\n  ELSE COALESCE(s.failure_reason, s.result, 'unknown')\nEND) END AS \"失败原因\",\n       s.http_status AS \"HTTP 状态\",\n       s.attempt_count AS \"尝试次数\",\n       s.failed_attempts AS \"失败次数\",\n       s.node AS \"节点\"\nFROM ops_request_transfer_samples s\nWHERE s.id = CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN\n  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807\n       THEN (${sample_id:sqlstring}::text)::bigint END\nEND AND $__timeFilter(s.observed_at)\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -1587,19 +1599,17 @@
   "templating": {
     "list": [
       {
-        "name": "request",
-        "label": "请求 ID",
-        "type": "query",
-        "datasource": {
-          "type": "postgres",
-          "uid": "sub2api-pg"
-        },
-        "query": "SELECT request_id AS __value, request_id AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY observed_at DESC LIMIT 1000",
-        "definition": "SELECT request_id AS __value, request_id AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY observed_at DESC LIMIT 1000",
-        "refresh": 1,
+        "name": "sample_id",
+        "label": "样本 ID",
+        "type": "textbox",
+        "query": "",
+        "definition": "",
         "includeAll": false,
         "multi": false,
-        "current": {},
+        "current": {
+          "text": "",
+          "value": ""
+        },
         "options": []
       }
     ]

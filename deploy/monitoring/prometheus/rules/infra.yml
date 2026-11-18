@@ -1,6 +1,5 @@
 # Authorized W5 deviation: API §9 retains mode on RHS and fails vector matching.
 # Remove cpu AND mode; normal node_load5 has no mode label.
-# Route 白名单随 backend/internal/server/routes/gateway.go 同步维护；不能用全局计数替代实例差集。
 {
   "groups": [
     {
@@ -9,7 +8,7 @@
       "rules": [
         {
           "alert": "NodeExporterDown",
-          "expr": "absent(up{job=\"node\"}) or up{job=\"node\"} == 0",
+          "expr": "up{job=\"node\"} == 0",
           "labels": {
             "severity": "warning"
           },

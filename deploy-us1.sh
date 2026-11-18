@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build locally, upload, back up the database and deploy the existing us1 project.
-# Default: five core services (existing sub2api/postgres/redis + grafana/prometheus).
+# Default: existing sub2api/postgres/redis + grafana/prometheus/alertmanager.
 # --app-only keeps legacy application-only upgrades, preserving existing monitoring.
 set -euo pipefail
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +15,7 @@ usage() {
   cat <<'USAGE'
 Usage: ./deploy-us1.sh [VERSION] [--app-only]
 Default: build linux/amd64, upload, pg_dump backup, retain rollback image, deploy
-Sub2API + Prometheus + Grafana into the existing Compose project and check health.
+Sub2API + Prometheus + Grafana + Alertmanager and check service health.
 Existing PostgreSQL/Redis/Caddy containers, data and .env credentials are preserved.
 --app-only: update the application, keeping any already-enabled monitoring.
 Environment overrides: REMOTE_HOST, IMAGE_NAME, APP_CONTAINER, DB_CONTAINER.
@@ -62,7 +62,11 @@ docker buildx build --builder "$BUILDER" --platform linux/amd64 \
 docker save "$FULL_IMAGE" | gzip > "$LOCAL_DIR/image.tar.gz"
 # Enumerated files ensure private monitoring.env, generated config and backup data
 # can never be accidentally uploaded from the developer's workstation.
-COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$LOCAL_DIR/monitoring-assets.tar.gz" -C deploy \
+TAR_METADATA_FLAGS=()
+if [[ "$(tar --version)" == bsdtar* ]]; then
+  TAR_METADATA_FLAGS=(--no-xattrs --no-acls --no-fflags --no-mac-metadata)
+fi
+COPYFILE_DISABLE=1 tar ${TAR_METADATA_FLAGS[@]+"${TAR_METADATA_FLAGS[@]}"} --exclude='._*' --exclude='.DS_Store' -czf "$LOCAL_DIR/monitoring-assets.tar.gz" -C deploy \
   compose-deploy.sh docker-compose.monitoring.yml monitoring.env.example \
   monitoring/render-prometheus-config.sh monitoring/prometheus.yml.tmpl \
   monitoring/prometheus/rules monitoring/alertmanager monitoring/sql \
@@ -73,5 +77,7 @@ REMOTE_DIR="$(ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" mktemp -d /tmp/sub2api-deploy.
 scp -q -o ClearAllForwardings=yes "$LOCAL_DIR/image.tar.gz" "$LOCAL_DIR/monitoring-assets.tar.gz" deploy/remote-deploy.sh "$REMOTE_HOST:$REMOTE_DIR/"
 ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" bash "$REMOTE_DIR/remote-deploy.sh" "$VERSION" "$REMOTE_DIR" "$MODE" "$APP_CONTAINER" "$DB_CONTAINER" "$IMAGE_NAME"
 printf '\nDeployed %s to %s.\n' "$FULL_IMAGE" "$REMOTE_HOST"
-printf 'Grafana tunnel: ssh -L 3000:127.0.0.1:3000 %s\n' "$REMOTE_HOST"
+if [ "$MODE" = monitoring ]; then
+  printf 'Grafana tunnel: ssh -L 3000:127.0.0.1:3000 %s\n' "$REMOTE_HOST"
+fi
 echo 'Manage updates with ./sub2api-compose in the remote Compose directory.'

@@ -20,22 +20,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
-
-func TestOpsGatewayRouteWhitelist(t *testing.T) {
-	for _, path := range []string{"/v1/messages", "/v1/chat/completions", "/chat/completions", "/v1/responses", "/v1/responses/*subpath", "/v1/embeddings", "/v1/images/generations", "/v1/images/tasks/:id", "/v1beta/models/*modelAction", "/v1beta/cachedContents", "/antigravity/v1/messages", "/antigravity/v1beta/models/*modelAction"} {
-		require.True(t, isOpsGatewayRoute("POST", path), path)
-	}
-	for _, path := range []string{"", "/v1/messages/count_tokens", "/v1/models", "/v1/models/:model", "/v1/usage", "/v1/images/batches/models", "/v1beta/models", "/v1beta/models/:model", "/antigravity/models", "/antigravity/v1/messages/count_tokens", "/antigravity/v1/models", "/antigravity/v1/usage", "/antigravity/probe", "/api/admin/accounts", "/health", "/v1/messages-evil", "/v1/responses-evil", "/v1/images-evil", "/v1beta-evil/", "/antigravity-evil/", "/responses"} {
-		require.False(t, isOpsGatewayRoute("POST", path), path)
-	}
-	require.False(t, isOpsGatewayRoute("GET", "/v1beta/models/*modelAction"))
-}
 
 type opsTestContextKey struct{}
 
@@ -213,6 +204,36 @@ func TestOpsMiddlewareExcludedRoutesAndFullPath(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest("POST", "/v1/messages", nil))
 	require.Equal(t, 404, w.Code)
 	require.Zero(t, totalOpsCounter(t, s.instruments.Registry, "sub2api_gateway_requests_total"), "raw gateway-looking URL without matched FullPath is bypassed")
+}
+
+func TestOpsMiddlewareResponsesWebSocketCountsOnlyOnCompletion(t *testing.T) {
+	stack := newOpsTestStack(t, true)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(ProvideMetricsMiddleware(stack.cfg, stack.instruments.Metrics)))
+	router.Use(OpsMiddleware(stack.cfg, stack.runtime), Recovery())
+	router.GET("/backend-api/codex/responses", func(c *gin.Context) {
+		conn, err := websocket.Accept(c.Writer, c.Request, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		_, _, _ = conn.Read(c.Request.Context())
+	})
+	server := httptest.NewServer(router)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, server.URL+"/backend-api/codex/responses", nil)
+	require.NoError(t, err)
+	defer conn.CloseNow()
+
+	require.Zero(t, testutil.ToFloat64(stack.instruments.Metrics.OpsEligibleRequestsTotal))
+	require.Zero(t, totalOpsCounter(t, stack.instruments.Registry, "sub2api_gateway_requests_total"))
+	require.NoError(t, conn.CloseNow())
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(stack.instruments.Metrics.OpsEligibleRequestsTotal) == 1
+	}, 3*time.Second, 10*time.Millisecond)
+	require.Equal(t, 1.0, totalOpsCounter(t, stack.instruments.Registry, "sub2api_gateway_requests_total"))
 }
 
 func TestOpsMiddlewareDisabledBehaviorIdentical(t *testing.T) {

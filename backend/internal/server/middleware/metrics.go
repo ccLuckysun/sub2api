@@ -57,8 +57,12 @@ func newMetricsHandler(metrics *monitoring.Metrics) gin.HandlerFunc {
 		metrics.RequestsInFlight.Inc()
 		defer metrics.RequestsInFlight.Dec()
 
+		opsEligible := isOpsGatewayRoute(c)
 		start := time.Now()
 		defer func() {
+			if opsEligible {
+				metrics.OpsEligibleRequestsTotal.Inc()
+			}
 			route := c.FullPath()
 			if route == "" {
 				route = "unmatched"

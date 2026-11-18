@@ -42,6 +42,11 @@ if [ -n "$ENV_FILES" ] && [ "$ENV_FILES" != '<no value>' ]; then
 fi
 [ "$BASE_COUNT" -gt 0 ] || { echo 'No base Compose file found' >&2; exit 1; }
 [ "$MODE" != monitoring ] || ARGS+=(--monitoring)
+RETIRED_DASHBOARD=monitoring/grafana/dashboards/02-chain.json
+if [[ -L "$RETIRED_DASHBOARD" || ( -e "$RETIRED_DASHBOARD" && ! -f "$RETIRED_DASHBOARD" ) ]]; then
+  echo "Cannot archive unexpected file type: $WORKDIR/$RETIRED_DASHBOARD" >&2
+  exit 1
+fi
 STAMP="$(date +%Y%m%dT%H%M%S)-$$"
 ROLLBACK_IMAGE="${IMAGE_NAME}:rollback-${STAMP}"
 # Tag the running image ID before loading: redeploying the same tag must not
@@ -63,9 +68,14 @@ done
 if [ "${#SAVED[@]}" -gt 0 ]; then
   COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$CONFIG_BACKUP" "${SAVED[@]}"
 fi
+if [ -f "$RETIRED_DASHBOARD" ]; then
+  RETIRED_DIR="$(mktemp -d "$WORKDIR/sub2api-retired-dashboards-${STAMP}.XXXXXX")"
+  mv -- "$RETIRED_DASHBOARD" "$RETIRED_DIR/"
+  printf 'Archived retired dashboard: %s/02-chain.json\n' "$RETIRED_DIR"
+fi
 # Reject platform metadata on extraction as well, for older uploaded bundles.
 COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -xzf "$STAGING/monitoring-assets.tar.gz" -C "$WORKDIR"
-chmod +x compose-deploy.sh monitoring/render-prometheus-config.sh monitoring/backup/snapshot.sh
+chmod u+x compose-deploy.sh monitoring/backup/snapshot.sh
 ./compose-deploy.sh "${ARGS[@]}"
 ROLLBACK_SCRIPT="$WORKDIR/sub2api-rollback-${STAMP}.sh"
 ROLLBACK_ARGS=("${ARGS[@]}")
@@ -86,33 +96,22 @@ deployment_failed() {
   exit "$status"
 }
 trap deployment_failed ERR
-echo '==> Recreating application and monitoring services; existing database/Redis are untouched'
+echo '==> Recreating application; existing PostgreSQL/Redis/Caddy are untouched'
 ACTIVE_SERVICES="$(./sub2api-compose config --services)"
-SERVICES=(sub2api)
-if grep -qx prometheus <<< "$ACTIVE_SERVICES"; then
-  # Atomic config rendering changes the inode of a file bind mount: force
-  # recreation is required for Prometheus to see the newly validated config.
-  ./sub2api-compose up -d --no-deps --wait --wait-timeout 180 --force-recreate prometheus
-  SERVICES+=(grafana)
-fi
-# Uploaded dashboard files may have new inodes; a provider rescan cannot repair
-# an existing file bind mount. Recreate Grafana (and the updated app), not volumes.
-./sub2api-compose up -d --no-deps --wait --wait-timeout 180 --force-recreate "${SERVICES[@]}"
-if grep -qx postgres <<< "$ACTIVE_SERVICES"; then
-  # First V2 deploy: provision the read-only Grafana role after app migrations complete.
-  pg_user="$(./sub2api-compose exec -T postgres printenv POSTGRES_USER 2>/dev/null | tr -d '\r')"
-  pg_db="$(./sub2api-compose exec -T postgres printenv POSTGRES_DB 2>/dev/null | tr -d '\r')"
-  pg_pw="$(sed -n 's/^GRAFANA_PG_PASSWORD=//p' monitoring.env | tail -1 | tr -d '\r')"
-  [ -n "$pg_pw" ] || { echo 'GRAFANA_PG_PASSWORD missing; aborting before Grafana health check' >&2; exit 1; }
-  ./sub2api-compose exec -T postgres \
-    psql -X -v ON_ERROR_STOP=1 -U "${pg_user:-sub2api}" -d "${pg_db:-sub2api}" \
-    -v password="$pg_pw" < monitoring/sql/grafana-ro.sql
-  echo '[deploy] Grafana read-only role provisioned (grafana_ro).'
-fi
-if grep -qx prometheus <<< "$ACTIVE_SERVICES"; then
-  ./sub2api-compose exec -T prometheus wget -q -T 10 -O /dev/null http://localhost:9090/-/ready
-  ./sub2api-compose exec -T grafana wget -q -T 10 -O /dev/null http://localhost:3000/api/health
-  ./sub2api-compose exec -T prometheus wget -q -T 10 -O /dev/null http://sub2api:9091/metrics
+./sub2api-compose up -d --no-deps --wait --wait-timeout 180 --force-recreate sub2api
+if grep -qx grafana <<< "$ACTIVE_SERVICES"; then
+  echo '==> Recreating monitoring services and waiting for readiness'
+  SERVICES=(prometheus alertmanager)
+  if grep -qx node-exporter <<< "$ACTIVE_SERVICES"; then SERVICES+=(node-exporter); fi
+  if grep -qx backup <<< "$ACTIVE_SERVICES"; then
+    ./sub2api-compose run --rm --no-deps -T snapshots-init
+  fi
+  ./sub2api-compose up -d --no-deps --wait --wait-timeout 180 --force-recreate "${SERVICES[@]}"
+  SERVICES=(grafana)
+  if grep -qx backup <<< "$ACTIVE_SERVICES"; then SERVICES+=(backup); fi
+  ./sub2api-compose up -d --no-deps --wait --wait-timeout 180 --force-recreate "${SERVICES[@]}"
+  ./compose-deploy.sh --check-monitoring
+  ./compose-deploy.sh --setup-grafana-db
   echo 'Grafana listens on server loopback only. Use an SSH tunnel; password is in monitoring.env.'
 fi
 trap - ERR

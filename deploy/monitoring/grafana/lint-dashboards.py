@@ -17,7 +17,9 @@ from collections import Counter
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import sys
+from urllib.parse import parse_qs, urlsplit
 
 
 class ConfigError(ValueError):
@@ -175,15 +177,49 @@ def provider_paths(path):
     return paths
 
 
-def strings(value):
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from strings(item)
+def field_strings(value, keys):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in keys and isinstance(item, str):
+                yield item
+            else:
+                yield from field_strings(item, keys)
     elif isinstance(value, list):
         for item in value:
-            yield from strings(item)
+            yield from field_strings(item, keys)
+
+
+def lint_dashboard_sql(data, variables):
+    sql_strings = list(field_strings(data, {"rawSql", "query", "definition"}))
+    for variable in variables:
+        if not isinstance(variable, dict) or not isinstance(variable.get("name"), str):
+            continue
+        name = variable["name"]
+        token = "${" + name + ":sqlstring}"
+        if (variable.get("includeAll") and variable.get("allValue") not in (None, "")
+                and any(token in sql for sql in sql_strings)):
+            yield f"{name} uses custom All value with {token}; Grafana does not SQL-escape custom All values"
+    if any(re.search(r'\b(?:from|join)\s+(?:"?public"?\s*\.\s*)?"?api_keys\b', sql, re.I)
+           for sql in sql_strings):
+        yield "SQL must use grafana_api_keys instead of the api_keys base table"
+    for url in field_strings(data, {"url"}):
+        if not url.startswith("/d/sub2api-v2-request?") and url != "/d/sub2api-v2-request":
+            continue
+        params = parse_qs(urlsplit(url).query, keep_blank_values=True)
+        if (params.get("var-sample_id") != ["${__value.raw}"] or "var-request" in params
+                or params.get("from") != ["${__from}"] or params.get("to") != ["${__to}"]):
+            yield "request drilldown link must pass var-sample_id from the raw sample ID and preserve the time range"
+    if data.get("uid") == "sub2api-v2-request":
+        sample_vars = [variable for variable in variables
+                       if isinstance(variable, dict) and variable.get("name") == "sample_id"]
+        if (len(sample_vars) != 1 or sample_vars[0].get("type") != "textbox"
+                or sample_vars[0].get("multi") or sample_vars[0].get("includeAll")
+                or sample_vars[0].get("skipUrlSync")):
+            yield "request drilldown requires a URL-synced, single sample_id textbox"
+        for sql in field_strings(data, {"rawSql"}):
+            if (not re.search(r'\bwhere\s+s\.id\s*=\s*case\s+when\s+\$\{sample_id:sqlstring\}', sql, re.I)
+                    or re.search(r'\b(?:where|and)\s+(?:s\.)?request_id\s*=', sql, re.I)):
+                yield "request detail SQL must filter on the sample's primary key using ${sample_id:sqlstring}"
 
 
 def no_duplicate_keys(pairs):
@@ -309,14 +345,8 @@ def lint(root):
         if not isinstance(variables, list):
             error(path, "templating.list must be an array")
             continue
-        uses_model_sqlstring = any("${model:sqlstring}" in value for value in strings(data))
-        for variable in variables:
-            if (isinstance(variable, dict) and variable.get("name") == "model"
-                    and variable.get("includeAll") and variable.get("allValue") not in (None, "")
-                    and uses_model_sqlstring):
-                error(path, "model uses custom All value with ${model:sqlstring}; Grafana does not "
-                      "SQL-escape custom All values. Avoid this combination and keep the All sentinel "
-                      "safely quoted in SQL")
+        for message in lint_dashboard_sql(data, variables):
+            error(path, message)
     return errors
 
 
@@ -331,7 +361,7 @@ def main(argv=None):
             print(f"ERROR: {message}", file=sys.stderr)
         print(f"FAIL: {len(errors)} Grafana lint error(s)", file=sys.stderr)
         return 1
-    print("PASS: Grafana JSON, model SQL All safety, metadata and mount inventory")
+    print("PASS: Grafana JSON, SQL safety, request drilldown, metadata and mount inventory")
     return 0
 
 

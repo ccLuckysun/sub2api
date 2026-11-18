@@ -53,7 +53,10 @@ func TestAccountLabelsAdversarialBudget(t *testing.T) {
 func TestEndpointAndModelClasses(t *testing.T) {
 	for path, want := range map[string]string{
 		"/v1/messages": "responses", "/antigravity/v1/messages": "responses", "/v1/responses": "responses",
-		"/v1/chat/completions": "chat", "/chat/completions": "chat", "/v1/embeddings": "embeddings",
+		"/responses": "responses", "/backend-api/codex/responses": "responses",
+		"/v1/responses/*subpath": "responses", "/responses/*subpath": "responses", "/backend-api/codex/responses/*subpath": "responses",
+		"/v1/responses/compact": "responses", "/responses/compact": "responses", "/backend-api/codex/responses/compact": "responses",
+		"/v1/chat/completions": "chat", "/chat/completions": "chat", "/v1/embeddings": "embeddings", "/embeddings": "embeddings",
 		"/v1/images/generations": "images", "/v1/images/*path": "images", "/v1/images/edits": "images",
 		"/v1/messages/count_tokens": "other", "/v1/models": "other", "/admin": "other", "": "other", "/v1/images-evil": "other",
 	} {

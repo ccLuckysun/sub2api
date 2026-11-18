@@ -74,6 +74,43 @@ volumes:
             self.assertEqual(main(["--root", str(self.root)]), 0)
         self.assertIn("PASS:", output.getvalue())
 
+    def test_datasource_environment_values_are_opaque(self):
+        self.write(self.grafana / "provisioning/datasources/postgres.yml", """datasources:
+  - type: postgres
+    jsonData:
+      database: $GRAFANA_PG_DATABASE
+    secureJsonData:
+      password: $GRAFANA_PG_PASSWORD
+""")
+        self.assertEqual(lint(self.root), [])
+
+    def test_raw_api_key_relation_is_rejected_in_variable_query(self):
+        data = self.safe_dashboard()
+        data["templating"]["list"][0]["query"] = 'SELECT id FROM "public"."api_keys"'
+        self.write(self.dashboard, json.dumps(data))
+        self.assert_error("SQL must use grafana_api_keys")
+
+    def test_legacy_request_link_is_rejected(self):
+        data = self.safe_dashboard()
+        data["panels"][0]["fieldConfig"] = {"defaults": {"links": [{
+            "url": "/d/sub2api-v2-request?var-request=${__value.raw}&from=${__from}&to=${__to}",
+        }]}}
+        self.write(self.dashboard, json.dumps(data))
+        self.assert_error("request drilldown link must pass var-sample_id")
+
+    def test_request_detail_requires_sample_id_variable_and_predicate(self):
+        data = self.safe_dashboard()
+        data["uid"] = "sub2api-v2-request"
+        targets = data["panels"][0]["panels"][0]["targets"]
+        self.write(self.dashboard, json.dumps(data))
+        self.assert_error("requires a URL-synced, single sample_id textbox")
+        self.assert_error("must filter on the sample's primary key")
+        data["templating"]["list"] = [{"name": "sample_id", "type": "textbox"}]
+        targets[0]["rawSql"] = ("SELECT s.id FROM ops_request_transfer_samples s "
+                                "WHERE s.id = CASE WHEN ${sample_id:sqlstring} <> '' THEN 1 END")
+        self.write(self.dashboard, json.dumps(data))
+        self.assertEqual(lint(self.root), [])
+
     def test_empty_json(self):
         self.write(self.dashboard, " \n\t")
         self.assert_error("empty JSON file")

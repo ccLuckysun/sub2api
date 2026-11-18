@@ -1,0 +1,64 @@
+rule_files:
+  - ../monitoring/prometheus/rules/slo.yml
+  - ../monitoring/prometheus/rules/chain.yml
+  - ../monitoring/prometheus/rules/infra.yml
+evaluation_interval: 15s
+tests:
+  - name: Optional node job absent or healthy
+    interval: 15s
+    input_series:
+      - series: 'up{job="prometheus",instance="prometheus"}'
+        values: '1+0x32'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: NodeExporterDown
+        exp_alerts: []
+
+  - name: Configured node job fails and recovers
+    interval: 15s
+    input_series:
+      - series: 'up{job="node",instance="node"}'
+        values: '0+0x23 1+0x8'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: NodeExporterDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: NodeExporterDown
+        exp_alerts:
+          - exp_labels: {job: node, instance: node, severity: warning}
+            exp_annotations:
+              summary: NodeExporterDown
+              description: '实例 node：NodeExporterDown；请结合 V2 看板与样本核实。'
+      - eval_time: 7m
+        alertname: NodeExporterDown
+        exp_alerts: []
+
+  - name: Only increasing eligible traffic without phase metrics alerts, per instance
+    interval: 15s
+    input_series:
+      - series: 'sub2api_http_requests_total{route="/v1beta/models",method="GET",instance="discovery"}'
+        values: '0+1x32'
+      - series: 'sub2api_http_requests_total{route="/v1/messages/count_tokens",method="POST",instance="token-count"}'
+        values: '0+1x32'
+      - series: 'sub2api_ops_eligible_requests_total{instance="discovery"}'
+        values: '0+0x32'
+      - series: 'sub2api_ops_eligible_requests_total{instance="stalled"}'
+        values: '0+1x32'
+      - series: 'sub2api_ops_eligible_requests_total{instance="healthy"}'
+        values: '0+1x32'
+      - series: 'sub2api_request_phase_seconds_count{phase="finish",instance="healthy"}'
+        values: '0+1x32'
+      - series: 'sub2api_request_phase_seconds_count{phase="finish",instance="stalled"}'
+        values: '0+0x19 1+1x12'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: Sub2apiInstrumentationStalled
+        exp_alerts:
+          - exp_labels: {instance: stalled, severity: critical}
+            exp_annotations:
+              summary: Sub2apiInstrumentationStalled
+              description: '实例 stalled：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。'
+      - eval_time: 7m
+        alertname: Sub2apiInstrumentationStalled
+        exp_alerts: []

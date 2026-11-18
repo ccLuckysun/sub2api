@@ -8,9 +8,9 @@ datasources:
     user: grafana_ro
     editable: false
     secureJsonData:
-      password: ${GRAFANA_PG_PASSWORD}
+      password: $GRAFANA_PG_PASSWORD
     jsonData:
-      database: sub2api
+      database: $GRAFANA_PG_DATABASE
       sslmode: disable
       maxOpenConns: 3
       maxIdleConns: 1

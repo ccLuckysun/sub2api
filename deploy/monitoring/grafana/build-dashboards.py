@@ -89,7 +89,7 @@ def link_to_request():
     return [
         {
             "title": "查看详情",
-            "url": "/d/sub2api-v2-request?var-request=${__value.raw}&from=${__from}&to=${__to}",
+            "url": "/d/sub2api-v2-request?var-sample_id=${__value.raw}&from=${__from}&to=${__to}",
             "targetBlank": False,
         }
     ]
@@ -175,7 +175,7 @@ DASHBOARDS = [
             P("ov_coverage", "bargauge", "数据完整性", 8, 10, unit="percentunit", decimals=1,
               desc="4 类 M-9 覆盖率（request/account/bytes/user）。<90% 黄；-1 灰=无样本；缺序列不等于健康。"),
             P("ov_anom", "table", "最近异常请求", 14, 12, ds="pg",
-              desc="PG 请求样本中最近的失败请求；点击请求 ID 打开单请求详情。样本量不代表总体分位。"),
+              desc="PG 请求样本中最近的失败请求；点击详情定位该样本。样本量不代表总体分位。"),
             P("ov_acct", "table", "上游账号速览", 10, 12, ds="pg",
               desc="PG 请求样本按账号聚合的 QPS/TTFT/失败率/带宽；不是 attempt 口径，低样本百分比噪声大。"),
         ],
@@ -242,7 +242,7 @@ DASHBOARDS = [
             P("us_users", "table", "用户用量", 24, 10, ds="pg",
               desc="usage_logs 按用户聚合，成本列为 actual_cost；失败率来自 PG 请求样本。两种数据集覆盖范围不同，variables 只作用于含 user_id/api_key_id 的查询。"),
             P("us_keys", "table", "API 密钥", 24, 10, ds="pg",
-              desc="usage_logs 按 api_key_id 聚合，成本列为 actual_cost；前缀来自 api_keys.key。Key 名称是用户可改展示值，不进入 Prometheus 标签。"),
+              desc="usage_logs 按 api_key_id 聚合，成本列为 actual_cost；仅显示数据库视图提供的掩码。Key 名称是用户可改展示值，不进入 Prometheus 标签。"),
         ],
     ),
     dict(
@@ -339,9 +339,9 @@ REQ_STAT_FILTER = """$__timeFilter(s.observed_at)
   AND ($user = -1 OR s.user_id = $user)
   AND ($api_key = -1 OR s.api_key_id = $api_key)
   AND (${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})
-  AND ('$result' = 'all'
-       OR ('$result' = 'success' AND s.result = 'success')
-       OR ('$result' = 'failure' AND s.result <> 'success'))"""
+  AND (${result:sqlstring} = 'all'
+       OR (${result:sqlstring} = 'success' AND s.result = 'success')
+       OR (${result:sqlstring} = 'failure' AND s.result <> 'success'))"""
 
 REQ_TABLE_FILTER = REQ_STAT_FILTER + """
   AND (${search:sqlstring} = ''
@@ -357,6 +357,11 @@ WINDOW_SECONDS = (
     "EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz))"
 )
 TODAY_SH = "date_trunc('day', now() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai'"
+SAMPLE_ID = """CASE WHEN ${sample_id:sqlstring} ~ '^[0-9]{1,19}$' THEN
+  CASE WHEN (${sample_id:sqlstring}::text)::numeric <= 9223372036854775807
+       THEN (${sample_id:sqlstring}::text)::bigint END
+END"""
+DETAIL_FILTER = f"s.id = {SAMPLE_ID} AND $__timeFilter(s.observed_at)"
 
 # samples.request_id is the inbound x-request-id while usage_logs.request_id is
 # "client:<uuid>" (or "local:<request_id>" for historical rows). Migration 253
@@ -370,14 +375,16 @@ def usage_logs_join():
     if CLIENT_REQUEST_ID_JOIN:
         return (
             "LEFT JOIN LATERAL (\n"
-            "  SELECT ul.*\n"
+            "  SELECT ul.upstream_model, ul.inbound_endpoint, ul.upstream_endpoint, ul.stream,\n"
+            "         ul.billing_mode, ul.input_tokens, ul.output_tokens, ul.cache_read_tokens,\n"
+            "         ul.cache_creation_tokens, ul.actual_cost, ul.ip_address, ul.user_agent\n"
             "  FROM usage_logs ul\n"
             "  WHERE ul.api_key_id = s.api_key_id\n"
             "    AND (ul.request_id = 'client:' || s.client_request_id\n"
             "         OR (NULLIF(s.client_request_id, '') IS NULL\n"
             "             AND ul.request_id = 'local:' || s.request_id))\n"
             "  ORDER BY (ul.request_id = 'client:' || s.client_request_id) DESC,\n"
-            "           ul.created_at DESC\n"
+            "           ul.created_at DESC, ul.id DESC\n"
             "  LIMIT 1\n"
             ") ul ON TRUE"
         )
@@ -399,10 +406,7 @@ REQ_TABLE_SQL = f"""
 SELECT
   s.observed_at AS "时间",
   COALESCE(u.email, '#' || s.user_id) AS "用户",
-  COALESCE(k.name, '—') ||
-    CASE WHEN k.key IS NOT NULL
-      THEN ' · ' || left(k.key, 8) || '…' || right(k.key, 4)
-      ELSE '' END AS "API 密钥",
+  COALESCE(k.name || ' · ' || k.masked_key, '—') AS "API 密钥",
   COALESCE(a.name, '#' || s.account_id) ||
     CASE WHEN a.platform IS NOT NULL THEN ' · ' || a.platform ELSE '' END AS "账户",
   s.model ||
@@ -439,15 +443,15 @@ SELECT
   s.headers_end_ms AS "TTFT",
   CASE WHEN s.result = 'success' THEN '成功'
        ELSE '失败 · ' || ({FAILURE_LABEL}) END AS "状态",
-  s.request_id AS "详情"
+  s.id::text AS "详情"
 FROM ops_request_transfer_samples s
 {usage_logs_join()}
 LEFT JOIN users u ON u.id = s.user_id
-LEFT JOIN api_keys k ON k.id = s.api_key_id
+LEFT JOIN grafana_api_keys k ON k.id = s.api_key_id
 LEFT JOIN accounts a ON a.id = s.account_id
 LEFT JOIN groups g ON g.id = s.group_id
 WHERE {REQ_TABLE_FILTER}
-ORDER BY s.observed_at DESC
+ORDER BY s.observed_at DESC, s.id DESC
 LIMIT 200
 """
 
@@ -488,12 +492,12 @@ SELECT
   s.model AS "模型",
   s.total_ms AS "总耗时",
   ({FAILURE_LABEL}) AS "失败原因",
-  s.request_id AS "详情"
+  s.id::text AS "详情"
 FROM ops_request_transfer_samples s
 LEFT JOIN users u ON u.id = s.user_id
 WHERE $__timeFilter(s.observed_at)
   AND s.result <> 'success'
-ORDER BY s.observed_at DESC
+ORDER BY s.observed_at DESC, s.id DESC
 LIMIT 8
 """)],
     "ov_acct": [dict(kind="pg", sql=f"""
@@ -703,7 +707,7 @@ WITH sample AS (
 )
 SELECT k.name AS "API 密钥",
        u.email AS "所属用户",
-       left(k.key, 8) || '…' || right(k.key, 4) AS "前缀",
+       k.masked_key AS "掩码",
        count(*) AS "请求",
        sum(ul.input_tokens + ul.output_tokens + ul.cache_read_tokens + ul.cache_creation_tokens) AS "Token",
        sum(ul.actual_cost) AS "成本",
@@ -713,13 +717,13 @@ SELECT k.name AS "API 密钥",
             WHEN COALESCE(max(s.failure_pct), 0) > 5 THEN '观察'
             ELSE '正常' END AS "状态"
 FROM usage_logs ul
-JOIN api_keys k ON k.id = ul.api_key_id
+JOIN grafana_api_keys k ON k.id = ul.api_key_id
 JOIN users u ON u.id = ul.user_id
 LEFT JOIN sample s ON s.api_key_id = ul.api_key_id
 WHERE $__timeFilter(ul.created_at)
   AND ($user = -1 OR ul.user_id = $user)
   AND ($api_key = -1 OR ul.api_key_id = $api_key)
-GROUP BY k.id, k.name, k.key, k.status, u.email
+GROUP BY k.id, k.name, k.masked_key, k.status, u.email
 ORDER BY count(*) DESC
 LIMIT 100
 """)],
@@ -777,35 +781,32 @@ LIMIT 1
     ],
 
     # 06 request detail
-    "dt_total": [dict(kind="pg", sql="""
+    "dt_total": [dict(kind="pg", sql=f"""
 SELECT total_ms AS "总耗时"
-FROM ops_request_transfer_samples
-WHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)
-ORDER BY observed_at DESC LIMIT 1
+FROM ops_request_transfer_samples s
+WHERE {DETAIL_FILTER}
 """)],
-    "dt_ttft": [dict(kind="pg", sql="""
+    "dt_ttft": [dict(kind="pg", sql=f"""
 SELECT headers_end_ms AS "TTFT"
-FROM ops_request_transfer_samples
-WHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)
-ORDER BY observed_at DESC LIMIT 1
+FROM ops_request_transfer_samples s
+WHERE {DETAIL_FILTER}
 """)],
-    "dt_body": [dict(kind="pg", sql="""
+    "dt_body": [dict(kind="pg", sql=f"""
 SELECT bytes_in_wire AS "请求体"
-FROM ops_request_transfer_samples
-WHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)
-ORDER BY observed_at DESC LIMIT 1
+FROM ops_request_transfer_samples s
+WHERE {DETAIL_FILTER}
 """)],
-    "dt_http": [dict(kind="pg", sql="""
+    "dt_http": [dict(kind="pg", sql=f"""
 SELECT http_status AS "HTTP 状态"
-FROM ops_request_transfer_samples
-WHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)
-ORDER BY observed_at DESC LIMIT 1
+FROM ops_request_transfer_samples s
+WHERE {DETAIL_FILTER}
 """)],
     "dt_basic": [dict(kind="pg", sql=f"""
 SELECT COALESCE(u.email, '#' || s.user_id) AS "用户",
        COALESCE(k.name, '—') AS "API 密钥",
        COALESCE(a.name, '—') AS "账户",
        COALESCE(g.name, '—') AS "分组",
+       s.request_id AS "请求 ID",
        s.model AS "模型",
        COALESCE(ul.upstream_model, '—') AS "上游模型",
        COALESCE(ul.inbound_endpoint, s.endpoint, '—') AS "入站端点",
@@ -821,20 +822,16 @@ SELECT COALESCE(u.email, '#' || s.user_id) AS "用户",
 FROM ops_request_transfer_samples s
 {usage_logs_join()}
 LEFT JOIN users u ON u.id = s.user_id
-LEFT JOIN api_keys k ON k.id = s.api_key_id
+LEFT JOIN grafana_api_keys k ON k.id = s.api_key_id
 LEFT JOIN accounts a ON a.id = s.account_id
 LEFT JOIN groups g ON g.id = s.group_id
-WHERE s.request_id = ${{request:sqlstring}} AND $__timeFilter(s.observed_at)
-ORDER BY s.observed_at DESC
-LIMIT 1
+WHERE {DETAIL_FILTER}
 """)],
-    "dt_phase": [dict(kind="pg", sql="""
+    "dt_phase": [dict(kind="pg", sql=f"""
 WITH r AS (
-  SELECT *
-  FROM ops_request_transfer_samples
-  WHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)
-  ORDER BY observed_at DESC
-  LIMIT 1
+  SELECT body_read_ms, wait_ms, gateway_ms, upstream_ms, response_ms, finish_ms, total_ms
+  FROM ops_request_transfer_samples s
+  WHERE {DETAIL_FILTER}
 ), parts AS (
   SELECT '读取请求体' AS phase, COALESCE(body_read_ms, 0) AS ms, total_ms FROM r
   UNION ALL SELECT '槽位等待', COALESCE(wait_ms, 0), total_ms FROM r
@@ -848,25 +845,22 @@ SELECT phase AS "阶段",
        round(ms * 100.0 / NULLIF(total_ms, 0), 1) AS "占比"
 FROM parts
 """)],
-    "dt_bytes": [dict(kind="pg", sql="""
+    "dt_bytes": [dict(kind="pg", sql=f"""
 WITH r AS (
-  SELECT *
-  FROM ops_request_transfer_samples
-  WHERE request_id = ${request:sqlstring} AND $__timeFilter(observed_at)
-  ORDER BY observed_at DESC
-  LIMIT 1
+  SELECT bytes_in_wire, bytes_in_decoded, bytes_up_req_total, bytes_resp_upstream, bytes_resp_downstream,
+         bytes_in_wire_status, bytes_up_req_total_status, bytes_resp_upstream_status, bytes_resp_downstream_status
+  FROM ops_request_transfer_samples s
+  WHERE {DETAIL_FILTER}
 )
-SELECT * FROM (
-  SELECT '客户端请求体' AS "方向", bytes_in_wire AS "字节",
-         COALESCE(bytes_in_wire_status, 'unknown') AS "状态" FROM r
-  UNION ALL SELECT '解码后请求体', bytes_in_decoded, 'complete' FROM r
-  UNION ALL SELECT '发送上游请求体', bytes_up_req_total,
-         COALESCE(bytes_up_req_total_status, 'unknown') FROM r
-  UNION ALL SELECT '上游响应体（解压后）', bytes_resp_upstream,
-         COALESCE(bytes_resp_upstream_status, 'unknown') FROM r
-  UNION ALL SELECT '下发客户端响应体', bytes_resp_downstream,
-         COALESCE(bytes_resp_downstream_status, 'unknown') FROM r
-) x
+SELECT '客户端请求体' AS "方向", bytes_in_wire AS "字节",
+       COALESCE(bytes_in_wire_status, 'unknown') AS "状态" FROM r
+UNION ALL SELECT '解码后请求体', bytes_in_decoded, 'complete' FROM r
+UNION ALL SELECT '发送上游请求体', bytes_up_req_total,
+       COALESCE(bytes_up_req_total_status, 'unknown') FROM r
+UNION ALL SELECT '上游响应体（解压后）', bytes_resp_upstream,
+       COALESCE(bytes_resp_upstream_status, 'unknown') FROM r
+UNION ALL SELECT '下发客户端响应体', bytes_resp_downstream,
+       COALESCE(bytes_resp_downstream_status, 'unknown') FROM r
 """)],
     "dt_tokens": [dict(kind="pg", sql=f"""
 SELECT ul.input_tokens AS "输入",
@@ -876,9 +870,7 @@ SELECT ul.input_tokens AS "输入",
        ul.actual_cost AS "费用"
 FROM ops_request_transfer_samples s
 {usage_logs_join()}
-WHERE s.request_id = ${{request:sqlstring}} AND $__timeFilter(s.observed_at)
-ORDER BY s.observed_at DESC
-LIMIT 1
+WHERE {DETAIL_FILTER}
 """)],
     "dt_fail": [dict(kind="pg", sql=f"""
 SELECT CASE WHEN s.result = 'success' THEN '成功' ELSE '失败' END AS "结果",
@@ -888,9 +880,7 @@ SELECT CASE WHEN s.result = 'success' THEN '成功' ELSE '失败' END AS "结果
        s.failed_attempts AS "失败次数",
        s.node AS "节点"
 FROM ops_request_transfer_samples s
-WHERE s.request_id = ${{request:sqlstring}} AND $__timeFilter(s.observed_at)
-ORDER BY s.observed_at DESC
-LIMIT 1
+WHERE {DETAIL_FILTER}
 """)],
 }
 
@@ -922,8 +912,8 @@ VARIABLES = {
     ),
     "api_key": dict(
         name="api_key", label="API 密钥", type="query", datasource=PG,
-        query="SELECT id AS __value, name AS __text FROM api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000",
-        definition="SELECT id AS __value, name AS __text FROM api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000",
+        query="SELECT id AS __value, name AS __text FROM grafana_api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000",
+        definition="SELECT id AS __value, name AS __text FROM grafana_api_keys WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000",
         refresh=2, includeAll=True, allValue="-1", multi=False,
         current={"text": "All", "value": "$__all"}, options=[],
     ),
@@ -946,19 +936,17 @@ VARIABLES = {
         query="", definition="", includeAll=False, multi=False,
         current={"text": "", "value": ""}, options=[],
     ),
-    "request": dict(
-        name="request", label="请求 ID", type="query", datasource=PG,
-        query="SELECT request_id AS __value, request_id AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY observed_at DESC LIMIT 1000",
-        definition="SELECT request_id AS __value, request_id AS __text FROM ops_request_transfer_samples WHERE $__timeFilter(observed_at) ORDER BY observed_at DESC LIMIT 1000",
-        refresh=1, includeAll=False, multi=False,
-        current={}, options=[],
+    "sample_id": dict(
+        name="sample_id", label="样本 ID", type="textbox",
+        query="", definition="", includeAll=False, multi=False,
+        current={"text": "", "value": ""}, options=[],
     ),
 }
 
 VAR_SETS = {
     "requests": ["user", "api_key", "result", "model", "search"],
     "users": ["user", "api_key"],
-    "request": ["request"],
+    "request": ["sample_id"],
 }
 
 # ---------------------------------------------------------------------------
@@ -1182,7 +1170,7 @@ COLUMNS = {
     "us_keys": [
         col("API 密钥", width=120),
         col("所属用户", width=200),
-        col("前缀", width=140),
+        col("掩码", width=140),
         col("请求", width=80, unit="short", decimals=0, align="right"),
         col("Token", width=100, unit="short", decimals=0, align="right"),
         col("成本", width=90, unit="currencyUSD", decimals=2, align="right"),
@@ -1209,6 +1197,7 @@ COLUMNS = {
         col("API 密钥", width=120),
         col("账户", width=100),
         col("分组", width=80),
+        col("请求 ID", width=180),
         col("模型", width=170, wrap=True),
         col("上游模型", width=170, wrap=True),
         col("入站端点", width=140),

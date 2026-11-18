@@ -5,27 +5,36 @@ set -eu
 
 # Container-only SMTP renderer: allowlisted substitutions, no eval/source.
 if [ "${1:-}" = --alertmanager ]; then
-    : "${ALERT_SMTP_SMARTHOST:?required}" "${ALERT_SMTP_FROM:?required}" "${ALERT_SMTP_TO:?required}"
-    case "${ALERT_SMTP_REQUIRE_TLS:-true}" in true|false) ;; *) exit 1 ;; esac
-    export ALERT_SMTP_REQUIRE_TLS="${ALERT_SMTP_REQUIRE_TLS:-true}"
-    awk '
+    umask 077
+    config=/alertmanager/alertmanager.yml
+    if [ -z "${ALERT_SMTP_TO:-}" ]; then
+        printf 'route:\n  receiver: disabled\nreceivers:\n  - name: disabled\n' > "$config"
+    else
+        : "${ALERT_SMTP_SMARTHOST:?required}" "${ALERT_SMTP_FROM:?required}"
+        case "${ALERT_SMTP_REQUIRE_TLS:-true}" in true|false) ;; *) exit 1 ;; esac
+        export ALERT_SMTP_REQUIRE_TLS="${ALERT_SMTP_REQUIRE_TLS:-true}"
+        awk '
       function quote(v) { gsub(/\047/, "\047\047", v); return "\047" v "\047" }
       /\$\{ALERT_SMTP_/ {
         line=$0
+        rendered=""
         while (match(line, /\$\{ALERT_SMTP_[A-Z_]+\}/)) {
           key=substr(line,RSTART+2,RLENGTH-3)
           value=ENVIRON[key]
           if (value ~ /[\r\n]/) exit 2
           if (key != "ALERT_SMTP_REQUIRE_TLS") value=quote(value)
-          line=substr(line,1,RSTART-1) value substr(line,RSTART+RLENGTH)
+          rendered=rendered substr(line,1,RSTART-1) value
+          line=substr(line,RSTART+RLENGTH)
         }
-        print line; next
+        print rendered line; next
       }
       {print}
-    ' /etc/alertmanager/alertmanager.yml.tmpl > /alertmanager/alertmanager.yml
-    amtool check-config /alertmanager/alertmanager.yml
+        ' /etc/alertmanager/alertmanager.yml.tmpl > "$config"
+    fi
+    chmod 600 "$config"
+    amtool check-config "$config"
     [ "${ALERTMANAGER_RENDER_ONLY:-false}" != true ] || exit 0
-    exec /bin/alertmanager --config.file=/alertmanager/alertmanager.yml --storage.path=/alertmanager
+    exec /bin/alertmanager --config.file="$config" --storage.path=/alertmanager
 fi
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -96,9 +105,12 @@ fi
 chmod 644 "$TMP"
 if command -v promtool >/dev/null 2>&1; then
     promtool check config --syntax-only "$TMP"
+    promtool check rules "$SCRIPT_DIR"/prometheus/rules/*.yml
 elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     docker run --rm --network none -v "$TMP:/prometheus.yml:ro" \
-        --entrypoint promtool prom/prometheus:v3.16.0 check config --syntax-only /prometheus.yml
+        -v "$SCRIPT_DIR/prometheus/rules:/rules:ro" \
+        --entrypoint /bin/sh prom/prometheus:v3.16.0 -ec \
+        'promtool check config --syntax-only /prometheus.yml && promtool check rules /rules/*.yml'
 else
     echo '[render] ERROR: promtool and Docker unavailable; configuration NOT replaced' >&2
     exit 1

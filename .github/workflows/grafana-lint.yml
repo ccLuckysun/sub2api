@@ -29,3 +29,7 @@ jobs:
         run: python3 -I deploy/tests/grafana-variables-pg18-test.py --lifecycle-tests
       - name: Check deployment preflight and clean packaging (no daemon)
         run: python3 -I deploy/tests/monitoring-deploy-test.py MonitoringDeploymentSafety
+      - name: Test live PromQL rules
+        run: |
+          docker run --rm --network none -v "$PWD/deploy:/deploy:ro" \
+            --entrypoint promtool prom/prometheus:v3.16.0 test rules /deploy/tests/monitoring-rules-test.yml

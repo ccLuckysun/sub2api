@@ -41,7 +41,7 @@ while [ "$#" -gt 0 ]; do
         --help|-h)
             echo 'Usage: docker-deploy.sh [--start] [--monitoring] [--host-metrics] [--backup] [--image IMAGE:TAG] [--no-start]'
             echo 'No options: prepare the original three-service deployment.'
-            echo '--monitoring: prepare and start all five core services, preserving existing credentials.'
+            echo '--monitoring: prepare and start all six core services, preserving existing credentials.'
             exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
@@ -86,7 +86,7 @@ prepare_compose_helper() {
         monitoring/grafana/dashboards/06-request.json; do
         fetch_asset "$asset" "$asset"
     done
-    chmod +x compose-deploy.sh monitoring/render-prometheus-config.sh monitoring/backup/snapshot.sh
+    chmod u+x compose-deploy.sh monitoring/backup/snapshot.sh
 }
 
 # Print colored message

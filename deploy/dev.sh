@@ -2,9 +2,8 @@
 # Local Docker development entrypoint: one-key start/stop for the dev stack.
 #
 # Stack: docker-compose.dev.yml (builds sub2api from ../ source, binds ./data)
-#        + docker-compose.monitoring.yml (Grafana/Prometheus, profiles
-#        host-metrics and backup). Environment comes from deploy/monitoring.env
-#        (gitignored; holds COMPOSE_PROJECT_NAME and the business secrets).
+#        + docker-compose.monitoring.yml (Grafana/Prometheus/Alertmanager).
+#        Environment comes from .env and monitoring.env, in that order.
 #
 # Typical use:
 #   ./dev.sh up                 # build + start everything, then print URLs
@@ -25,7 +24,9 @@ MON_FILE="docker-compose.monitoring.yml"
 ENV_FILE="${SUB2API_DEV_ENV_FILE:-monitoring.env}"
 APP_PORT="${SERVER_PORT:-8080}"
 GRAFANA_PORT_VALUE="${GRAFANA_PORT:-3000}"
-PROFILES=(--profile host-metrics --profile backup)
+MONITORING=true
+PROFILES=()
+ENV_FILES=()
 FILES=(-f "$DEV_FILE" -f "$MON_FILE")
 
 usage() {
@@ -61,10 +62,25 @@ note() { printf '[dev] %s\n' "$*"; }
 need_docker() {
   command -v docker >/dev/null 2>&1 || die "docker not found; start Docker Desktop first"
   docker info >/dev/null 2>&1 || die "Docker daemon is not running; start Docker Desktop first"
-  [ -f "$ENV_FILE" ] || die "missing $ENV_FILE; bootstrap the local stack once with:\n    cd deploy && ./compose-deploy.sh --monitoring --compose-file docker-compose.dev.yml --project-name deploy"
+  if [ -f .env ]; then ENV_FILES+=(--env-file .env); fi
+  if [ -f "$ENV_FILE" ]; then
+    ENV_FILES+=(--env-file "$ENV_FILE")
+  elif $MONITORING || [ -n "${SUB2API_DEV_ENV_FILE:-}" ]; then
+    die "missing $ENV_FILE; bootstrap the local stack once with:\n    cd deploy && ./compose-deploy.sh --monitoring --compose-file docker-compose.dev.yml --project-name deploy"
+  fi
+  if $MONITORING; then
+    local enabled profile
+    enabled="$(compose config --environment | awk '
+      $0 == "MONITORING_HOST_METRICS_ENABLED=true" {print "host-metrics"}
+      $0 == "MONITORING_BACKUP_ENABLED=true" {print "backup"}
+    ')"
+    while IFS= read -r profile; do
+      [ -z "$profile" ] || PROFILES+=(--profile "$profile")
+    done <<< "$enabled"
+  fi
 }
 
-compose() { docker compose --env-file "$ENV_FILE" "${FILES[@]}" ${PROFILES[@]+"${PROFILES[@]}"} "$@"; }
+compose() { docker compose ${ENV_FILES[@]+"${ENV_FILES[@]}"} "${FILES[@]}" ${PROFILES[@]+"${PROFILES[@]}"} "$@"; }
 
 port_owner() { lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $1" ("$2")"}' || true; }
 
@@ -119,11 +135,11 @@ cmd_up() {
     esac
     shift
   done
-  need_docker
   if [ "$app_only" -eq 1 ]; then
+    MONITORING=false
     FILES=(-f "$DEV_FILE")
-    PROFILES=()
   fi
+  need_docker
   [ "$ignore_ports" -eq 1 ] || ensure_ports
   mkdir -p data
   local args=(up)

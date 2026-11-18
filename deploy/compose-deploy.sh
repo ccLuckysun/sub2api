@@ -15,7 +15,7 @@ ENV_FILES=()
 usage() {
   cat <<'USAGE'
 Usage: ./compose-deploy.sh [options]
-  --monitoring             Start five core containers: sub2api/postgres/redis/grafana/prometheus
+  --monitoring             Start sub2api/postgres/redis/grafana/prometheus/alertmanager
   --host-metrics           Also enable a separate Linux host Node Exporter
   --backup                 Also enable snapshot cron (and its one-shot volume initializer)
   --image IMAGE:TAG        Use a specific application image
@@ -30,6 +30,46 @@ Existing .env credentials and data volumes are preserved. Commands after setup:
 USAGE
 }
 fail() { echo "[deploy] ERROR: $*" >&2; exit 1; }
+setup_grafana_db() {
+  local pg_user pg_db pg_pw
+  pg_user="$(./sub2api-compose exec -T postgres printenv POSTGRES_USER | tr -d '\r')"
+  pg_db="$(./sub2api-compose exec -T postgres printenv POSTGRES_DB | tr -d '\r')"
+  pg_pw="$(./sub2api-compose exec -T grafana sh -ec 'printf "%s." "${GRAFANA_PG_PASSWORD:?required}"')"
+  [[ "$pg_pw" == *. ]] || fail 'Could not read the effective Grafana database credential'
+  pg_pw="${pg_pw%.}"
+  case "$pg_pw" in
+    ''|not-configured|*$'\n'*|*$'\r'*) fail 'Grafana database credential must be configured and single-line' ;;
+  esac
+  {
+    printf '%s\n' "$pg_pw" '\getenv password GRAFANA_PG_PASSWORD'
+    cat monitoring/sql/grafana-ro.sql
+  } | ./sub2api-compose exec -T postgres sh -ec '
+    IFS= read -r GRAFANA_PG_PASSWORD
+    export GRAFANA_PG_PASSWORD
+    exec psql -X -v ON_ERROR_STOP=1 -U "$1" -d "$2"
+  ' psql "${pg_user:-sub2api}" "${pg_db:-sub2api}"
+  echo '[deploy] Grafana read-only role provisioned (grafana_ro).'
+}
+check_monitoring() {
+  local enabled
+  enabled="$(./sub2api-compose exec -T sub2api printenv MONITORING_METRICS_ENABLED)"
+  if [ "$enabled" = false ]; then
+    echo '[deploy] Application metrics explicitly disabled; skipping application scrape check.'
+    return
+  fi
+  ./sub2api-compose exec -T prometheus sh -ec '
+    metrics=$(wget -q -T 10 -O - http://sub2api:9091/metrics)
+    printf "%s\n" "$metrics" | grep -q "^sub2api_ops_eligible_requests_total "
+  ' || fail 'Application metrics are unreachable or the image lacks the V2 monitoring baseline. Check the image and metrics bind.'
+}
+if [ "$#" -eq 1 ] && [ "$1" = --setup-grafana-db ]; then
+  setup_grafana_db
+  exit 0
+fi
+if [ "$#" -eq 1 ] && [ "$1" = --check-monitoring ]; then
+  check_monitoring
+  exit 0
+fi
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --monitoring) MONITORING=true ;;
@@ -91,6 +131,9 @@ COMPOSE=(docker compose --project-directory "$SCRIPT_DIR")
 if [ "${#ENV_FILES[@]}" -eq 0 ] && [ -f .env ]; then ENV_FILES=(.env); fi
 if [ "${#ENV_FILES[@]}" -gt 0 ]; then
   for file in "${ENV_FILES[@]}"; do
+    if $MONITORING; then
+      case "$file" in monitoring.env|./monitoring.env|"$SCRIPT_DIR/monitoring.env") continue ;; esac
+    fi
     [ -f "$file" ] || fail "missing environment file: $file"
     COMPOSE+=(--env-file "$file")
   done
@@ -121,6 +164,7 @@ if $MONITORING; then
       monitoring/grafana/dashboards/*.json; do
     [ ! -f "$file" ] || chmod 644 "$file"
   done
+  chmod 755 monitoring/render-prometheus-config.sh
   [ -f monitoring.env ] || : > monitoring.env
   chmod 600 monitoring.env
   if [ -z "$(setting GRAFANA_ADMIN_PASSWORD)" ]; then
@@ -166,13 +210,9 @@ if [ -n "$APP_IMAGE" ]; then
   mv "$temp" docker-compose.release.yml
 fi
 [ ! -f docker-compose.release.yml ] || COMPOSE+=(-f docker-compose.release.yml)
-PROM_CONFIG_CHANGED=false
 if $MONITORING; then
-  before="$(cksum monitoring/prometheus.yml 2>/dev/null || true)"
   [ -f docker-compose.monitoring.yml ] || fail 'missing monitoring overlay'
   MONITORING_ENV_FILE="$SCRIPT_DIR/monitoring.env" ./monitoring/render-prometheus-config.sh
-  after="$(cksum monitoring/prometheus.yml)"
-  [ "$before" = "$after" ] || PROM_CONFIG_CHANGED=true
   COMPOSE+=(-f docker-compose.monitoring.yml)
 fi
 "${COMPOSE[@]}" config --quiet
@@ -196,28 +236,17 @@ wrapper="$(mktemp ./sub2api-compose.tmp.XXXXXX)"
 chmod 700 "$wrapper"
 mv "$wrapper" sub2api-compose
 if $START; then
-  if $MONITORING && $PROM_CONFIG_CHANGED && [ -n "$(./sub2api-compose ps -q prometheus)" ]; then
-    # A file bind mount otherwise continues to reference the replaced inode.
-    ./sub2api-compose up -d --wait --wait-timeout 180 --force-recreate prometheus
-  fi
   if $MONITORING; then
+    # Rule files are separate bind mounts and may have changed without a config change.
+    ./sub2api-compose up -d --wait --wait-timeout 180 --force-recreate prometheus
     # Installers/copy tools may replace file inodes. Keep volume data, but rebuild
     # Grafana's file bind mounts; the provider interval alone cannot refresh them.
-    ./sub2api-compose up -d --wait --wait-timeout 180 --force-recreate grafana
+    ./sub2api-compose up -d --wait --wait-timeout 180 --force-recreate grafana alertmanager
   fi
   ./sub2api-compose up -d --wait --wait-timeout 180
   if $MONITORING; then
-    # Provision/refresh the read-only Grafana role. psql runs as the application
-    # superuser inside the postgres container; password never appears in argv.
-    pg_user="$(./sub2api-compose exec -T postgres printenv POSTGRES_USER 2>/dev/null | tr -d '\r')"
-    pg_db="$(./sub2api-compose exec -T postgres printenv POSTGRES_DB 2>/dev/null | tr -d '\r')"
-    pg_user="${pg_user:-sub2api}"
-    pg_db="${pg_db:-sub2api}"
-    ./sub2api-compose exec -T postgres \
-      psql -X -v ON_ERROR_STOP=1 -U "$pg_user" -d "$pg_db" \
-      -v password="$(setting GRAFANA_PG_PASSWORD)" \
-      < monitoring/sql/grafana-ro.sql
-    echo '[deploy] Grafana read-only role provisioned (grafana_ro).'
+    check_monitoring
+    setup_grafana_db
   fi
   echo '[deploy] Services are ready. Use ./sub2api-compose for subsequent commands.'
 else

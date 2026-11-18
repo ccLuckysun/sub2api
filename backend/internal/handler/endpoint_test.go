@@ -26,6 +26,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/systemone", EndpointSystemOne},
 		{"/v1/chat/completions", EndpointChatCompletions},
 		{"/v1/embeddings", EndpointEmbeddings},
+		{"/embeddings", EndpointEmbeddings},
 		{"/v1/alpha/search", EndpointAlphaSearch},
 		{"/v1/responses", EndpointResponses},
 		{"/v1/responses/input_tokens", EndpointResponsesInputTokens},
@@ -75,7 +76,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/foo/responses/compact", "/foo/responses/compact"},
 
 		// Unknown path is returned as-is.
-		{"/v1/embeddings", "/v1/embeddings"},
+		{"/foo/embeddings", "/foo/embeddings"},
 		{"", ""},
 		{"  /v1/messages  ", EndpointMessages},
 	}

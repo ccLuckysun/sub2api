@@ -222,6 +222,7 @@ COMMIT;
                     for phase in ['body_read','gateway','wait','upstream','response','finish','headers_end']:
                         require(any(value>0 for value in metric_samples(text,'sub2api_request_phase_seconds_count',{'phase':phase})),'missing/nonpositive phase observation: '+phase)
                     require(metric_samples(text,'sub2api_gateway_requests_total',{'result':'success','failure_reason':''})==[1.0],'expected exactly one successful gateway request metric')
+                    require(metric_samples(text,'sub2api_ops_eligible_requests_total',{})==[1.0],'expected exactly one completed Ops-eligible request')
                     require(metric_samples(text,'sub2api_upstream_requests_total',{'account':'smoke_account','result':'success','failure_reason':''})==[1.0],'specific account/result attempt metric missing or wrong')
                     require(metric_samples(text,'sub2api_upstream_ttft_seconds_count',{'account':'smoke_account'})==[1.0],'account TTFT observation missing')
                     require(any(value>0 for value in metric_samples(text,'sub2api_metric_coverage_ratio',{'kind':'request'})),'M9 request coverage must be >0')

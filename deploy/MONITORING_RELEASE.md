@@ -18,6 +18,7 @@
 - `compose-deploy.sh --monitoring`（包括 `--no-start`）、生成的 `sub2api-compose up/start/restart` 与 `deploy-us1.sh` 在启动/构建/上传前运行 `monitoring/grafana/dashboard-preflight.sh --source`：递归检查所有 `.json`，任何零字节文件都打印完整路径并非零退出，缺少六个必需文件或存在旧 chain 也失败。同时用 `--metadata` 检查 provisioning。两种模式都递归拒绝任意大小的 `._*` / `.DS_Store` 文件或目录。此检查只读，不自动忽略或清理文件。
 - Grafana 的 entrypoint 在执行 `/run.sh` **之前**先检查挂载的 `/etc/grafana/provisioning` 元数据，再对真实 `/var/lib/grafana/dashboards/v2` 执行 `--volume` 检查，因此即使绕过部署脚本直接 `docker compose up`，provisioning 元数据、持久卷内非空 AppleDouble JSON 或历史空文件也会阻断 Grafana 进程启动并明确报错。全部通过后原样透传启动参数给 `/run.sh`。其他服务可能已经启动；这不是全栈事务。六个 JSON 使用 `create_host_path: false`，缺少源文件不会被 Docker 自动创建成目录。
 - 普通 bind mount 中被当前非空源文件遮蔽的同名卷文件不会被 provider 读取；检查针对 provider 的实际可见目录。未挂载的历史 `02-chain.json`（空或非空）一定报错。非空历史内容须人工检查/迁移，不自动删除。
+- 从 `deploy-us1.sh` 升级时，远端先备份配置，再将部署目录顶层的旧 `monitoring/grafana/dashboards/02-chain.json` 普通文件移到同一部署目录下的私有 `sub2api-retired-dashboards-*` 目录。升级不会删除它或修改 Grafana 卷；遇到同名符号链接或目录则中止。macOS 打包时也会剔除扩展属性，避免 GNU tar 解包时输出 Apple 元数据警告。
 - 不使用 `sed -i`、`mv` 或“临时文件 + rename”直接修改已挂载 dashboard JSON；这些操作会替换 inode，30s provider 扫描仍可能读取旧文件。常规修改应改生成器并重新生成、运行 `--check` 与部署测试，再 `./sub2api-compose up -d --no-deps --force-recreate grafana`。生成器当前对已有文件是原 inode 写入，正常更新最多 30s 重载；写入期间不要重启 Grafana。部署脚本会显式重建 Grafana 以兼容安装器/打包工具替换 inode，保留持久卷，绝不 `down -v`。
 - 所有监控发布包、配置备份与 snapshot tar 使用 `COPYFILE_DISABLE=1`，并排除 `._*` / `.DS_Store`；远端解包也排除旧包内这类元数据。不要通过原地 JSON 文本替换修复环境差异。
 

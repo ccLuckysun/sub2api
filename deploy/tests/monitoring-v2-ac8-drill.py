@@ -95,11 +95,11 @@ class Drill:
         def snapshot(label):
             rows, filename = raw_query('ALERTS{alertname="' + ALERT + '"}', label + '-ALERTS')
             expression, exprfile = raw_query(info['rule']['expr'], label + '-expression')
-            v1, _ = raw_query('sum(increase(sub2api_http_requests_total{route="/v1/messages"}[3m]))', label + '-v1')
+            eligible, _ = raw_query('sum(increase(sub2api_ops_eligible_requests_total[3m]))', label + '-eligible')
             phase, _ = raw_query('sum(increase(sub2api_request_phase_seconds_count[3m]))', label + '-phase')
             states = [r['metric'].get('alertstate') for r in rows]
             event(label, states=states, alerts_raw=filename, expression_raw=exprfile,
-                  v1_increase=v1, phase_increase=phase)
+                  eligible_increase=eligible, phase_increase=phase)
             return states, expression, phase, filename
 
         def healthy():

@@ -19,7 +19,7 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 USER_SQL = ('SELECT id AS __value, COALESCE(email, id::text) AS __text '
             'FROM users ORDER BY 2 LIMIT 1000')
-KEY_SQL = ('SELECT id AS __value, name AS __text FROM api_keys '
+KEY_SQL = ('SELECT id AS __value, name AS __text FROM grafana_api_keys '
            'WHERE ($user = -1 OR user_id = $user) ORDER BY 2 LIMIT 1000')
 MODEL_FILTER = "(${model:sqlstring} = '__all__' OR s.model = ${model:sqlstring})"
 
@@ -119,19 +119,18 @@ def validate_dashboards():
             print('VARIABLES requests: user/api_key/result/model/search PASS')
         elif uid == 'sub2api-v2-request':
             assert len(data['panels']) == 10
-            assert list(variables) == ['request']
-            request = variables['request']
-            assert request['type'] == 'query' and request['multi'] is False
-            assert request['includeAll'] is False
-            assert request['datasource'] == PG_DS
-            assert 'ORDER BY observed_at DESC' in request['query']
-            assert 'LIMIT 1000' in request['query']
+            assert list(variables) == ['sample_id']
+            request = variables['sample_id']
+            assert request['type'] == 'textbox' and request['multi'] is False
+            assert request['includeAll'] is False and not request.get('skipUrlSync')
+            assert request['current']['value'] == request['query'] == ''
             for panel in panels(data['panels']):
                 for target in panel.get('targets', []):
                     sql = target.get('rawSql', '')
                     if sql:
-                        assert '${request:sqlstring}' in sql, (uid, panel['id'])
-            print('VARIABLE request: recent 1000 request ids PASS')
+                        assert 'WHERE s.id = CASE WHEN ${sample_id:sqlstring}' in sql, (uid, panel['id'])
+                        assert '$__timeFilter(s.observed_at)' in sql, (uid, panel['id'])
+            print('VARIABLE sample_id: direct URL selection without a query option limit PASS')
         else:
             assert not variables, (uid, list(variables))
 
@@ -165,7 +164,7 @@ def validate_dashboards():
     assert len(queries) == 6, len(queries)
     print('STATIC PASS: six dashboards; 04 has 7 panels and six SQL panels with '
           'numeric user/key predicates; 02 variables and request SQL allowed; '
-          '06 request variable; no user/key filters on Prom/system panels')
+          '06 sample_id variable; no user/key filters on Prom/system panels')
     return queries
 
 
@@ -196,15 +195,19 @@ class ReadOnlyPG:
         return value, elapsed
 
 
-def interpolate(sql, user, key, start, end):
+def interpolate(sql, user, key, start, end, **strings):
     # SQL is repository-owned; values are integers selected by this test.
     sql = re.sub(r'\$__timeFilter\(([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\)',
                  lambda m: f'{m[1]} BETWEEN to_timestamp({start}) AND to_timestamp({end})', sql)
     sql = re.sub(r"\$__timeGroupAlias\((\w+),'5m'\)",
                  lambda m: f'floor(extract(epoch from {m[1]})/300)*300 AS "time"', sql)
+    sql = sql.replace('$__timeFrom()', f'to_timestamp({start})')
+    sql = sql.replace('$__timeTo()', f'to_timestamp({end})')
     sql = re.sub(r'\$api_key\b', str(key), sql)
     sql = re.sub(r'\$user\b', str(user), sql)
-    assert '$' not in sql, f'Unexpanded Grafana macro: {sql}'
+    for name, value in strings.items():
+        sql = sql.replace('${' + name + ':sqlstring}', "'" + value.replace("'", "''") + "'")
+    assert not re.search(r'\$(?:[A-Za-z_]|\{)', sql), f'Unexpanded Grafana macro: {sql}'
     return sql
 
 
@@ -256,7 +259,7 @@ def main():
     schema, _ = db.query('column-types', "SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM "
                          "(SELECT table_name,column_name,data_type FROM information_schema.columns "
                          "WHERE table_schema='public' AND ((table_name='users' AND column_name='id') OR "
-                         "(table_name='api_keys' AND column_name IN ('id','user_id')) OR "
+                         "(table_name='grafana_api_keys' AND column_name IN ('id','user_id')) OR "
                          "(table_name IN ('usage_logs','ops_request_transfer_samples') AND "
                          "column_name IN ('user_id','api_key_id'))) ORDER BY 1,2) t")
     assert all(col['data_type'] == 'bigint' for col in schema), schema
@@ -268,14 +271,14 @@ def main():
                      if has_samples else 'false')
     sample_count = '(SELECT count(*) FROM ops_request_transfer_samples)' if has_samples else 'NULL'
     fixture, _ = db.query('existing-ids-and-counts', "SELECT json_build_object("
-                          "'user', coalesce((SELECT min(user_id) FROM api_keys),(SELECT min(id) FROM users)), "
-                          "'key', (SELECT min(id) FROM api_keys WHERE user_id=(SELECT min(user_id) FROM api_keys)), "
+                          "'user', coalesce((SELECT min(user_id) FROM grafana_api_keys),(SELECT min(id) FROM users)), "
+                          "'key', (SELECT min(id) FROM grafana_api_keys WHERE user_id=(SELECT min(user_id) FROM grafana_api_keys)), "
                           "'missing', -9223372036854775807, "
                           "'missing_exists', EXISTS(SELECT FROM users WHERE id=-9223372036854775807) OR "
-                          "EXISTS(SELECT FROM api_keys WHERE id=-9223372036854775807 OR user_id=-9223372036854775807) OR "
+                          "EXISTS(SELECT FROM grafana_api_keys WHERE id=-9223372036854775807 OR user_id=-9223372036854775807) OR "
                           "EXISTS(SELECT FROM usage_logs WHERE user_id=-9223372036854775807 OR api_key_id=-9223372036854775807) OR "
                           + sample_exists + ", "
-                          "'users', (SELECT count(*) FROM users), 'keys', (SELECT count(*) FROM api_keys), "
+                          "'users', (SELECT count(*) FROM users), 'keys', (SELECT count(*) FROM grafana_api_keys), "
                           "'usage', (SELECT count(*) FROM usage_logs), 'samples', " + sample_count + ", "
                           "'end', ceil(extract(epoch from now()))::bigint)")
     assert fixture['user'] is not None, 'Single-user coverage needs an existing user; no rows inserted'

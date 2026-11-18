@@ -18,6 +18,8 @@ const (
 	RequestDurationName = "sub2api_http_request_duration_seconds"
 	// RequestsInFlightName gauges requests currently being handled.
 	RequestsInFlightName = "sub2api_http_requests_in_flight"
+	// OpsEligibleRequestsTotalName counts finished requests eligible for V2 Ops.
+	OpsEligibleRequestsTotalName = "sub2api_ops_eligible_requests_total"
 )
 
 // Response mode label values.
@@ -55,6 +57,8 @@ type Metrics struct {
 	RequestDuration *prometheus.HistogramVec
 	// RequestsInFlight gauges requests currently being handled (no labels).
 	RequestsInFlight prometheus.Gauge
+	// OpsEligibleRequestsTotal counts completed Ops-eligible requests, even if V2 is disabled.
+	OpsEligibleRequestsTotal prometheus.Counter
 }
 
 // NormalizeMethod maps a request method onto the bounded label set.
@@ -91,6 +95,10 @@ func NewRegistry() (*prometheus.Registry, *Metrics) {
 		RequestsInFlight: factory.NewGauge(prometheus.GaugeOpts{
 			Name: RequestsInFlightName,
 			Help: "Number of HTTP requests currently being handled.",
+		}),
+		OpsEligibleRequestsTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: OpsEligibleRequestsTotalName,
+			Help: "Total number of finished HTTP requests eligible for V2 Ops instrumentation, regardless of whether V2 Ops is enabled.",
 		}),
 	}
 

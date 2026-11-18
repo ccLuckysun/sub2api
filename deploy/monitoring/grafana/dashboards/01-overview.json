@@ -1395,7 +1395,7 @@
       "id": 13,
       "title": "最近异常请求",
       "type": "table",
-      "description": "PG 请求样本中最近的失败请求；点击请求 ID 打开单请求详情。样本量不代表总体分位。",
+      "description": "PG 请求样本中最近的失败请求；点击详情定位该样本。样本量不代表总体分位。",
       "datasource": {
         "type": "postgres",
         "uid": "sub2api-pg"
@@ -1413,7 +1413,7 @@
             "type": "postgres",
             "uid": "sub2api-pg"
           },
-          "rawSql": "\nSELECT\n  s.observed_at AS \"时间\",\n  COALESCE(u.email, '#' || s.user_id) AS \"用户\",\n  s.model AS \"模型\",\n  s.total_ms AS \"总耗时\",\n  (CASE s.failure_reason\n  WHEN 'upstream_rate_limit' THEN '上游限流'\n  WHEN 'upstream_server_error' THEN '上游 5xx'\n  WHEN 'upstream_read_timeout' THEN '上游超时'\n  WHEN 'client_abort_during_response' THEN '客户端中断'\n  WHEN 'gateway_error' THEN '网关错误'\n  WHEN 'rejected' THEN '请求被拒'\n  WHEN 'unknown' THEN '未知'\n  ELSE COALESCE(s.failure_reason, s.result, 'unknown')\nEND) AS \"失败原因\",\n  s.request_id AS \"详情\"\nFROM ops_request_transfer_samples s\nLEFT JOIN users u ON u.id = s.user_id\nWHERE $__timeFilter(s.observed_at)\n  AND s.result <> 'success'\nORDER BY s.observed_at DESC\nLIMIT 8\n",
+          "rawSql": "\nSELECT\n  s.observed_at AS \"时间\",\n  COALESCE(u.email, '#' || s.user_id) AS \"用户\",\n  s.model AS \"模型\",\n  s.total_ms AS \"总耗时\",\n  (CASE s.failure_reason\n  WHEN 'upstream_rate_limit' THEN '上游限流'\n  WHEN 'upstream_server_error' THEN '上游 5xx'\n  WHEN 'upstream_read_timeout' THEN '上游超时'\n  WHEN 'client_abort_during_response' THEN '客户端中断'\n  WHEN 'gateway_error' THEN '网关错误'\n  WHEN 'rejected' THEN '请求被拒'\n  WHEN 'unknown' THEN '未知'\n  ELSE COALESCE(s.failure_reason, s.result, 'unknown')\nEND) AS \"失败原因\",\n  s.id::text AS \"详情\"\nFROM ops_request_transfer_samples s\nLEFT JOIN users u ON u.id = s.user_id\nWHERE $__timeFilter(s.observed_at)\n  AND s.result <> 'success'\nORDER BY s.observed_at DESC, s.id DESC\nLIMIT 8\n",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -1639,7 +1639,7 @@
                 "value": [
                   {
                     "title": "查看详情",
-                    "url": "/d/sub2api-v2-request?var-request=${__value.raw}&from=${__from}&to=${__to}",
+                    "url": "/d/sub2api-v2-request?var-sample_id=${__value.raw}&from=${__from}&to=${__to}",
                     "targetBlank": false
                   }
                 ]

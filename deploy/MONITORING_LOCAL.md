@@ -14,7 +14,7 @@ V2 默认监控部署包含六个独立的常驻容器：`sub2api`、`postgres`�
 ./deploy-us1.sh 0.0.4
 ```
 
-版本号按本次发布调整。脚本继续完成 linux/amd64 构建、压缩、上传、数据库 pg_dump、运行中旧镜像备份、应用更新与健康检查，并默认部署 Prometheus、Grafana。脚本从现有应用的 Compose labels 读取**项目名称、全部配置文件及环境文件**，保留 PostgreSQL、Redis、Caddy 及现有数据和业务 `.env`，不会重建它们。
+版本号按本次发布调整。脚本继续完成 linux/amd64 构建、压缩、上传、数据库 pg_dump、运行中旧镜像备份、应用更新与健康检查，并默认部署 Prometheus、Grafana、Alertmanager。脚本从现有应用的 Compose labels 读取**项目名称、全部配置文件及环境文件**，保留 PostgreSQL、Redis、Caddy 及现有数据和业务 `.env`，不会重建它们。
 
 若只更新应用：
 
@@ -22,7 +22,7 @@ V2 默认监控部署包含六个独立的常驻容器：`sub2api`、`postgres`�
 ./deploy-us1.sh 0.0.4 --app-only
 ```
 
-已有监控的项目会继续保留监控配置。脚本结束后输出数据库备份位置和可直接执行的应用回滚脚本。应用回滚不自动回退数据库 schema；数据库备份用于必要时人工恢复。
+已有监控的项目会继续保留监控配置；未启用监控的项目不需要 `monitoring.env`。脚本结束后输出数据库备份位置和可直接执行的应用回滚脚本。应用回滚不自动回退数据库 schema；数据库备份用于必要时人工恢复。
 
 服务器上的 Grafana 仅绑定 `127.0.0.1:3000`。在本机执行 `ssh -L 3000:127.0.0.1:3000 us1`，再打开 <http://127.0.0.1:3000>。用户名 `admin`，密码保存在**服务器 Compose 目录**的 `monitoring.env`（0600），首次自动生成，重复部署不重置。已有 Grafana 数据卷的管理员密码以卷内已保存的密码为准。
 
@@ -34,7 +34,7 @@ V2 默认监控部署包含六个独立的常驻容器：`sub2api`、`postgres`�
 /path/to/sub2api/deploy/docker-deploy.sh --monitoring --image sun/sub2api:0.0.4
 ```
 
-`--image` 应指定包含监控埋点的已发布镜像。未指定时沿用原 Compose 的默认镜像。首次安装会生成 PostgreSQL/JWT/TOTP 等业务凭据、Grafana 密码及持久化目录；已有 `.env` 和 Compose 配置会保留。镜像通过 Docker 拉取，因此新服务器使用私有镜像时须先登录镜像仓库。
+`--image` 应指定与本次监控配置同版的应用镜像。未指定时沿用原 Compose 的默认镜像，若它未暴露新版指标，启动检查会报错而不会宣告部署成功。首次安装会生成 PostgreSQL/JWT/TOTP 等业务凭据、Grafana 密码及持久化目录；已有 `.env` 和 Compose 配置会保留。新服务器使用私有镜像时须先登录镜像仓库。
 
 不传参数仍保留原脚本的三容器配置准备功能。加 `--start` 可启动三容器基础栈。`--monitoring --no-start` 可以只准备并校验六容器配置。
 
@@ -68,7 +68,7 @@ cd deploy
 ./sub2api-compose stop grafana prometheus
 ```
 
-更改采样间隔后，重新执行原来的 `compose-deploy.sh` 命令。渲染失败保留上一次有效文件；配置不变时保留文件 inode；内容改变时脚本会重建 Prometheus，使文件挂载生效。
+更改采样间隔或规则后，重新执行原来的 `compose-deploy.sh` 命令。Prometheus 配置和规则会先由 `promtool` 校验；成功部署时重建 Prometheus 容器，使更新的文件挂载生效，保留 TSDB 卷。
 
 ## 可选扩展
 
@@ -101,7 +101,7 @@ Docker Desktop 下宿主指标属于 **Linux 虚拟机**。它们不是 macOS/Wi
 ./sub2api-compose exec prometheus wget -qO- 'http://localhost:9090/api/v1/query?query=up'
 ```
 
-基础栈的 `sub2api`、`prometheus`、`alertmanager` 三个目标应为 1；开启宿主扩展时另有 `node=1`。`up=1` 表示可抓取，仍需验证指标口径。
+基础栈的 `sub2api`、`prometheus`、`alertmanager` 三个目标应为 1；开启宿主扩展时另有 `node=1`。`up=1` 表示可抓取，仍需验证指标口径。邮件默认不发送；仅在 `monitoring.env` 显式配置受控收件人 `ALERT_SMTP_TO` 和 SMTP 后启用，沿用旧配置时请先核对收件人。Grafana PostgreSQL 数据源使用 `POSTGRES_DB`（默认 `sub2api`）；`grafana_ro` 只能查询看板所需列和 API Key 脱敏视图。
 
 从旧版七容器环境迁移到默认五容器时，先用原 Compose 命令停止 `node-exporter` 和 `backup`，再执行新脚本；未选中的旧容器不会自动删除。不要使用 `down -v`，它会删除命名数据卷。
 
@@ -115,11 +115,11 @@ Grafana 和 Prometheus 分别使用独立持久卷。Grafana 只绑定宿主回�
 python3 deploy/tests/monitoring-stack-smoke.py --image sun/sub2api:0.0.4 --extensions
 ```
 
-这条测试通过真正的 `docker-deploy.sh --monitoring` 启动五容器，检查抓取目标和 Grafana 看板 provisioning；`--extensions` 还会验证宿主网络计数与快照压缩。测试不会连接远程服务器。
+这条测试通过真正的 `docker-deploy.sh --monitoring` 启动六容器，验证抓取目标、六张看板、自定义数据库连接和最小权限，再在本机演练纯应用及带监控升级；`--extensions` 还会验证宿主网络计数与快照压缩。测试不会连接远程服务器。
 
 ## V2 W5 本地验收（2026-11-14）
 
-本节为 W5 的有效验收入口。上面的旧 V1 完整业务栈 smoke 脚本保留历史用法，它的旧 UID/五容器断言不适用于 V2；本次未执行该脚本。不连接生产、不发邮件。`compose-deploy.sh --monitoring` 会自动生成 `GRAFANA_ADMIN_PASSWORD` 与 `GRAFANA_PG_PASSWORD`，并在服务就绪后以应用超级用户执行 `monitoring/sql/grafana-ro.sql` 完成只读角色授权；手工 `docker compose` 部署才需要按下面 SQL 步骤自行初始化。监控叠加默认启用 `MONITORING_METRICS_ENABLED`、`MONITORING_OPS_METRICS_ENABLED`、`MONITORING_OPS_SAMPLES_ENABLED`，可用 `monitoring.env` 覆盖为 false。SMTP 未配置时仅连接容器内 localhost，不会外发。
+本节保留 W5 历史输出；当前完整栈验收见上面的 smoke 测试。`compose-deploy.sh --monitoring` 会自动生成 `GRAFANA_ADMIN_PASSWORD` 与 `GRAFANA_PG_PASSWORD`，并在服务就绪后执行 `monitoring/sql/grafana-ro.sql`；如手工启动栈，服务就绪后可用已生成的 wrapper 和 `./compose-deploy.sh --setup-grafana-db` 补齐授权。监控叠加默认启用 `MONITORING_METRICS_ENABLED`、`MONITORING_OPS_METRICS_ENABLED`、`MONITORING_OPS_SAMPLES_ENABLED`，可用 `monitoring.env` 覆盖。
 
 ```sh
 # 在仓库根目录；既有 monitoring.env 若仍写 30s，须显式改为 15s。
@@ -132,8 +132,8 @@ docker run --rm --network none \
 docker run --rm --network none -v "$PWD/deploy/monitoring:/m:ro" \
   --entrypoint promtool prom/prometheus:v3.16.0 check rules \
   /m/prometheus/rules/slo.yml /m/prometheus/rules/chain.yml /m/prometheus/rules/infra.yml
-docker run --rm --network none -v "$PWD/deploy/monitoring:/m:ro" \
-  --entrypoint promtool prom/prometheus:v3.16.0 test rules /m/prometheus/rules/tests/v2_test.yml
+docker run --rm --network none -v "$PWD/deploy:/deploy:ro" \
+  --entrypoint promtool prom/prometheus:v3.16.0 test rules /deploy/tests/monitoring-rules-test.yml
 python3 deploy/monitoring/grafana/build-dashboards.py --check
 python3 deploy/tests/monitoring-v2-dashboard-test.py
 python3 deploy/tests/monitoring-v2-pg-test.py
@@ -182,7 +182,7 @@ PASS: PG datasource provisioned with secure password and grafana_ro
 | 4 | UnknownFailureHigh：高流量低比例、低流量高比例、恰好 10%、零流量 | 不误触发；18 条主测试另验证高比例且高流量触发/恢复 |
 | 1 | NodeLoadHigh 标签匹配回归 | 原表达式在真实标签下无结果，去掉 mode 后高负载触发、低负载恢复 |
 
-测试文件位于 `rules/tests/`，不进入 `rule_files: /etc/prometheus/rules/*.yml`；Compose 仅挂载三个生产规则文件。第 6 条保留按实例 `unless on(instance)` 集合差，route 白名单注释提示与网关路由同步维护。
+上表是历史矩阵。当前纳入版本控制和 CI 的 `deploy/tests/monitoring-rules-test.yml` 验证可选 Node Exporter 和按实例埋点停写的回归。第 6 条保留 `unless on(instance)`，用应用侧的 `sub2api_ops_eligible_requests_total`，不再复制一份路由名单。
 
 ### 只读 SQL 初始化与实测边界
 

@@ -101,6 +101,7 @@ services:
       # 本地一律绑回环：下方 ports 已用 127.0.0.1 前缀限制宿主侧监听；
       # Grafana 进程本身须绑容器 0.0.0.0，否则宿主回环端口转发不可达
       - GRAFANA_PG_PASSWORD=${GRAFANA_PG_PASSWORD:-not-configured}
+      - GRAFANA_PG_DATABASE=${POSTGRES_DB:-sub2api}
       - GF_USERS_ALLOW_SIGN_UP=false
       # 13.x 默认后台预装/更新多个插件，2GB 小机器上可能在 256m 限额内 OOM；
       # 本看板仅用内建 Prometheus 数据源和基础面板，无需额外插件。
@@ -178,7 +179,7 @@ services:
       ALERT_SMTP_AUTH_USERNAME: ${ALERT_SMTP_AUTH_USERNAME:-}
       ALERT_SMTP_AUTH_PASSWORD: ${ALERT_SMTP_AUTH_PASSWORD:-}
       ALERT_SMTP_REQUIRE_TLS: ${ALERT_SMTP_REQUIRE_TLS:-true}
-      ALERT_SMTP_TO: ${ALERT_SMTP_TO:-zsun40226@gmail.com}
+      ALERT_SMTP_TO: ${ALERT_SMTP_TO:-}
     # Alertmanager does not expand environment in mounted YAML. The existing
     # renderer also provides a restricted, YAML-quoted SMTP rendering mode.
     entrypoint: ["/bin/sh", "/etc/alertmanager/render.sh", "--alertmanager"]
@@ -189,6 +190,12 @@ services:
       - alertmanager_data:/alertmanager
     mem_limit: 64m
     networks: [sub2api-network]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:9093/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   # ---------------------------------------------------------------
   # Node Exporter - 宿主机整机指标

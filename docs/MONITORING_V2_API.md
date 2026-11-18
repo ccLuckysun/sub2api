@@ -617,7 +617,7 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 | --- | --- |
 | 02 | `user`、`api_key`、`result`（custom: all/success/failure）、`model`、`search`（textbox） |
 | 04 | `user`、`api_key` |
-| 06 | `request`（近期 1000 个 request_id；includeAll=false；URL `var-request`） |
+| 06 | `sample_id`（单个采样主键，可由明细表链接写入 URL `var-sample_id`） |
 
 - `user`/`api_key` 为 query 变量，`includeAll=true`、`allValue=-1`、`multi=false`。
 - `model` 为 query 变量，`includeAll=true`、`allValue=__all__`；All 时 SQL 条件为 `${model:sqlstring} = '__all__'`。
@@ -642,11 +642,11 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 | 3 | `Sub2apiSlowFirstByteP95` | `histogram_quantile(0.95, sum by (le)(rate(sub2api_request_phase_seconds_bucket{phase="headers_end"}[10m]))) > 3` | 10m | warning |
 | 4 | `Sub2apiUpstreamAccountFailing` | `sum by (account)(rate(sub2api_upstream_requests_total{result!="success"}[5m])) / clamp_min(sum by (account)(rate(sub2api_upstream_requests_total[5m])),1e-9) > 0.2 and sum by (account)(increase(sub2api_upstream_requests_total[5m])) > 20` | 5m | warning |
 | 5 | `Sub2apiGatewaySelfError` | `sum(rate(sub2api_gateway_requests_total{result="gateway_error"}[5m])) > 0.05` | 5m | critical |
-| 6 | `Sub2apiInstrumentationStalled` | 见下方两分支 | 1m | critical |
+| 6 | `Sub2apiInstrumentationStalled` | 见下方按实例集合差 | 1m | critical |
 | 7 | `Sub2apiMetricCoverageLow` | `sub2api_metric_coverage_ratio{kind="account"} >= 0 and sub2api_metric_coverage_ratio{kind="account"} < 0.8` | 30m | warning |
 | 8 | `Sub2apiClientAbortSpike` | `sum(rate(sub2api_client_abort_total[10m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[10m])),1e-9) > 0.05` | 10m | warning |
 | 9 | `Sub2apiDownstreamShortfall` | `(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[10m])) - sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[10m])),1) > 0.2` | 15m | warning |
-| 10 | `NodeExporterDown` | `absent(up{job="node"}) or up{job="node"} == 0` | 5m | warning |
+| 10 | `NodeExporterDown` | `up{job="node"} == 0`（未启用宿主监控时不告警） | 5m | warning |
 | 11 | `NodeDiskLow` | `node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15` | 10m | warning |
 | 12 | `NodeMemoryPressure` | `node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.08` | 10m | warning |
 | 13 | `NodeLoadHigh` | `node_load5 / count without(cpu)(node_cpu_seconds_total{mode="idle"}) > 2` | 15m | warning |
@@ -656,15 +656,13 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 | 17 | `AlertmanagerDown` | `up{job="alertmanager"} == 0` | 5m | critical |
 | 18 | `Sub2apiUnknownFailureHigh` | `sum(rate(sub2api_gateway_requests_total{failure_reason="unknown"}[30m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[30m])),1e-9) > 0.1 and sum(increase(sub2api_gateway_requests_total[30m])) > 100` | 30m | warning |
 
-第 6 条（5 分钟内可发现，窗口 3m + for 1m + 抓取/求值 ≤1m；以独立 V1 网关流量为基准，按实例用集合差检测“缺失或停写”）：
+第 6 条以独立的已完成网关请求计数为基准，按实例检测 V2 phase 缺失或停写。计数器与 V2 使用同一套路由判断，模型发现和 token 计数不计入；WebSocket 在请求结束后计入。
 
 ```yaml
 - alert: Sub2apiInstrumentationStalled
   expr: |
     (
-      sum by (instance) (increase(sub2api_http_requests_total{
-        route=~"/v1/messages|/v1/chat/completions|/chat/completions|/v1/responses|/antigravity/.*|/v1beta/.*"
-      }[3m])) > 0
+      sum by (instance) (increase(sub2api_ops_eligible_requests_total[3m])) > 0
     )
     unless on (instance)
     (
@@ -673,13 +671,11 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
   for: 1m
 ```
 
-- 左边 = 有 V1 网关流量的实例；右边 = phase 有增长的实例。差集 = 有流量但 phase 缺失**或**停写的实例，同时覆盖无埋点镜像与埋点停写，且不会因其他健康实例而掩盖坏实例。
+- 左边 = 有符合条件的请求完成的实例；右边 = phase 有增长的实例。未提供新计数器的旧镜像不参与本规则，发布时须同时更新应用和规则。
 - 若 phase 序列从未出现，右边为空，左边全部保留 → fire；若某实例 phase 存在但不增长，该实例不出现在右边 → fire。
-- 健康空闲（V1 流量=0）时左边为空 → 不 fire；健康慢流式 phase 有增长 → 不 fire。
-- `promtool test rules` 覆盖：全部缺失、单实例缺失（其余健康）、单实例停写、空闲、正常慢流式、多实例混合。
-- route 白名单需随 `routes/gateway.go` 维护，写进规则注释。
+- 没有符合条件的请求完成时左边为空，不触发停写告警；其他实例的 phase 增长不掩盖故障实例。
 
-投递：`alertmanager.yml` 邮件 SMTP 由 `monitoring.env` 注入，收件人 `zsun40226@gmail.com`，`send_resolved: true`；critical 1h、warning 4h 重复。
+投递：默认不发送邮件；配置 `monitoring.env` 中的 SMTP 与 `ALERT_SMTP_TO` 后才启用。恢复时会发送邮件；critical 1h、warning 4h 重复。
 
 ---
 
