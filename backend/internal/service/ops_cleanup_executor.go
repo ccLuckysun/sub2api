@@ -33,12 +33,11 @@ type opsCleanupDeletedCounts struct {
 	systemMetrics  int64
 	hourlyPreagg   int64
 	dailyPreagg    int64
-	samples        int64
 }
 
 func (c opsCleanupDeletedCounts) String() string {
 	return fmt.Sprintf(
-		"error_logs=%d ingress_rejects=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d samples=%d",
+		"error_logs=%d ingress_rejects=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d",
 		c.errorLogs,
 		c.ingressRejects,
 		c.alertEvents,
@@ -47,7 +46,6 @@ func (c opsCleanupDeletedCounts) String() string {
 		c.systemMetrics,
 		c.hourlyPreagg,
 		c.dailyPreagg,
-		c.samples,
 	)
 }
 
@@ -163,50 +161,4 @@ func isMissingRelationError(err error) bool {
 	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "does not exist") && strings.Contains(s, "relation")
-}
-
-// Sample cleanup has its own transaction-local timeout per 5000-row batch.
-// It must not leak session settings into the application's shared connection pool.
-func cleanupOpsSamples(ctx context.Context, db *sql.DB, now time.Time, days int) (int64, error) {
-	cutoff, truncate, ok := opsCleanupPlan(now, days)
-	if !ok || db == nil {
-		return 0, nil
-	}
-	var total int64
-	for {
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return total, err
-		}
-		if _, err = tx.ExecContext(ctx, "SET LOCAL statement_timeout = '15s'"); err != nil {
-			tx.Rollback()
-			return total, err
-		}
-		var affected int64
-		if truncate {
-			err = tx.QueryRowContext(ctx, "SELECT count(*) FROM ops_request_transfer_samples").Scan(&affected)
-			if err == nil {
-				_, err = tx.ExecContext(ctx, "TRUNCATE TABLE ops_request_transfer_samples")
-			}
-		} else {
-			var result sql.Result
-			result, err = tx.ExecContext(ctx, `WITH batch AS (
- SELECT id FROM ops_request_transfer_samples WHERE observed_at < $1 ORDER BY id LIMIT $2
-) DELETE FROM ops_request_transfer_samples WHERE id IN (SELECT id FROM batch)`, cutoff, opsCleanupBatchSize)
-			if err == nil {
-				affected, err = result.RowsAffected()
-			}
-		}
-		if err != nil {
-			tx.Rollback()
-			return total, err
-		}
-		if err = tx.Commit(); err != nil {
-			return total, err
-		}
-		total += affected
-		if truncate || affected == 0 {
-			return total, nil
-		}
-	}
 }

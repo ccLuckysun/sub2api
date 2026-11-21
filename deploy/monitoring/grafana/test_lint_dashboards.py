@@ -14,6 +14,9 @@ LINTER = runpy.run_path(str(Path(__file__).with_name("lint-dashboards.py")))
 lint = LINTER["lint"]
 main = LINTER["main"]
 
+CANONICAL = ("01-overview.json", "02-nodes-chain.json", "03-host.json")
+PROM = {"type": "prometheus", "uid": "sub2api-prometheus"}
+
 
 class DashboardLintTests(unittest.TestCase):
     def setUp(self):
@@ -22,16 +25,26 @@ class DashboardLintTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.monitoring = self.root / "deploy/monitoring"
         self.grafana = self.monitoring / "grafana"
-        self.dashboard = self.grafana / "dashboards/17-arbitrary-name.json"
+        self.dashboards = {name: self.grafana / "dashboards" / name for name in CANONICAL}
+        self.dashboard = self.dashboards["01-overview.json"]
         self.provider = self.grafana / "provisioning/dashboards/dashboards.yml"
+        self.prometheus_ds = self.grafana / "provisioning/datasources/prometheus.yml"
         self.compose = self.root / "deploy/docker-compose.monitoring.yml"
-        self.write(self.dashboard, json.dumps(self.safe_dashboard()))
+        for name, path in self.dashboards.items():
+            self.write(path, json.dumps(self.safe_dashboard(uid=name[:-5])))
+        self.write(self.prometheus_ds, """apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: sub2api-prometheus
+    type: prometheus
+    url: http://prometheus:9090
+""")
         self.write(self.provider, """apiVersion: 1
 providers:
   - name: 'Sub2API # dashboard'
     type: file
     options:
-      path: '/var/lib/grafana/dashboards/v2' # provider root
+      path: '/etc/grafana/dashboards/v2' # provider root
 """)
         self.write(self.compose, """services:
   unrelated:
@@ -40,7 +53,9 @@ providers:
   grafana:
     volumes:
       - './monitoring/grafana/provisioning:/etc/grafana/provisioning:ro'
-      - "./monitoring/grafana/dashboards/17-arbitrary-name.json:/var/lib/grafana/dashboards/v2/17-arbitrary-name.json:ro" # dashboard
+      - "./monitoring/grafana/dashboards/01-overview.json:/etc/grafana/dashboards/v2/01-overview.json:ro" # dashboard
+      - "./monitoring/grafana/dashboards/02-nodes-chain.json:/etc/grafana/dashboards/v2/02-nodes-chain.json:ro"
+      - "./monitoring/grafana/dashboards/03-host.json:/etc/grafana/dashboards/v2/03-host.json:ro"
       - grafana_data:/var/lib/grafana
 volumes:
   grafana_data:
@@ -50,16 +65,34 @@ volumes:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
 
-    def safe_dashboard(self):
+    def safe_dashboard(self, uid="fixture"):
         return {
-            "uid": "fixture",
-            "templating": {"list": [{
-                "name": "model", "type": "query", "includeAll": False,
-                "current": {"text": "All", "value": "__all__"},
-            }]},
-            "panels": [{"panels": [{"targets": [{
-                "rawSql": "SELECT 1 WHERE ${model:sqlstring} = '__all__'",
-            }]}]}],
+            "uid": uid,
+            "templating": {"list": []},
+            "panels": [
+                {
+                    "id": 1,
+                    "type": "text",
+                    "title": "",
+                    "description": "navigation bar",
+                    "datasource": PROM,
+                    "targets": [],
+                },
+                {
+                    "id": 2,
+                    "type": "stat",
+                    "title": "QPS",
+                    "description": "gateway QPS",
+                    "datasource": PROM,
+                    "targets": [
+                        {
+                            "refId": "A",
+                            "datasource": PROM,
+                            "expr": "sum(rate(sub2api_gateway_requests_total[$__rate_interval]))",
+                        }
+                    ],
+                },
+            ],
         }
 
     def assert_error(self, message):
@@ -67,49 +100,76 @@ volumes:
         self.assertTrue(any(message in error for error in errors), errors)
         return errors
 
-    def test_valid_inventory_has_no_required_filename_or_count(self):
+    def test_valid_canonical_inventory_passes(self):
         self.assertEqual(lint(self.root), [])
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             self.assertEqual(main(["--root", str(self.root)]), 0)
         self.assertIn("PASS:", output.getvalue())
 
-    def test_datasource_environment_values_are_opaque(self):
+    def test_postgres_datasource_provisioning_is_rejected(self):
         self.write(self.grafana / "provisioning/datasources/postgres.yml", """datasources:
   - type: postgres
-    jsonData:
-      database: $GRAFANA_PG_DATABASE
-    secureJsonData:
-      password: $GRAFANA_PG_PASSWORD
+    uid: sub2api-pg
 """)
-        self.assertEqual(lint(self.root), [])
+        self.assert_error("PostgreSQL datasource provisioning file must be removed")
 
-    def test_raw_api_key_relation_is_rejected_in_variable_query(self):
-        data = self.safe_dashboard()
-        data["templating"]["list"][0]["query"] = 'SELECT id FROM "public"."api_keys"'
-        self.write(self.dashboard, json.dumps(data))
-        self.assert_error("SQL must use grafana_api_keys")
+    def test_postgres_type_in_arbitrary_datasource_file_is_rejected(self):
+        self.write(self.grafana / "provisioning/datasources/custom.yml", """apiVersion: 1
+datasources:
+  - name: Legacy
+    type: postgres
+    uid: sub2api-pg
+""")
+        self.assert_error("must not reference PostgreSQL")
 
-    def test_legacy_request_link_is_rejected(self):
+    def test_raw_sql_and_pg_datasource_in_dashboard_are_rejected(self):
         data = self.safe_dashboard()
-        data["panels"][0]["fieldConfig"] = {"defaults": {"links": [{
-            "url": "/d/sub2api-v2-request?var-request=${__value.raw}&from=${__from}&to=${__to}",
-        }]}}
+        data["panels"][1]["datasource"] = {"type": "postgres", "uid": "sub2api-pg"}
+        data["panels"][1]["targets"][0] = {
+            "refId": "A",
+            "datasource": {"type": "postgres", "uid": "sub2api-pg"},
+            "rawSql": "SELECT 1",
+        }
         self.write(self.dashboard, json.dumps(data))
-        self.assert_error("request drilldown link must pass var-sample_id")
+        self.assert_error("rawSql is forbidden")
+        self.assert_error("must not reference PostgreSQL datasource")
 
-    def test_request_detail_requires_sample_id_variable_and_predicate(self):
+    def test_forbidden_line_chart_types_are_rejected(self):
+        for kind in ("timeseries", "graph", "heatmap"):
+            with self.subTest(kind=kind):
+                data = self.safe_dashboard()
+                data["panels"][1]["type"] = kind
+                self.write(self.dashboard, json.dumps(data))
+                self.assert_error("forbidden line/heatmap panel type")
+
+    def test_missing_panel_description_is_rejected(self):
         data = self.safe_dashboard()
-        data["uid"] = "sub2api-v2-request"
-        targets = data["panels"][0]["panels"][0]["targets"]
+        data["panels"][1]["description"] = "   "
         self.write(self.dashboard, json.dumps(data))
-        self.assert_error("requires a URL-synced, single sample_id textbox")
-        self.assert_error("must filter on the sample's primary key")
-        data["templating"]["list"] = [{"name": "sample_id", "type": "textbox"}]
-        targets[0]["rawSql"] = ("SELECT s.id FROM ops_request_transfer_samples s "
-                                "WHERE s.id = CASE WHEN ${sample_id:sqlstring} <> '' THEN 1 END")
+        self.assert_error("must carry a non-empty description")
+
+    def test_or_vector_1_is_rejected(self):
+        data = self.safe_dashboard()
+        data["panels"][1]["targets"][0]["expr"] = "up or vector(1)"
         self.write(self.dashboard, json.dumps(data))
-        self.assertEqual(lint(self.root), [])
+        self.assert_error("must not contain 'or vector(1)'")
+
+    def test_retired_dashboard_json_is_rejected(self):
+        for name in ("02-chain.json", "02-requests.json", "03-nodes.json",
+                     "04-users.json", "05-host.json", "06-request.json"):
+            with self.subTest(name=name):
+                retired = self.grafana / "dashboards" / name
+                self.write(retired, json.dumps(self.safe_dashboard()))
+                self.assert_error("retired dashboard JSON must not exist")
+                retired.unlink()
+
+    def test_persistent_volume_provider_path_is_rejected(self):
+        self.write(self.provider, self.provider.read_text().replace(
+            "/etc/grafana/dashboards/v2", "/var/lib/grafana/dashboards/v2"))
+        self.write(self.compose, self.compose.read_text().replace(
+            "/etc/grafana/dashboards/v2", "/var/lib/grafana/dashboards/v2"))
+        self.assert_error("outside persistent /var/lib/grafana volume")
 
     def test_empty_json(self):
         self.write(self.dashboard, " \n\t")
@@ -127,7 +187,7 @@ volumes:
                 self.assert_error("expected a nonempty JSON object")
 
     def test_duplicate_keys_and_non_json_constants(self):
-        for value, message in (( '{"uid":"one","uid":"two"}', "duplicate JSON key"),
+        for value, message in (('{"uid":"one","uid":"two"}', "duplicate JSON key"),
                                ('{"value":NaN}', "non-JSON numeric constant")):
             with self.subTest(value=value):
                 self.write(self.dashboard, value)
@@ -150,63 +210,43 @@ volumes:
         (self.monitoring / "._directory").mkdir()
         self.assert_error("macOS metadata must not be deployed")
 
-    def test_model_custom_all_sqlstring_regression_in_nested_panel(self):
-        data = self.safe_dashboard()
-        data["templating"]["list"][0].update(includeAll=True, allValue="__all__")
-        self.write(self.dashboard, json.dumps(data))
-        self.assert_error("model uses custom All value with ${model:sqlstring}")
-        output = io.StringIO()
-        with contextlib.redirect_stderr(output):
-            self.assertEqual(main(["--root", str(self.root)]), 1)
-        self.assertIn("ERROR:", output.getvalue())
-        self.assertIn(self.dashboard.name, output.getvalue())
-
-    def test_default_all_and_numeric_custom_all_are_not_rejected(self):
-        data = self.safe_dashboard()
-        data["templating"]["list"][0].update(includeAll=True, allValue="")
-        data["templating"]["list"].append({"name": "user", "includeAll": True, "allValue": "-1"})
-        self.write(self.dashboard, json.dumps(data))
-        self.assertEqual(lint(self.root), [])
-
-    def test_ordinary_all_sentinel_query_option_with_sqlstring_is_accepted(self):
-        data = self.safe_dashboard()
-        model = data["templating"]["list"][0]
-        model.update(
-            includeAll=False,
-            query="SELECT '__all__' AS __value, '全部' AS __text "
-                  "UNION ALL SELECT DISTINCT model AS __value, model AS __text "
-                  "FROM ops_request_transfer_samples",
-            options=[{"text": "全部", "value": "__all__"},
-                     {"text": "concrete-model", "value": "concrete-model"}],
-        )
-        self.assertNotIn("allValue", model)
-        for selected in ("__all__", "concrete-model"):
-            with self.subTest(selected=selected):
-                model["current"] = {"text": selected, "value": selected}
-                self.write(self.dashboard, json.dumps(data))
-                self.assertEqual(lint(self.root), [])
-
     def test_archived_json_not_loaded_or_parsed_when_not_mounted(self):
         self.write(self.grafana / "dashboards/backup/old.json", "not JSON")
         self.assertEqual(lint(self.root), [])
 
     def test_archive_is_rejected_if_accidentally_exposed_by_directory_mount(self):
         self.write(self.grafana / "dashboards/backup/old.json", '{"uid":"legacy"}')
-        self.replace_dashboard_mount("./monitoring/grafana/dashboards:/var/lib/grafana/dashboards/v2:ro")
+        self.replace_all_dashboard_mounts("./monitoring/grafana/dashboards:/etc/grafana/dashboards/v2:ro")
         self.assert_error("archived dashboard would be provisioned")
 
-    def replace_dashboard_mount(self, spec):
+    def replace_first_dashboard_mount(self, spec):
         text = self.compose.read_text(encoding="utf-8")
-        text = text.replace('"./monitoring/grafana/dashboards/17-arbitrary-name.json:/var/lib/grafana/dashboards/v2/17-arbitrary-name.json:ro"', spec)
+        text = text.replace(
+            '"./monitoring/grafana/dashboards/01-overview.json:/etc/grafana/dashboards/v2/01-overview.json:ro"',
+            spec,
+        )
         self.write(self.compose, text)
 
+    def replace_all_dashboard_mounts(self, spec):
+        self.write(self.compose, f"""services:
+  grafana:
+    volumes:
+      - './monitoring/grafana/provisioning:/etc/grafana/provisioning:ro'
+      - {spec}
+      - grafana_data:/var/lib/grafana
+volumes:
+  grafana_data:
+""")
+
     def test_unmounted_active_json(self):
-        self.write(self.grafana / "dashboards/new.json", '{"uid":"new"}')
+        self.write(self.grafana / "dashboards/new.json", json.dumps(self.safe_dashboard()))
         self.assert_error("active dashboard is not mounted")
+        self.assert_error("unexpected non-canonical dashboard")
 
     def test_missing_mount_source(self):
         self.dashboard.unlink()
         self.assert_error("bind source does not exist")
+        self.assert_error("missing canonical dashboard")
 
     def test_wrong_provider_path(self):
         self.write(self.provider, self.provider.read_text().replace("dashboards/v2", "dashboards/other"))
@@ -221,26 +261,26 @@ volumes:
     def test_duplicate_mount(self):
         self.write(self.compose, self.compose.read_text().replace(
             "      - grafana_data:/var/lib/grafana",
-            "      - ./monitoring/grafana/dashboards/17-arbitrary-name.json:/var/lib/grafana/dashboards/v2/duplicate.json:ro\n"
+            "      - ./monitoring/grafana/dashboards/01-overview.json:/etc/grafana/dashboards/v2/duplicate.json:ro\n"
             "      - grafana_data:/var/lib/grafana"))
         self.assert_error("dashboard is provisioned 2 times")
 
     def test_directory_mount_is_supported(self):
-        self.replace_dashboard_mount("./monitoring/grafana/dashboards:/var/lib/grafana/dashboards/v2:ro")
+        self.replace_all_dashboard_mounts("./monitoring/grafana/dashboards:/etc/grafana/dashboards/v2:ro")
         self.assertEqual(lint(self.root), [])
 
     def test_long_syntax_mount_is_supported(self):
-        self.replace_dashboard_mount("""type: bind
-        source: ./monitoring/grafana/dashboards/17-arbitrary-name.json
-        target: /var/lib/grafana/dashboards/v2/17-arbitrary-name.json
+        self.replace_first_dashboard_mount("""type: bind
+        source: ./monitoring/grafana/dashboards/01-overview.json
+        target: /etc/grafana/dashboards/v2/01-overview.json
         read_only: true""")
         self.assertEqual(lint(self.root), [])
 
     def test_long_syntax_with_standalone_sequence_marker(self):
-        self.replace_dashboard_mount("""
+        self.replace_first_dashboard_mount("""
         type: bind
-        source: ./monitoring/grafana/dashboards/17-arbitrary-name.json
-        target: /var/lib/grafana/dashboards/v2/17-arbitrary-name.json
+        source: ./monitoring/grafana/dashboards/01-overview.json
+        target: /etc/grafana/dashboards/v2/01-overview.json
         read_only: true""")
         self.assertEqual(lint(self.root), [])
 
@@ -248,7 +288,7 @@ volumes:
         self.provider.unlink()
         self.provider = self.provider.with_suffix(".json")
         self.write(self.provider, json.dumps({"providers": [{
-            "type": "file", "options": {"path": "/var/lib/grafana/dashboards/v2"},
+            "type": "file", "options": {"path": "/etc/grafana/dashboards/v2"},
         }]}))
         self.assertEqual(lint(self.root), [])
 
@@ -261,16 +301,16 @@ volumes:
                 self.assert_error("cannot inspect dashboard provider")
 
     def test_duplicate_target_is_rejected(self):
-        second = self.grafana / "dashboards/another.json"
-        self.write(second, '{"uid":"another"}')
         self.write(self.compose, self.compose.read_text().replace(
             "      - grafana_data:/var/lib/grafana",
-            "      - ./monitoring/grafana/dashboards/another.json:/var/lib/grafana/dashboards/v2/17-arbitrary-name.json:ro\n"
+            "      - ./monitoring/grafana/dashboards/03-host.json:/etc/grafana/dashboards/v2/01-overview.json:ro\n"
             "      - grafana_data:/var/lib/grafana"))
         self.assert_error("multiple dashboard mounts share target")
 
     def test_writable_config_mount_is_rejected(self):
-        self.replace_dashboard_mount("./monitoring/grafana/dashboards/17-arbitrary-name.json:/var/lib/grafana/dashboards/v2/17-arbitrary-name.json")
+        self.replace_first_dashboard_mount(
+            "./monitoring/grafana/dashboards/01-overview.json:/etc/grafana/dashboards/v2/01-overview.json"
+        )
         self.assert_error("configuration bind must be read-only")
 
     def test_unsupported_yaml_fails_closed(self):

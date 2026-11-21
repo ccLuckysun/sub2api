@@ -1,11 +1,11 @@
 # =============================================================================
 # Grafana 看板 provisioning provider
 # =============================================================================
-# 看板 JSON 位于仓库 deploy/monitoring/grafana/dashboards；compose 将当前六张
-# V2 JSON 逐文件只读挂载到 /var/lib/grafana/dashboards/v2，provider 只扫描该
-# 目录（不整目录挂载，backup/ 下的旧 V1 JSON 不会被加载）。provisioned 看板
-# 以 Git 文件为权威，页面手工改动重启后会被覆盖（迭代流程：本地调 -> 导出
-# JSON -> 回写仓库）。
+# 看板 JSON 位于仓库 deploy/monitoring/grafana/dashboards；compose 将当前三张
+# 纯 Prometheus V2 JSON 逐文件只读挂载到 /etc/grafana/dashboards/v2（独立于
+# grafana_data 持久卷，升级不会受旧卷残留影响），provider 只扫描该目录（不整目录
+# 挂载，backup/ 下的旧 V1 JSON 不会被加载）。provisioned 看板以 Git 文件为权威，
+# 页面手工改动重启后会被覆盖（迭代流程：改 build-dashboards.py -> 重新生成 -> 校验）。
 # =============================================================================
 apiVersion: 1
 
@@ -22,4 +22,4 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: false
     options:
-      path: /var/lib/grafana/dashboards/v2
+      path: /etc/grafana/dashboards/v2

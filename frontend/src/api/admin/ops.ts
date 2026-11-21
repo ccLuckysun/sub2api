@@ -460,6 +460,87 @@ export async function getRealtimeTrafficSummary(
   return data
 }
 
+export interface OpsRealtimeRequestSummary {
+  total: number
+  success: number
+  failure: number
+  success_rate: number // 0..100
+  avg_total_ms: number
+  slow_count: number // total_ms >= 3000
+}
+
+export interface OpsRealtimeRequestItem {
+  observed_at: string
+  request_id: string
+  client_request_id?: string | null
+  user_id?: number | null
+  user_email?: string | null
+  api_key_id?: number | null
+  api_key_name?: string | null
+  api_key_masked?: string | null
+  account_id?: number | null
+  account_name?: string | null
+  group_id?: number | null
+  group_name?: string | null
+  platform?: string | null
+  model?: string | null
+  endpoint_class?: string | null
+  endpoint?: string | null
+  result?: string | null
+  http_status?: number | null
+  failure_reason?: string | null
+  attempt_count?: number | null
+  failed_attempts?: number | null
+  node?: string | null
+  body_read_ms?: number | null
+  wait_ms?: number | null
+  gateway_ms?: number | null
+  upstream_ms?: number | null
+  headers_end_ms?: number | null
+  response_ms?: number | null
+  finish_ms?: number | null
+  total_ms?: number | null
+  bytes_in_declared?: number | null
+  bytes_in_wire?: number | null
+  bytes_in_decoded?: number | null
+  bytes_up_req_total?: number | null
+  bytes_resp_upstream?: number | null
+  bytes_resp_downstream?: number | null
+  bytes_in_wire_status?: string | null
+  bytes_up_req_total_status?: string | null
+  bytes_resp_upstream_status?: string | null
+  bytes_resp_downstream_status?: string | null
+}
+
+export interface OpsRealtimeRequestsResponse {
+  enabled: boolean
+  buffer_size: number
+  ttl_hours: number
+  total_in_buffer: number
+  summary: OpsRealtimeRequestSummary
+  items: OpsRealtimeRequestItem[]
+  models: string[]
+  timestamp: string
+}
+
+export interface OpsRealtimeRequestsParams {
+  limit?: number
+  result?: 'all' | 'success' | 'failure'
+  model?: string
+  search?: string
+}
+
+export async function getRealtimeRequests(
+  params: OpsRealtimeRequestsParams = {},
+  options: OpsRequestOptions = {}
+): Promise<OpsRealtimeRequestsResponse> {
+  const { data } = await apiClient.get<OpsRealtimeRequestsResponse>('/admin/ops/realtime-requests', {
+    params,
+    signal: options.signal
+  })
+  return data
+}
+
 /**
  * Subscribe to realtime QPS updates via WebSocket.
  *
@@ -1328,6 +1409,7 @@ export const opsAPI = {
   getUserConcurrencyStats,
   getAccountAvailabilityStats,
   getRealtimeTrafficSummary,
+  getRealtimeRequests,
   subscribeQPS,
 
   // Legacy unified endpoints

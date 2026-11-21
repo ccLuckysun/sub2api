@@ -348,24 +348,6 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 		*t.counter = n
 	}
 
-	// Samples use their own retention and fail independently of the other targets.
-	// Disabled sample persistence must not truncate data through a zero-valued config.
-	if s.cfg.Monitoring.OpsSamplesEnabled {
-		n, err := cleanupOpsSamples(ctx, s.db, now, s.cfg.Ops.SampleRetentionDays)
-		out.samples = n
-		if err != nil {
-			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] sample cleanup failed: %v", err)
-		} else {
-			var remaining int64
-			var oldest sql.NullTime
-			if err := s.db.QueryRowContext(ctx, "SELECT count(*), min(observed_at) FROM ops_request_transfer_samples").Scan(&remaining, &oldest); err != nil {
-				logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] sample cleanup summary failed: %v", err)
-			} else {
-				logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] samples deleted=%d remaining=%d oldest=%v", n, remaining, oldest)
-			}
-		}
-	}
-
 	// Channel monitor 每日维护（聚合昨日明细 + 软删过期明细/聚合）。
 	// 失败只记日志，不影响 ops 清理的成功状态（与 ops 各步骤风格一致）；
 	// 维护本身已经把每步错误打到 slog，heartbeat result 不再分项记录。

@@ -137,7 +137,8 @@ func forwardOpsCounter(all map[string][]forwardOpsMetric, name string) float64 {
 
 type forwardOpsFailWriter struct{ *httptest.ResponseRecorder }
 
-func (w *forwardOpsFailWriter) Write([]byte) (int, error) { return 0, syscall.EPIPE }
+func (w *forwardOpsFailWriter) Write([]byte) (int, error)       { return 0, syscall.EPIPE }
+func (w *forwardOpsFailWriter) WriteString(string) (int, error) { return 0, syscall.EPIPE }
 
 type forwardOpsCancelBody struct{ cancel context.CancelFunc }
 

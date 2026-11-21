@@ -2,24 +2,23 @@
 
 本卡仅提供本地检查和回滚 dry-run 骨架。不构建镜像、不执行部署或 push、不连接生产。W4a2c1 的 build/server race/wire 最终验证已通过；W6a 不修改 backend 或监控规则/看板。
 
-## Deployment prerequisites (2026-11-15)
+## Deployment prerequisites (pure-Prometheus V2)
 
-- `compose-deploy.sh --monitoring` 默认启用 V1 metrics、V2 ops metrics 与 PG samples，并自动生成 `GRAFANA_PG_PASSWORD`；服务就绪后自动执行 `monitoring/sql/grafana-ro.sql`。`remote-deploy.sh` 在应用启动后也执行同一 SQL。
-- 当前 V2 看板为六张：`01-overview.json`、`02-requests.json`、`03-nodes.json`、`04-users.json`、`05-host.json`、`06-request.json`，UID 分别为 `sub2api-v2-overview`、`sub2api-v2-requests`、`sub2api-v2-nodes`、`sub2api-v2-users`、`sub2api-v2-host`、`sub2api-v2-request`，面板数 14/7/8/7/23/10。旧的 `02-chain.json` 已由 `02-requests.json` 取代（历史记录见 `MONITORING_LOCAL.md`）。Compose 逐文件只读挂载到 `/var/lib/grafana/dashboards/v2/`，provider 不整目录挂载。
-- 手工 `docker compose` / `--no-start` 部署需自行执行 `monitoring/sql/grafana-ro.sql`，否则 Grafana PG 数据源无法登录。
-- 部署前建议先跑 `python3 deploy/tests/verify-migrations.py` 与 `python3 deploy/tests/verify-instrumentation.py /path/to/main`；前者校验 49 组历史编号冲突 ack 基线，后者仅为二进制辅助检查。
-- 正式发布仍需构建并 push `sun/sub2api:0.0.5-v2mon`，按 `deploy-us1.sh`/`remote-deploy.sh` 流程部署；本仓库未执行 push、生产部署或外部 SMTP。
+- `compose-deploy.sh --monitoring` 默认启用 V1 metrics、V2 ops metrics 与 Redis 环形缓冲样本（`MONITORING_OPS_SAMPLE_MAX_ITEMS=2000`、`MONITORING_OPS_SAMPLE_TTL_HOURS=24`）。Grafana 为纯 Prometheus 架构，不再需要 `GRAFANA_PG_PASSWORD` 或 `monitoring/sql/grafana-ro.sql`。
+- 当前 V2 看板为三张：`01-overview.json`、`02-nodes-chain.json`、`03-host.json`，UID 分别为 `sub2api-v2-overview`、`sub2api-v2-nodes-chain`、`sub2api-v2-host`，面板数 14/11/23。Compose 逐文件只读挂载到 `/etc/grafana/dashboards/v2/`（独立于 `grafana_data` 持久卷），provider 不整目录挂载。实时请求流与单请求下钻位于 Sub2API 管理后台 `/admin/ops#realtime-requests`。
+- 升级旧部署时，`remote-deploy.sh` 会自动备份并归档所有已退役文件（`02-chain.json`、`02-requests.json`、`03-nodes.json`、`04-users.json`、`05-host.json`、`06-request.json`、`postgres.yml`、`monitoring/sql/grafana-ro.sql`）到私有 `sub2api-retired-monitoring-*` 目录。
+- 部署前建议先跑 `python3 deploy/tests/verify-migrations.py` 与 `python3 deploy/tests/verify-instrumentation.py /path/to/main`；前者校验历史编号冲突 ack 基线，后者仅为二进制辅助检查。
+- 正式发布按 `deploy-us1.sh`/`remote-deploy.sh` 流程部署；本仓库未执行 push、生产部署或外部 SMTP。
 
 
 ## Dashboard deployment safety
 
-当前 **只保留六张 canonical 看板**。生成器和 2026-11-15 重设计明确用 `02-requests.json` 取代旧 `02-chain.json`；不能补一个不存在的 chain bind mount，也不能把历史链路面板当作第七张看板。旧链路指标/规则仍可供现有看板查询，不代表应恢复旧 JSON。
+当前 **只保留三张 canonical 纯 Prometheus 看板**（`01-overview.json`、`02-nodes-chain.json`、`03-host.json`）。旧 `02-chain.json`、`02-requests.json`、`03-nodes.json`、`04-users.json`、`05-host.json`、`06-request.json` 与 `postgres.yml` 均已退役，preflight 与 linter 会显式拒绝它们。
 
-- `compose-deploy.sh --monitoring`（包括 `--no-start`）、生成的 `sub2api-compose up/start/restart` 与 `deploy-us1.sh` 在启动/构建/上传前运行 `monitoring/grafana/dashboard-preflight.sh --source`：递归检查所有 `.json`，任何零字节文件都打印完整路径并非零退出，缺少六个必需文件或存在旧 chain 也失败。同时用 `--metadata` 检查 provisioning。两种模式都递归拒绝任意大小的 `._*` / `.DS_Store` 文件或目录。此检查只读，不自动忽略或清理文件。
-- Grafana 的 entrypoint 在执行 `/run.sh` **之前**先检查挂载的 `/etc/grafana/provisioning` 元数据，再对真实 `/var/lib/grafana/dashboards/v2` 执行 `--volume` 检查，因此即使绕过部署脚本直接 `docker compose up`，provisioning 元数据、持久卷内非空 AppleDouble JSON 或历史空文件也会阻断 Grafana 进程启动并明确报错。全部通过后原样透传启动参数给 `/run.sh`。其他服务可能已经启动；这不是全栈事务。六个 JSON 使用 `create_host_path: false`，缺少源文件不会被 Docker 自动创建成目录。
-- 普通 bind mount 中被当前非空源文件遮蔽的同名卷文件不会被 provider 读取；检查针对 provider 的实际可见目录。未挂载的历史 `02-chain.json`（空或非空）一定报错。非空历史内容须人工检查/迁移，不自动删除。
-- 从 `deploy-us1.sh` 升级时，远端先备份配置，再将部署目录顶层的旧 `monitoring/grafana/dashboards/02-chain.json` 普通文件移到同一部署目录下的私有 `sub2api-retired-dashboards-*` 目录。升级不会删除它或修改 Grafana 卷；遇到同名符号链接或目录则中止。macOS 打包时也会剔除扩展属性，避免 GNU tar 解包时输出 Apple 元数据警告。
-- 不使用 `sed -i`、`mv` 或“临时文件 + rename”直接修改已挂载 dashboard JSON；这些操作会替换 inode，30s provider 扫描仍可能读取旧文件。常规修改应改生成器并重新生成、运行 `--check` 与部署测试，再 `./sub2api-compose up -d --no-deps --force-recreate grafana`。生成器当前对已有文件是原 inode 写入，正常更新最多 30s 重载；写入期间不要重启 Grafana。部署脚本会显式重建 Grafana 以兼容安装器/打包工具替换 inode，保留持久卷，绝不 `down -v`。
+- `compose-deploy.sh --monitoring`（包括 `--no-start`）、生成的 `sub2api-compose up/start/restart` 与 `deploy-us1.sh` 在启动/构建/上传前运行 `monitoring/grafana/dashboard-preflight.sh --source`：递归检查所有 `.json`，任何零字节文件都打印完整路径并非零退出，缺少三个必需文件或存在已退役 JSON 也失败。同时用 `--metadata` 检查 provisioning，拒绝任何 `._*` / `.DS_Store` 及退役的 `postgres.yml`。此检查只读，不自动忽略或清理文件。
+- Grafana 的 entrypoint 在执行 `/run.sh` **之前**先检查挂载的 `/etc/grafana/provisioning` 元数据，再对 `/etc/grafana/dashboards/v2` 执行 `--volume` 检查；看板位于容器 `/etc/grafana/dashboards/v2`，与 `grafana_data` 持久卷彻底隔离，升级不受旧卷残留影响。三个 JSON 使用 `create_host_path: false`，缺少源文件不会被 Docker 自动创建成目录。
+- 从 `deploy-us1.sh` 升级时，远端先备份配置，再将已退役的看板 JSON、`postgres.yml` 和 `monitoring/sql/grafana-ro.sql` 移到同一部署目录下的私有 `sub2api-retired-monitoring-*` 目录。遇到同名符号链接或目录则中止。macOS 打包时也会剔除扩展属性，避免 GNU tar 解包时输出 Apple 元数据警告。
+- 不使用 `sed -i`、`mv` 或“临时文件 + rename”直接修改已挂载 dashboard JSON；这些操作会替换 inode，30s provider 扫描仍可能读取旧文件。常规修改应改生成器并重新生成、运行 `--check` 与部署测试，再 `./sub2api-compose up -d --no-deps --force-recreate grafana`。部署脚本会显式重建 Grafana 以兼容安装器/打包工具替换 inode，保留持久卷，绝不 `down -v`。
 - 所有监控发布包、配置备份与 snapshot tar 使用 `COPYFILE_DISABLE=1`，并排除 `._*` / `.DS_Store`；远端解包也排除旧包内这类元数据。不要通过原地 JSON 文本替换修复环境差异。
 
 ### SQL、空值语义与静态检查

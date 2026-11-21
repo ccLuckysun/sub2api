@@ -203,3 +203,43 @@ func TestOpsMetaFallbackGroupUpdatesWholeSnapshot(t *testing.T) {
 	require.EqualValues(t, 22, *sample.APIKeyID)
 	require.Equal(t, "raw-codex", *sample.Model)
 }
+
+func TestOpsMetaEnrichedDisplayFieldsAndMasking(t *testing.T) {
+	require.Equal(t, "sk-12345…wxyz", maskOpsAPIKey("sk-12345678901234567890wxyz"))
+	require.Equal(t, "…", maskOpsAPIKey("short-key"))
+	require.Equal(t, "", maskOpsAPIKey("   "))
+
+	registry := prometheus.NewRegistry()
+	metrics, err := monitoring.NewOpsMetrics(registry)
+	require.NoError(t, err)
+	samples := make(metaSampleSink, 1)
+	ctx := monitoring.WithOpsRecorderDependencies(context.Background(), nil, nil, samples)
+	ctx, rec := monitoring.BeginGatewayRequest(ctx, "/v1/messages", metrics)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/messages", nil).WithContext(ctx)
+
+	groupID := int64(7)
+	apiKey := &service.APIKey{
+		ID:      34,
+		Name:    "prod-client-key",
+		Key:     "sk-abcdefgh1234567890123456wxyz",
+		GroupID: &groupID,
+		User:    &service.User{ID: 12, Email: "ops@example.com"},
+		Group:   &service.Group{ID: 7, Name: "claude-pro", Platform: service.PlatformAnthropic},
+	}
+	account := &service.Account{ID: 5, Name: "anthropic-us-1", Platform: service.PlatformAnthropic}
+	attachOpsRequestMeta(c, apiKey, 12, "claude-sonnet-4-5", account)
+	rec.Finalize(monitoring.FinalizeInput{Status: 200})
+
+	sample := <-samples
+	require.NotNil(t, sample.UserEmail)
+	require.Equal(t, "ops@example.com", *sample.UserEmail)
+	require.NotNil(t, sample.APIKeyName)
+	require.Equal(t, "prod-client-key", *sample.APIKeyName)
+	require.NotNil(t, sample.APIKeyMasked)
+	require.Equal(t, "sk-abcde…wxyz", *sample.APIKeyMasked)
+	require.NotNil(t, sample.AccountName)
+	require.Equal(t, "anthropic-us-1", *sample.AccountName)
+	require.NotNil(t, sample.GroupName)
+	require.Equal(t, "claude-pro", *sample.GroupName)
+}

@@ -103,7 +103,7 @@ def main():
                             for asset in ('compose-deploy.sh', 'docker-compose.monitoring.yml', 'monitoring.env.example',
                                           'monitoring/render-prometheus-config.sh', 'monitoring/prometheus.yml.tmpl',
                                           'monitoring/prometheus/rules/chain.yml', 'monitoring/prometheus/rules/infra.yml',
-                                          'monitoring/prometheus/rules/slo.yml', 'monitoring/alertmanager', 'monitoring/sql',
+                                          'monitoring/prometheus/rules/slo.yml', 'monitoring/alertmanager',
                                           'monitoring/backup/snapshot.sh', 'monitoring/backup/crontab.example',
                                           'monitoring/grafana/dashboard-preflight.sh', 'monitoring/grafana/provisioning',
                                           'monitoring/grafana/dashboards'):
@@ -146,17 +146,11 @@ def main():
             wait_for_targets({'sub2api', 'prometheus', 'alertmanager'})
             dashboards = grafana('/api/search?type=dash-db')
             assert {item['uid'] for item in dashboards} == {
-                'sub2api-v2-' + name for name in ('overview', 'requests', 'nodes', 'users', 'host', 'request')}
-            datasource = next(item for item in grafana('/api/datasources') if item['name'] == 'Sub2API Postgres')
-            sql = """SELECT current_database(), current_user, current_setting('transaction_read_only'),
-                      has_column_privilege(current_user, 'accounts', 'credentials', 'SELECT'),
-                      has_column_privilege(current_user, 'api_keys', 'key', 'SELECT'),
-                      (SELECT count(*) FROM ops_request_transfer_samples)"""
-            result = grafana('/api/ds/query', {'from': 'now-5m', 'to': 'now', 'queries': [{'refId': 'A',
-                'datasource': {'type': datasource['type'], 'uid': datasource['uid']}, 'format': 'table', 'rawSql': sql}]})
-            values = result['results']['A']['frames'][0]['data']['values']
-            assert values == [['sub2api_smoke'], ['grafana_ro'], ['on'], [False], [False], [0]], values
-            print('PASS: installer starts six services; all three scrapes UP; six dashboards and least-privilege custom DB query work.', flush=True)
+                'sub2api-v2-' + name for name in ('overview', 'nodes-chain', 'host')}
+            datasources = grafana('/api/datasources')
+            assert {item['uid'] for item in datasources} == {'sub2api-prometheus'}, datasources
+            assert not any(item['type'] == 'postgres' for item in datasources), datasources
+            print('PASS: installer starts six services; all three scrapes UP; three pure-Prometheus dashboards work.', flush=True)
             verify_remote_upgrade()
 
             if args.extensions:

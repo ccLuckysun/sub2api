@@ -1523,11 +1523,6 @@
       "sha256": "5b6e9b57f9b354a96c6870185c034db8adc7def944efcddf654e39cd97770718"
     },
     {
-      "filename": "251_ops_v2_samples.sql",
-      "version": "251",
-      "sha256": "f85a67f9c554321041e2ea27683d1fd5ea13a8a4164525fe795d221455e95e97"
-    },
-    {
       "filename": "252_add_usage_logs_v2_fields.sql",
       "version": "252",
       "sha256": "119a74d2d95b313384176f1f8358a8cb58570c52886b4f13bbafa401d5ff9713"
@@ -1536,11 +1531,6 @@
       "filename": "252_channel_pricing_ultrafast_multiplier.sql",
       "version": "252",
       "sha256": "458752b3523254ee60ab4a821261ab64df9216a6f208c1960e7b816f8c7cfd1d"
-    },
-    {
-      "filename": "253_ops_samples_client_request_id.sql",
-      "version": "253",
-      "sha256": "347714338c73b9efabfcc3421450a004c530bcea4b07a2df3c1751ba25f4926c"
     }
   ],
   "acknowledged_number_conflicts": {
@@ -1751,8 +1741,7 @@
     ],
     "251": [
       "251_group_force_openai_ultrafast.sql",
-      "251_group_usage_rollup_nonblocking_build.sql",
-      "251_ops_v2_samples.sql"
+      "251_group_usage_rollup_nonblocking_build.sql"
     ],
     "252": [
       "252_add_usage_logs_v2_fields.sql",

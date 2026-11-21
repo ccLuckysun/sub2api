@@ -97,6 +97,16 @@ with response:
     def sql(query):
         return run(compose+['exec','-T','postgres','psql','-X','-U','sub2api','-d','sub2api','-v','ON_ERROR_STOP=1','-At'],stdin=query).stdout.strip()
 
+    def redis_samples():
+        raw_lines=run(compose+['exec','-T','redis','redis-cli','--raw','LRANGE','sub2api:ops:realtime_requests','0','500']).stdout.splitlines()
+        out=[]
+        for line in raw_lines:
+            line=line.strip()
+            if not line:continue
+            try:out.append(json.loads(line))
+            except json.JSONDecodeError:continue
+        return out
+
     def wait_health(url,label):
         deadline=time.monotonic()+args.timeout;last=''
         while time.monotonic()<deadline:
@@ -134,7 +144,7 @@ with response:
                     'environment':{'AUTO_SETUP':'true','SERVER_HOST':'0.0.0.0','SERVER_PORT':'8080','SERVER_MODE':'release','RUN_MODE':'standard',
                         'DATABASE_HOST':'postgres','DATABASE_PORT':'5432','DATABASE_USER':'sub2api','DATABASE_PASSWORD':password,'DATABASE_DBNAME':'sub2api','DATABASE_SSLMODE':'disable',
                         'REDIS_HOST':'redis','REDIS_PORT':'6379','ADMIN_EMAIL':admin_email,'ADMIN_PASSWORD':admin_password,'JWT_SECRET':jwt,'TOTP_ENCRYPTION_KEY':totp,
-                        'MONITORING_METRICS_ENABLED':'true','MONITORING_METRICS_BIND':'0.0.0.0:9091','MONITORING_OPS_METRICS_ENABLED':'true','MONITORING_OPS_SAMPLES_ENABLED':'true','OPS_SAMPLE_RETENTION_DAYS':'30',
+                        'MONITORING_METRICS_ENABLED':'true','MONITORING_METRICS_BIND':'0.0.0.0:9091','MONITORING_OPS_METRICS_ENABLED':'true','MONITORING_OPS_SAMPLES_ENABLED':'true','MONITORING_OPS_SAMPLE_MAX_ITEMS':'2000','MONITORING_OPS_SAMPLE_TTL_HOURS':'24',
                         'OPS_CLEANUP_ENABLED':'false','HTTP_PROXY':'','HTTPS_PROXY':'','ALL_PROXY':'','NO_PROXY':'*',
                         'SECURITY_URL_ALLOWLIST_ENABLED':'false','SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS':'true','SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP':'true','TZ':'UTC'}}},
                 'volumes':{'pg':{},'app':{}},'networks':{'default':{'internal':True}}}
@@ -188,20 +198,20 @@ COMMIT;
                     response_id=next((value for key,value in headers.items() if key.lower()=='x-request-id'),None)
                     require(response_id==request_id,'gateway response did not preserve x-request-id')
                     report['checks']['http_response']='PASS'
-                    # Poll only asynchronous persistence. Never broaden this predicate
-                    # to internal-* IDs or all recent rows in order to make it pass.
+                    # Poll asynchronous Redis ring buffer + PG usage_logs persistence.
                     deadline=time.monotonic()+25;samples=[];usage=[]
                     while time.monotonic()<deadline:
-                        samples=json.loads(sql(f"SELECT coalesce(json_agg(s),'[]'::json) FROM ops_request_transfer_samples s WHERE request_id='{request_id}' AND observed_at>='{window}'::timestamptz;"))
+                        samples=[s for s in redis_samples() if s.get('request_id')==request_id]
                         usage=json.loads(sql(f"SELECT coalesce(json_agg(row_to_json(u)),'[]'::json) FROM (SELECT request_id,input_tokens,output_tokens,body_bytes,gateway_latency_ms,total_cost,actual_cost FROM usage_logs WHERE api_key_id={ids['api_key_id']} AND created_at>='{window}'::timestamptz)u;"))
-                        if len(samples)>1:raise SmokeFailure('duplicate sample rows for exact request ID: '+str(len(samples)))
+                        if len(samples)>1:raise SmokeFailure('duplicate Redis sample rows for exact request ID: '+str(len(samples)))
                         if len(samples)==1 and len(usage)==1:break
                         time.sleep(.5)
                     report['sample_rows']=samples;report['usage_rows']=usage
-                    require(len(samples)==1,'exact x-request-id PG sample count='+str(len(samples))+' (requires 1; internal-* fallback is not accepted)')
+                    require(len(samples)==1,'exact x-request-id Redis sample count='+str(len(samples))+' (requires 1; internal-* fallback is not accepted)')
                     sample=samples[0]
                     for key,value in ids.items():require(sample.get(key)==value,'sample '+key+' does not match seeded identity')
                     require(sample.get('model')==MODEL and sample.get('platform')=='anthropic' and sample.get('endpoint')=='/v1/messages','sample routing/model metadata differs from request')
+                    require(sample.get('account_name')=='smoke_account' and sample.get('api_key_name')=='v2smoke_key','sample display metadata missing/wrong')
                     require(sample.get('bytes_resp_downstream')==len(raw),'sample downstream bytes differ from actual response')
                     require(sample.get('result')=='success' and sample.get('http_status')==200,'sample did not record success/200')
                     require(sample.get('attempt_count')==1 and sample.get('failed_attempts')==0,'unexpected attempt settlement')
@@ -209,7 +219,7 @@ COMMIT;
                     require(len(usage)==1,'usage row count='+str(len(usage))+' (requires 1)')
                     require(usage[0]['input_tokens']==11 and usage[0]['output_tokens']==7,'stored usage differs from mock')
                     require(usage[0]['body_bytes']==len(body) and usage[0]['gateway_latency_ms'] is not None,'usage snapshot fields absent/wrong')
-                    report['checks']['pg_exact_sample']='PASS'
+                    report['checks']['redis_exact_sample']='PASS'
                     report['checks']['stored_usage']='PASS'
                     deadline=time.monotonic()+95;text=''
                     while time.monotonic()<deadline:
@@ -222,12 +232,15 @@ COMMIT;
                     for phase in ['body_read','gateway','wait','upstream','response','finish','headers_end']:
                         require(any(value>0 for value in metric_samples(text,'sub2api_request_phase_seconds_count',{'phase':phase})),'missing/nonpositive phase observation: '+phase)
                     require(metric_samples(text,'sub2api_gateway_requests_total',{'result':'success','failure_reason':''})==[1.0],'expected exactly one successful gateway request metric')
+                    require(metric_samples(text,'sub2api_gateway_request_duration_seconds_count',{})==[1.0],'expected gateway total duration histogram sample')
+                    require(metric_samples(text,'sub2api_app_redis_up',{})==[1.0],'expected sub2api_app_redis_up == 1')
+                    require(any(value>=1.0 for value in metric_samples(text,'sub2api_app_accounts_active',{})),'expected sub2api_app_accounts_active >= 1')
                     require(metric_samples(text,'sub2api_ops_eligible_requests_total',{})==[1.0],'expected exactly one completed Ops-eligible request')
                     require(metric_samples(text,'sub2api_upstream_requests_total',{'account':'smoke_account','result':'success','failure_reason':''})==[1.0],'specific account/result attempt metric missing or wrong')
                     require(metric_samples(text,'sub2api_upstream_ttft_seconds_count',{'account':'smoke_account'})==[1.0],'account TTFT observation missing')
                     require(any(value>0 for value in metric_samples(text,'sub2api_metric_coverage_ratio',{'kind':'request'})),'M9 request coverage must be >0')
                     require(metric_samples(text,'sub2api_model_requests_total',{'model_class':'claude','result':'success'})==[1.0],'original model class metric missing/wrong')
-                    report['metric_evidence']=[line for line in text.splitlines() if line.startswith(('sub2api_request_phase_seconds_count{','sub2api_gateway_requests_total{','sub2api_upstream_requests_total{','sub2api_upstream_ttft_seconds_count{','sub2api_model_requests_total{','sub2api_metric_coverage_ratio{'))]
+                    report['metric_evidence']=[line for line in text.splitlines() if line.startswith(('sub2api_request_phase_seconds_count{','sub2api_gateway_requests_total{','sub2api_gateway_request_duration_seconds_count','sub2api_app_','sub2api_upstream_requests_total{','sub2api_upstream_ttft_seconds_count{','sub2api_model_requests_total{','sub2api_metric_coverage_ratio{'))]
                     report['checks']['metrics_concrete_labels']='PASS';report['checks']['m9_request_positive']='PASS'
                     mock_requests=json.loads(http(mock+'/requests')[2]);report['mock_requests']=mock_requests
                     require(len(mock_requests)==1,'expected exactly one mock upstream call')
@@ -236,18 +249,18 @@ COMMIT;
                     require(mock_requests[0]['api_key_present'],'upstream authentication header missing')
                     report['checks']['mock_request']='PASS'
                     # Recheck after metrics/coverage polling, catching delayed duplicates.
-                    count=int(sql(f"SELECT count(*) FROM ops_request_transfer_samples WHERE request_id='{request_id}' AND observed_at>='{window}'::timestamptz;"))
-                    require(count==1,'sample row count changed after settling: '+str(count))
+                    count=len([s for s in redis_samples() if s.get('request_id')==request_id])
+                    require(count==1,'Redis sample count changed after settling: '+str(count))
                     if extension is not None:extension.verify(http,sql,report,evidence,api_key)
                     report['status']='PASS'
-                    print('CHECKS PASS: HTTP/mock/usage; concrete phase/account/result labels; exact PG sample=1; M9 request>0',flush=True)
+                    print('CHECKS PASS: HTTP/mock/usage; concrete phase/account/result labels; exact Redis sample=1; M9 request>0',flush=True)
                     print('SAMPLE:',json.dumps(sample,ensure_ascii=False,default=str),flush=True)
                     print('M9_REQUEST:',metric_samples(text,'sub2api_metric_coverage_ratio',{'kind':'request'}),flush=True)
             except Exception as error:
                 failure=sanitize(str(error));report['error']=failure
                 print('FAIL:',failure,flush=True)
                 if started:
-                    report['recent_sample_diagnostic']=run(compose+['exec','-T','postgres','psql','-X','-U','sub2api','-d','sub2api','-Atc',"SELECT request_id,result,http_status,observed_at FROM ops_request_transfer_samples ORDER BY id DESC LIMIT 5"],check=False).stdout
+                    report['recent_sample_diagnostic']=run(compose+['exec','-T','redis','redis-cli','--raw','LRANGE','sub2api:ops:realtime_requests','0','4'],check=False).stdout
             finally:
                 if started:
                     logs=run(compose+['logs','--no-color','--tail','250'],check=False)

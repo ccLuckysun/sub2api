@@ -16,24 +16,34 @@ metadata="$(find "$directory" \( -name '._*' -o -name '.DS_Store' \) -print)" \
 $metadata
 Inspect and explicitly clean the source or mounted volume. No files were deleted."
 if [ "$mode" = --metadata ]; then
-  printf '[dashboard-preflight] PASS: no macOS metadata in %s.\n' "$directory"
+  retired_ds="$(find "$directory" \( -name 'postgres.yml' -o -name 'postgres.yaml' \) -print)" \
+    || fail "cannot scan Grafana provisioning directory: $directory"
+  [ -z "$retired_ds" ] || fail "retired PostgreSQL datasource artifact ($mode); refusing Grafana startup:
+$retired_ds
+Grafana is Prometheus-only; inspect and explicitly remove/archive the retired datasource file."
+  printf '[dashboard-preflight] PASS: no macOS metadata or retired PostgreSQL datasource in %s.\n' "$directory"
   exit 0
 fi
 empty_files="$(find "$directory" -type f -name '*.json' -size 0c -print)" \
   || fail "cannot scan dashboard directory: $directory"
 [ -z "$empty_files" ] || fail "zero-byte dashboard JSON ($mode); refusing Grafana startup:
 $empty_files
-Inspect the source and persistent grafana_data volume. No files were deleted; see MONITORING_RELEASE.md."
-# 02-chain was superseded by 02-requests, not an optional seventh dashboard.
-# File bind mounts do not hide unrelated artifacts in the persistent volume.
-historical="$(find "$directory" -name '02-chain.json' -print)" \
-  || fail "cannot scan historical dashboards: $directory"
-[ -z "$historical" ] || fail "retired 02-chain.json artifact ($mode):
+Inspect the source and mounted dashboard directory. No files were deleted; see MONITORING_RELEASE.md."
+# Retired V2 dashboards must not remain alongside the 3 canonical Prometheus dashboards.
+historical="$(find "$directory" \( \
+  -name '02-chain.json' -o \
+  -name '02-requests.json' -o \
+  -name '03-nodes.json' -o \
+  -name '04-users.json' -o \
+  -name '05-host.json' -o \
+  -name '06-request.json' \
+\) -print)" || fail "cannot scan historical dashboards: $directory"
+[ -z "$historical" ] || fail "retired dashboard artifact ($mode):
 $historical
-Expected six canonical dashboards; inspect and explicitly remove/migrate the historical artifact (MONITORING_RELEASE.md)."
-for name in 01-overview 02-requests 03-nodes 04-users 05-host 06-request; do
+Expected three canonical dashboards (01-overview, 02-nodes-chain, 03-host); inspect and explicitly remove/archive the historical artifact (MONITORING_RELEASE.md)."
+for name in 01-overview 02-nodes-chain 03-host; do
   file="$directory/$name.json"
   [ -f "$file" ] && [ -r "$file" ] && [ -s "$file" ] \
     || fail "required dashboard JSON is missing, unreadable or empty: $file"
 done
-printf '[dashboard-preflight] PASS: six canonical dashboards; no zero-byte JSON or retired chain artifact (%s).\n' "$mode"
+printf '[dashboard-preflight] PASS: three canonical dashboards; no zero-byte JSON or retired artifacts (%s).\n' "$mode"

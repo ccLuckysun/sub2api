@@ -72,18 +72,13 @@ prepare_compose_helper() {
         monitoring/prometheus/rules/infra.yml \
         monitoring/alertmanager/alertmanager.yml.tmpl \
         monitoring/alertmanager/templates/email.tmpl \
-        monitoring/sql/grafana-ro.sql \
         monitoring/backup/snapshot.sh monitoring/backup/crontab.example \
         monitoring/grafana/provisioning/datasources/prometheus.yml \
-        monitoring/grafana/provisioning/datasources/postgres.yml \
         monitoring/grafana/provisioning/dashboards/dashboards.yml \
         monitoring/grafana/dashboard-preflight.sh \
         monitoring/grafana/dashboards/01-overview.json \
-        monitoring/grafana/dashboards/02-requests.json \
-        monitoring/grafana/dashboards/03-nodes.json \
-        monitoring/grafana/dashboards/04-users.json \
-        monitoring/grafana/dashboards/05-host.json \
-        monitoring/grafana/dashboards/06-request.json; do
+        monitoring/grafana/dashboards/02-nodes-chain.json \
+        monitoring/grafana/dashboards/03-host.json; do
         fetch_asset "$asset" "$asset"
     done
     chmod u+x compose-deploy.sh monitoring/backup/snapshot.sh

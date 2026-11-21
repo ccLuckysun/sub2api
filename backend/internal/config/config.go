@@ -122,13 +122,20 @@ type Config struct {
 // published to the host; security boundary = container-network-only reach.
 const DefaultMetricsBind = "0.0.0.0:9091"
 
+// DefaultOpsSampleMaxItems is the default Redis ring buffer size for realtime ops requests.
+const DefaultOpsSampleMaxItems = 2000
+
+// DefaultOpsSampleTTLHours is the default Redis TTL (in hours) for realtime ops requests.
+const DefaultOpsSampleTTLHours = 24
+
 // MonitoringConfig controls the Prometheus instrumentation endpoint.
 // It is independent from OpsConfig (ops.enabled): turning off business ops
 // collection must not stop baseline HTTP metrics and vice versa
 // (docs/MONITORING_API.md 2.5).
 //
-// Env mapping: MONITORING_METRICS_ENABLED / MONITORING_METRICS_BIND
-// (viper AutomaticEnv with "." -> "_" replier over the "monitoring." prefix).
+// Env mapping: MONITORING_METRICS_ENABLED / MONITORING_METRICS_BIND /
+// MONITORING_OPS_SAMPLE_MAX_ITEMS / MONITORING_OPS_SAMPLE_TTL_HOURS
+// (viper AutomaticEnv with "." -> "_" replacer over the "monitoring." prefix).
 type MonitoringConfig struct {
 	// MetricsEnabled toggles HTTP instrumentation and the /metrics server.
 	// Default false: no listener, no middleware, zero behavior change.
@@ -137,6 +144,10 @@ type MonitoringConfig struct {
 	OpsMetricsEnabled bool `mapstructure:"ops_metrics_enabled"`
 	// OpsSamplesEnabled requires V2 metrics instrumentation.
 	OpsSamplesEnabled bool `mapstructure:"ops_samples_enabled"`
+	// OpsSampleMaxItems caps the Redis ring buffer length (default 2000; 0 falls back to default).
+	OpsSampleMaxItems int `mapstructure:"ops_sample_max_items"`
+	// OpsSampleTTLHours sets the Redis key TTL in hours (default 24; 0 falls back to default).
+	OpsSampleTTLHours int `mapstructure:"ops_sample_ttl_hours"`
 	// MetricsBind is the address the /metrics server listens on when enabled.
 	MetricsBind string `mapstructure:"metrics_bind"`
 }
@@ -2010,6 +2021,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if cfg.Monitoring.MetricsBind == "" {
 		cfg.Monitoring.MetricsBind = DefaultMetricsBind
 	}
+	if cfg.Monitoring.OpsSampleMaxItems == 0 {
+		cfg.Monitoring.OpsSampleMaxItems = DefaultOpsSampleMaxItems
+	}
+	if cfg.Monitoring.OpsSampleTTLHours == 0 {
+		cfg.Monitoring.OpsSampleTTLHours = DefaultOpsSampleTTLHours
+	}
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
@@ -2187,6 +2204,8 @@ func setDefaults() {
 	// Monitoring（Prometheus /metrics，默认关闭，向后兼容）
 	viper.SetDefault("monitoring.ops_metrics_enabled", false)
 	viper.SetDefault("monitoring.ops_samples_enabled", false)
+	viper.SetDefault("monitoring.ops_sample_max_items", DefaultOpsSampleMaxItems)
+	viper.SetDefault("monitoring.ops_sample_ttl_hours", DefaultOpsSampleTTLHours)
 	viper.SetDefault("ops.sample_retention_days", 30)
 	viper.SetDefault("monitoring.metrics_enabled", false)
 	viper.SetDefault("monitoring.metrics_bind", DefaultMetricsBind)
@@ -2913,6 +2932,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Monitoring.OpsSamplesEnabled && !c.Monitoring.OpsMetricsEnabled {
 		return fmt.Errorf("monitoring.ops_samples_enabled requires monitoring.ops_metrics_enabled=true")
+	}
+	if c.Monitoring.OpsSampleMaxItems < 0 {
+		return fmt.Errorf("monitoring.ops_sample_max_items must be non-negative")
+	}
+	if c.Monitoring.OpsSampleTTLHours < 0 {
+		return fmt.Errorf("monitoring.ops_sample_ttl_hours must be non-negative")
 	}
 	if c.Ops.SampleRetentionDays < 0 {
 		return fmt.Errorf("ops.sample_retention_days must be non-negative")

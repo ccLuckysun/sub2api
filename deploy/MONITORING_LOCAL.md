@@ -1,8 +1,8 @@
 # Sub2API 监控栈本地部署
 
-V2 默认监控部署包含六个独立的常驻容器：`sub2api`、`postgres`（PostgreSQL）、`redis`、`grafana`、`prometheus`、`alertmanager`。数据库、缓存、应用、可视化与指标存储均独立运行。Grafana 自动配置 Prometheus / PostgreSQL 数据源与六张 V2 看板（5 张主看板 + 1 张请求下钻）。
+V2 默认监控部署包含六个独立的常驻容器：`sub2api`、`postgres`（PostgreSQL）、`redis`、`grafana`、`prometheus`、`alertmanager`。数据库、缓存、应用、可视化与指标存储均独立运行。Grafana 自动配置纯 Prometheus 数据源（`sub2api-prometheus`，无 PostgreSQL 数据源）与三张 V2 看板（挂载到 `/etc/grafana/dashboards/v2`）；实时请求流与单请求详情位于 Sub2API 管理后台 `/admin/ops#realtime-requests`（由 Redis 环形缓冲驱动）。
 
-> **2026-11-15 重新设计**：当前生成器输出 5 张主看板 + 1 张请求下钻，面板数 14/7/8/7/23/10，02 由“链路归因”改为“请求明细”，文件为 `02-requests.json`、新增 `06-request.json`。下文 2026-11-14 及更早的“16/19/9/6/15、02-chain、五张看板”输出是历史记录，不再对应当前生成器；当前验收见文末“Dashboard V2 redesign”。
+> **纯 Prometheus 架构更新**：当前生成器输出 3 张纯 Prometheus 看板（`01-overview.json` / `02-nodes-chain.json` / `03-host.json`，面板数 14/11/23，全部挂在 `/etc/grafana/dashboards/v2`，独立于 `grafana_data` 持久卷），不再配置 Grafana PG 数据源或 `grafana-ro.sql`。下文 2026-11-15 及更早的六看板/PG 记录保留作为历史参考。
 
 需要 Docker Compose ≥2.35。启用快照扩展时还需 Docker Engine ≥26（API ≥1.45）。部署脚本需要 Bash；Prometheus 配置渲染脚本兼容 POSIX `/bin/sh`，不再依赖 envsubst 或临时联网安装 gettext。
 

@@ -250,7 +250,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
 	paymentService := service.ProvidePaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, affiliateService, notificationEmailService)
 	settingHandler := handler.ProvideAdminSettingHandler(settingService, emailService, turnstileService, aliyunCaptchaService, opsService, paymentConfigService, paymentService, userAttributeService, notificationEmailService, totpService, userService)
-	opsHandler := admin.NewOpsHandler(opsService)
+	opsSampleWriter := provideOpsSampleWriter(configConfig, redisClient)
+	opsHandler := handler.ProvideOpsHandler(opsService, opsSampleWriter)
 	updateCache := repository.NewUpdateCache(redisClient)
 	gitHubReleaseClient := repository.ProvideGitHubReleaseClient(configConfig)
 	serviceBuildInfo := provideServiceBuildInfo(buildInfo)
@@ -351,9 +352,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	metrics := monitoring.ProvideMetrics(registryAndMetrics)
 	metricsMiddleware := middleware.ProvideMetricsMiddleware(configConfig, metrics)
 	accountLabels := provideAccountLabels(registryAndMetrics, db)
-	opsSampleWriter := provideOpsSampleWriter(configConfig, db)
 	opsSampleSink := provideOpsSampleSink(opsSampleWriter)
-	opsRuntime := monitoring.ProvideOpsRuntime(registryAndMetrics, accountLabels, opsSampleSink)
+	appStateProbe := provideAppStateProbe(registryAndMetrics, db, redisClient)
+	opsRuntime := monitoring.ProvideOpsRuntime(registryAndMetrics, accountLabels, opsSampleSink, appStateProbe)
 	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, compositeRouteResolver, redisClient, metricsMiddleware, opsRuntime)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
 	prometheusRegistry := monitoring.ProvideRegistry(registryAndMetrics)
@@ -867,13 +868,52 @@ func provideOpsCleanup(cleanup applicationCleanup, runtime *monitoring.OpsRuntim
 	return func() { runtime.Stop(); writer.Stop(); cleanup() }
 }
 
-// provideOpsSampleWriter starts only for explicitly enabled sample persistence.
+// provideAppStateProbe constructs a lightweight, best-effort probe for
+// low-cardinality DB, Redis, and account capacity Prometheus gauges.
+func provideAppStateProbe(instruments *monitoring.RegistryAndMetrics, db *sql.DB, rdb *redis.Client) monitoring.AppStateProbe {
+	if instruments == nil || instruments.Ops == nil {
+		return nil
+	}
+	return monitoring.AppStateProbeFunc(func(ctx context.Context) monitoring.AppStateSnapshot {
+		var snap monitoring.AppStateSnapshot
+		if db != nil {
+			stats := db.Stats()
+			snap.DBActiveConnections = stats.InUse
+			snap.DBIdleConnections = stats.Idle
+
+			accCtx, accCancel := context.WithTimeout(ctx, 2*time.Second)
+			var activeCount, capSum int64
+			if err := db.QueryRowContext(accCtx, "SELECT count(*), COALESCE(sum(concurrency), 0) FROM accounts WHERE status = 'active' AND deleted_at IS NULL").Scan(&activeCount, &capSum); err == nil {
+				snap.AccountsActive = activeCount
+				snap.AccountsConcurrencyCapacity = capSum
+			}
+			accCancel()
+
+			queueCtx, queueCancel := context.WithTimeout(ctx, 2*time.Second)
+			var queueDepth int64
+			if err := db.QueryRowContext(queueCtx, "SELECT COALESCE(concurrency_queue_depth, 0) FROM ops_system_metrics ORDER BY created_at DESC LIMIT 1").Scan(&queueDepth); err == nil {
+				snap.ConcurrencyQueueDepth = queueDepth
+			}
+			queueCancel()
+		}
+		if rdb != nil {
+			pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
+			if err := rdb.Ping(pingCtx).Err(); err == nil {
+				snap.RedisUp = true
+			}
+			pingCancel()
+		}
+		return snap
+	})
+}
+
+// provideOpsSampleWriter starts only for explicitly enabled sample buffering.
 // Recorder emission is wired separately; this provider performs no DB queries.
-func provideOpsSampleWriter(cfg *config.Config, db *sql.DB) *service.OpsSampleWriter {
+func provideOpsSampleWriter(cfg *config.Config, rdb *redis.Client) *service.OpsSampleWriter {
 	if cfg == nil || !cfg.Monitoring.OpsMetricsEnabled || !cfg.Monitoring.OpsSamplesEnabled {
 		return nil
 	}
-	writer := service.NewOpsSampleWriter(repository.NewOpsSampleRepository(db))
+	writer := service.NewOpsSampleWriter(rdb, cfg.Monitoring.OpsSampleMaxItems, cfg.Monitoring.OpsSampleTTLHours)
 	writer.Start()
 	return writer
 }

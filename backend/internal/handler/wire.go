@@ -158,6 +158,16 @@ func ProvideBatchImageHandler(
 	return h
 }
 
+// ProvideOpsHandler creates admin.OpsHandler and wires the optional Redis-backed
+// realtime request reader without changing admin.NewOpsHandler's signature.
+func ProvideOpsHandler(opsService *service.OpsService, opsSampleWriter *service.OpsSampleWriter) *admin.OpsHandler {
+	h := admin.NewOpsHandler(opsService)
+	if opsSampleWriter != nil {
+		h.SetRealtimeRequestsReader(opsSampleWriter)
+	}
+	return h
+}
+
 // ProvideSystemHandler creates admin.SystemHandler with UpdateService
 func ProvideSystemHandler(updateService *service.UpdateService, lockService *service.SystemOperationLockService) *admin.SystemHandler {
 	return admin.NewSystemHandler(updateService, lockService)
@@ -276,7 +286,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
 	ProvideAdminSettingHandler,
-	admin.NewOpsHandler,
+	ProvideOpsHandler,
 	ProvideSystemHandler,
 	admin.NewSubscriptionHandler,
 	admin.NewUsageHandler,

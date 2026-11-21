@@ -19,7 +19,23 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import sys
-from urllib.parse import parse_qs, urlsplit
+
+CANONICAL_DASHBOARDS = frozenset({
+    "01-overview.json",
+    "02-nodes-chain.json",
+    "03-host.json",
+})
+RETIRED_DASHBOARDS = frozenset({
+    "02-chain.json",
+    "02-requests.json",
+    "03-nodes.json",
+    "04-users.json",
+    "05-host.json",
+    "06-request.json",
+})
+EXPECTED_PROVIDER_PATH = PurePosixPath("/etc/grafana/dashboards/v2")
+PROMETHEUS_UID = "sub2api-prometheus"
+FORBIDDEN_PANEL_TYPES = frozenset({"timeseries", "graph", "heatmap"})
 
 
 class ConfigError(ValueError):
@@ -177,49 +193,94 @@ def provider_paths(path):
     return paths
 
 
-def field_strings(value, keys):
+def iter_panels(panels):
+    if not isinstance(panels, list):
+        return
+    for panel in panels:
+        if not isinstance(panel, dict):
+            continue
+        yield panel
+        yield from iter_panels(panel.get("panels"))
+
+
+def iter_dicts(value):
     if isinstance(value, dict):
-        for key, item in value.items():
-            if key in keys and isinstance(item, str):
-                yield item
-            else:
-                yield from field_strings(item, keys)
+        yield value
+        for item in value.values():
+            yield from iter_dicts(item)
     elif isinstance(value, list):
         for item in value:
-            yield from field_strings(item, keys)
+            yield from iter_dicts(item)
 
 
-def lint_dashboard_sql(data, variables):
-    sql_strings = list(field_strings(data, {"rawSql", "query", "definition"}))
-    for variable in variables:
-        if not isinstance(variable, dict) or not isinstance(variable.get("name"), str):
+def lint_dashboard(data):
+    for obj in iter_dicts(data):
+        if "rawSql" in obj:
+            yield "dashboards must be pure Prometheus; rawSql is forbidden"
+            break
+    for obj in iter_dicts(data):
+        if obj.get("uid") == "sub2api-pg" or obj.get("type") == "postgres":
+            yield "dashboards must not reference PostgreSQL datasource (sub2api-pg)"
+            break
+
+    panels = data.get("panels")
+    if panels is None:
+        return
+    if not isinstance(panels, list):
+        yield "panels must be an array"
+        return
+
+    for panel in iter_panels(panels):
+        ptype = panel.get("type")
+        title = panel.get("title") or f"id={panel.get('id')}"
+        if ptype in FORBIDDEN_PANEL_TYPES:
+            yield f"panel {title!r} uses forbidden line/heatmap panel type {ptype!r}"
+        if not isinstance(panel.get("description"), str) or not panel["description"].strip():
+            yield f"panel {title!r} must carry a non-empty description"
+        if ptype in ("text", "row"):
             continue
-        name = variable["name"]
-        token = "${" + name + ":sqlstring}"
-        if (variable.get("includeAll") and variable.get("allValue") not in (None, "")
-                and any(token in sql for sql in sql_strings)):
-            yield f"{name} uses custom All value with {token}; Grafana does not SQL-escape custom All values"
-    if any(re.search(r'\b(?:from|join)\s+(?:"?public"?\s*\.\s*)?"?api_keys\b', sql, re.I)
-           for sql in sql_strings):
-        yield "SQL must use grafana_api_keys instead of the api_keys base table"
-    for url in field_strings(data, {"url"}):
-        if not url.startswith("/d/sub2api-v2-request?") and url != "/d/sub2api-v2-request":
+        ds = panel.get("datasource")
+        if not isinstance(ds, dict) or ds.get("uid") != PROMETHEUS_UID or ds.get("type") != "prometheus":
+            yield f"panel {title!r} must use Prometheus datasource uid={PROMETHEUS_UID!r}"
+        targets = panel.get("targets")
+        if not isinstance(targets, list) or not targets:
+            yield f"panel {title!r} must define at least one Prometheus target"
             continue
-        params = parse_qs(urlsplit(url).query, keep_blank_values=True)
-        if (params.get("var-sample_id") != ["${__value.raw}"] or "var-request" in params
-                or params.get("from") != ["${__from}"] or params.get("to") != ["${__to}"]):
-            yield "request drilldown link must pass var-sample_id from the raw sample ID and preserve the time range"
-    if data.get("uid") == "sub2api-v2-request":
-        sample_vars = [variable for variable in variables
-                       if isinstance(variable, dict) and variable.get("name") == "sample_id"]
-        if (len(sample_vars) != 1 or sample_vars[0].get("type") != "textbox"
-                or sample_vars[0].get("multi") or sample_vars[0].get("includeAll")
-                or sample_vars[0].get("skipUrlSync")):
-            yield "request drilldown requires a URL-synced, single sample_id textbox"
-        for sql in field_strings(data, {"rawSql"}):
-            if (not re.search(r'\bwhere\s+s\.id\s*=\s*case\s+when\s+\$\{sample_id:sqlstring\}', sql, re.I)
-                    or re.search(r'\b(?:where|and)\s+(?:s\.)?request_id\s*=', sql, re.I)):
-                yield "request detail SQL must filter on the sample's primary key using ${sample_id:sqlstring}"
+        for target in targets:
+            if not isinstance(target, dict):
+                yield f"panel {title!r} target must be an object"
+                continue
+            tds = target.get("datasource")
+            if not isinstance(tds, dict) or tds.get("uid") != PROMETHEUS_UID or tds.get("type") != "prometheus":
+                yield f"panel {title!r} target must use Prometheus datasource uid={PROMETHEUS_UID!r}"
+            expr = target.get("expr")
+            if not isinstance(expr, str) or not expr.strip():
+                yield f"panel {title!r} target must have a non-empty PromQL expr"
+                continue
+            if re.search(r'\bor\s+vector\(1\)', expr) or "vector(1)" in expr:
+                yield f"panel {title!r} expr must not contain 'or vector(1)'"
+
+
+def lint_datasource_provisioning(provisioning, error):
+    ds_dir = provisioning / "datasources"
+    if not ds_dir.is_dir():
+        return
+    for path in sorted(ds_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.name in ("postgres.yml", "postgres.yaml"):
+            error(path, "PostgreSQL datasource provisioning file must be removed")
+            continue
+        if path.suffix in (".yml", ".yaml", ".json"):
+            try:
+                content = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                error(path, f"cannot read datasource provisioning file: {exc}")
+                continue
+            if re.search(r'(?im)^\s*type\s*:\s*["\']?postgres["\']?\s*$', content) \
+                    or "sub2api-pg" in content \
+                    or "GRAFANA_PG_PASSWORD" in content:
+                error(path, "datasource provisioning must not reference PostgreSQL / sub2api-pg")
 
 
 def no_duplicate_keys(pairs):
@@ -263,8 +324,22 @@ def lint(root):
     active = {path.resolve() for path in dashboards.rglob("*.json") if not archived(path)}
     if not active:
         error(dashboards, "no active dashboard JSON files found")
+    else:
+        active_names = {path.name for path in active}
+        for path in sorted(active):
+            if path.name in RETIRED_DASHBOARDS:
+                error(path, "retired dashboard JSON must not exist in active dashboards directory")
+        missing = sorted(CANONICAL_DASHBOARDS - active_names)
+        if missing:
+            error(dashboards, f"missing canonical dashboard JSON(s): {', '.join(missing)}")
+        unexpected = sorted(active_names - CANONICAL_DASHBOARDS - RETIRED_DASHBOARDS)
+        if unexpected:
+            error(dashboards, f"unexpected non-canonical dashboard JSON(s): {', '.join(unexpected)}")
+
     if not provisioning.is_dir():
         error(provisioning, "missing provisioning directory")
+    else:
+        lint_datasource_provisioning(provisioning, error)
 
     compose = root / "deploy/docker-compose.monitoring.yml"
     mounts = []
@@ -287,6 +362,10 @@ def lint(root):
     for provider in providers:
         if not provider.is_absolute() or "$" in str(provider):
             error(provisioning, f"provider path must be literal and absolute: {provider}")
+        elif provider.is_relative_to(PurePosixPath("/var/lib/grafana")):
+            error(provisioning, f"provider path must be outside persistent /var/lib/grafana volume (expected {EXPECTED_PROVIDER_PATH}): {provider}")
+        elif provider != EXPECTED_PROVIDER_PATH:
+            error(provisioning, f"provider path must be {EXPECTED_PROVIDER_PATH}, got {provider}")
 
     exposed = []
     config_destinations = set()
@@ -345,8 +424,9 @@ def lint(root):
         if not isinstance(variables, list):
             error(path, "templating.list must be an array")
             continue
-        for message in lint_dashboard_sql(data, variables):
-            error(path, message)
+        if path in active or any(path == source for source, _ in exposed):
+            for message in lint_dashboard(data):
+                error(path, message)
     return errors
 
 
@@ -361,7 +441,7 @@ def main(argv=None):
             print(f"ERROR: {message}", file=sys.stderr)
         print(f"FAIL: {len(errors)} Grafana lint error(s)", file=sys.stderr)
         return 1
-    print("PASS: Grafana JSON, SQL safety, request drilldown, metadata and mount inventory")
+    print("PASS: Grafana JSON, pure-Prometheus rules, metadata and mount inventory")
     return 0
 
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
@@ -20,6 +21,15 @@ func exerciseOpsMetrics(m *OpsMetrics) {
 	m.ClientAbort.WithLabelValues("body_read").Inc()
 	m.GatewayRequests.WithLabelValues("success", "").Inc()
 	m.UpstreamTTFT.WithLabelValues("unknown").Observe(.02)
+	m.GatewayRequestDuration.Observe(.15)
+	m.RecordAppState(AppStateSnapshot{
+		DBActiveConnections:         4,
+		DBIdleConnections:           8,
+		RedisUp:                     true,
+		AccountsActive:              12,
+		AccountsConcurrencyCapacity: 120,
+		ConcurrencyQueueDepth:       3,
+	})
 }
 
 func TestOpsMetricContract(t *testing.T) {
@@ -29,25 +39,32 @@ func TestOpsMetricContract(t *testing.T) {
 	exerciseOpsMetrics(m)
 	families, err := reg.Gather()
 	require.NoError(t, err)
-	require.Len(t, families, 11)
+	require.Len(t, families, 17)
 	duration := []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60}
+	reqDuration := RequestDurationBuckets()
 	body := []float64{1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456}
 	specs := map[string]struct {
 		kind    dto.MetricType
 		labels  []string
 		buckets []float64
 	}{
-		"sub2api_request_phase_seconds":   {dto.MetricType_HISTOGRAM, []string{"phase"}, duration},
-		"sub2api_transfer_bytes_total":    {dto.MetricType_COUNTER, []string{"direction"}, nil},
-		"sub2api_request_body_bytes":      {dto.MetricType_HISTOGRAM, []string{"endpoint_class"}, body},
-		"sub2api_upstream_requests_total": {dto.MetricType_COUNTER, []string{"account", "failure_reason", "result"}, nil},
-		"sub2api_model_requests_total":    {dto.MetricType_COUNTER, []string{"model_class", "result"}, nil},
-		"sub2api_attempts_total":          {dto.MetricType_COUNTER, []string{"outcome"}, nil},
-		"sub2api_account_switches_total":  {dto.MetricType_COUNTER, nil, nil},
-		"sub2api_client_abort_total":      {dto.MetricType_COUNTER, []string{"stage"}, nil},
-		"sub2api_metric_coverage_ratio":   {dto.MetricType_GAUGE, []string{"kind"}, nil},
-		"sub2api_gateway_requests_total":  {dto.MetricType_COUNTER, []string{"failure_reason", "result"}, nil},
-		"sub2api_upstream_ttft_seconds":   {dto.MetricType_HISTOGRAM, []string{"account"}, duration},
+		"sub2api_request_phase_seconds":           {dto.MetricType_HISTOGRAM, []string{"phase"}, duration},
+		"sub2api_transfer_bytes_total":            {dto.MetricType_COUNTER, []string{"direction"}, nil},
+		"sub2api_request_body_bytes":              {dto.MetricType_HISTOGRAM, []string{"endpoint_class"}, body},
+		"sub2api_upstream_requests_total":         {dto.MetricType_COUNTER, []string{"account", "failure_reason", "result"}, nil},
+		"sub2api_model_requests_total":            {dto.MetricType_COUNTER, []string{"model_class", "result"}, nil},
+		"sub2api_attempts_total":                  {dto.MetricType_COUNTER, []string{"outcome"}, nil},
+		"sub2api_account_switches_total":          {dto.MetricType_COUNTER, nil, nil},
+		"sub2api_client_abort_total":              {dto.MetricType_COUNTER, []string{"stage"}, nil},
+		"sub2api_metric_coverage_ratio":           {dto.MetricType_GAUGE, []string{"kind"}, nil},
+		"sub2api_gateway_requests_total":          {dto.MetricType_COUNTER, []string{"failure_reason", "result"}, nil},
+		"sub2api_upstream_ttft_seconds":           {dto.MetricType_HISTOGRAM, []string{"account"}, duration},
+		"sub2api_gateway_request_duration_seconds": {dto.MetricType_HISTOGRAM, nil, reqDuration},
+		"sub2api_app_db_connections":              {dto.MetricType_GAUGE, []string{"state"}, nil},
+		"sub2api_app_redis_up":                    {dto.MetricType_GAUGE, nil, nil},
+		"sub2api_app_accounts_active":             {dto.MetricType_GAUGE, nil, nil},
+		"sub2api_app_accounts_concurrency_capacity": {dto.MetricType_GAUGE, nil, nil},
+		"sub2api_app_concurrency_queue_depth":     {dto.MetricType_GAUGE, nil, nil},
 	}
 	for _, family := range families {
 		spec, ok := specs[family.GetName()]
@@ -70,6 +87,16 @@ func TestOpsMetricContract(t *testing.T) {
 		}
 		t.Logf("%s: %s labels=%v finite_buckets=%v PASS", family.GetName(), spec.kind, spec.labels, spec.buckets)
 	}
+	require.Equal(t, 4.0, testutil.ToFloat64(m.AppDBConnections.WithLabelValues("active")))
+	require.Equal(t, 8.0, testutil.ToFloat64(m.AppDBConnections.WithLabelValues("idle")))
+	require.Equal(t, 1.0, testutil.ToFloat64(m.AppRedisUp))
+	require.Equal(t, 12.0, testutil.ToFloat64(m.AppAccountsActive))
+	require.Equal(t, 120.0, testutil.ToFloat64(m.AppAccountsConcurrencyCap))
+	require.Equal(t, 3.0, testutil.ToFloat64(m.AppConcurrencyQueueDepth))
+
+	m.RecordAppState(AppStateSnapshot{RedisUp: false})
+	require.Equal(t, 0.0, testutil.ToFloat64(m.AppRedisUp))
+
 	// Bucket helpers cannot mutate future histogram definitions.
 	OpsDurationBuckets()[0] = 999
 	OpsBodyBuckets()[0] = 999
@@ -93,7 +120,7 @@ func TestOpsRegistrationIsolationAndErrors(t *testing.T) {
 	require.True(t, errors.As(err, &duplicate))
 	got, err := reg.Gather()
 	require.NoError(t, err)
-	require.Len(t, got, 11)
+	require.Len(t, got, 17)
 	got, err = empty.Gather()
 	require.NoError(t, err)
 	require.Empty(t, got)

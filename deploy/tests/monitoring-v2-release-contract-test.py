@@ -61,9 +61,9 @@ class ReleaseContractTests(unittest.TestCase):
             manifest=directory/'manifest.json'
             command=['python3',VERIFY,'--migrations',migrations,'--manifest',manifest]
             result=execute(*command,'--write','--acknowledge-existing-number-conflicts');self.assertEqual(result.returncode,0,result.stderr)
-            target=migrations/'251_ops_v2_samples.sql';original=target.read_bytes()
+            target=migrations/'252_add_usage_logs_v2_fields.sql';original=target.read_bytes()
             target.write_bytes(original+b'\n-- intentional W6 checksum conflict fixture\n')
-            result=execute(*command);self.assertEqual(result.returncode,1);self.assertIn('CHANGED (same name, different content): 251_ops_v2_samples.sql',result.stdout)
+            result=execute(*command);self.assertEqual(result.returncode,1);self.assertIn('CHANGED (same name, different content): 252_add_usage_logs_v2_fields.sql',result.stdout)
             target.write_bytes(original);result=execute(*command);self.assertEqual(result.returncode,0)
             # Match the migration runner: trim outer whitespace, but preserve
             # interior CRLF bytes instead of Python universal-newline folding.
@@ -71,11 +71,11 @@ class ReleaseContractTests(unittest.TestCase):
             self.assertNotEqual(original,crlf)
             target.write_bytes(crlf)
             result=execute(*command);self.assertEqual(result.returncode,1)
-            self.assertIn('CHANGED (same name, different content): 251_ops_v2_samples.sql',result.stdout)
+            self.assertIn('CHANGED (same name, different content): 252_add_usage_logs_v2_fields.sql',result.stdout)
             target.write_bytes(original);result=execute(*command);self.assertEqual(result.returncode,0)
             print('PASS: LF -> CRLF changes runner checksum and fails verification; original bytes restored -> PASS',flush=True)
             self.assertIn('WARN: acknowledged number conflict 249:',result.stdout)
-            print('PASS: repository SQL COPY baseline -> mutate 251 -> named checksum failure -> restore -> PASS+WARN (backend unchanged)',flush=True)
+            print('PASS: repository SQL COPY baseline -> mutate 252 -> named checksum failure -> restore -> PASS+WARN (backend unchanged)',flush=True)
 
     def test_compiled_binary_strings(self):
         with tempfile.TemporaryDirectory(prefix='w6-binaries-') as temp:

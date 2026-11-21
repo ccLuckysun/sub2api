@@ -14,7 +14,7 @@ import time
 ROOT=Path(__file__).resolve().parents[2]
 PROJECT='w5-validation-'+secrets.token_hex(3)
 PASSWORD=secrets.token_hex(16)
-ENV=dict(os.environ,GRAFANA_ADMIN_PASSWORD=PASSWORD,GRAFANA_PG_PASSWORD='local-fixture-unused',POSTGRES_PASSWORD='local-fixture-unused')
+ENV=dict(os.environ,GRAFANA_ADMIN_PASSWORD=PASSWORD,POSTGRES_PASSWORD='local-fixture-unused')
 
 
 def run(args,check=True):
@@ -40,17 +40,18 @@ with tempfile.TemporaryDirectory(prefix='sub2api-w5-') as tmp:
             return json.loads(r.stdout) if r.returncode==0 else None
         for _ in range(120):
             data=get('/api/search?type=dash-db')
-            if data and len(data)==6:break
+            if data and len(data)==3:break
             time.sleep(.5)
-        else:raise RuntimeError('six dashboards were not provisioned')
-        expected=['sub2api-v2-'+x for x in ['overview','requests','nodes','users','host','request']]
+        else:raise RuntimeError('three dashboards were not provisioned')
+        expected=['sub2api-v2-'+x for x in ['overview','nodes-chain','host']]
         assert sorted(x['uid'] for x in data)==sorted(expected), data
-        for uid,n in zip(expected,[14,7,8,7,23,10]):
+        for uid,n in zip(expected,[14,11,23]):
             d=get('/api/dashboards/uid/'+uid)['dashboard'];assert len(d['panels'])==n
-        print('PASS: native Grafana provisioned exactly six V2 dashboards (14/7/8/7/23/10); V1 absent',flush=True)
-        datasource=get('/api/datasources/uid/sub2api-pg')
-        assert datasource['user']=='grafana_ro' and datasource['secureJsonFields']['password'] is True
-        print('PASS: PG datasource provisioned with secure password and grafana_ro',flush=True)
+        print('PASS: native Grafana provisioned exactly three pure-Prometheus V2 dashboards (14/11/23); V1 absent',flush=True)
+        datasources=get('/api/datasources')
+        assert [ds['uid'] for ds in datasources]==['sub2api-prometheus'], datasources
+        assert get('/api/datasources/uid/sub2api-pg') is None
+        print('PASS: Prometheus-only datasource provisioned; sub2api-pg absent',flush=True)
         for index in range(3):
             if index:time.sleep(20)
             data=run(['docker','stats','--no-stream','--format','{{.Name}} {{.MemUsage}}']+run(compose+['ps','-q']).stdout.split()).stdout.strip()

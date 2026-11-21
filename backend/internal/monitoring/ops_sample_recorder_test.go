@@ -19,7 +19,23 @@ func TestOpsSampleRecorderFieldMapping(t *testing.T) {
 	h := newRecorderHarness(t)
 	var samples []OpsSample
 	h.r.sampleSink = sampleSinkFunc(func(sample OpsSample) bool { samples = append(samples, sample); return true })
-	meta := OpsRequestMeta{RequestID: "provided-request", ClientRequestID: "client-correlation", UserID: 11, APIKeyID: 12, AccountID: 13, GroupID: 14, Platform: "anthropic", Model: "claude-sonnet", Endpoint: "/v1/messages", EndpointClass: "responses"}
+	meta := OpsRequestMeta{
+		RequestID:       "provided-request",
+		ClientRequestID: "client-correlation",
+		UserID:          11,
+		UserEmail:       "alice@example.com",
+		APIKeyID:        12,
+		APIKeyName:      "prod-key",
+		APIKeyMasked:    "sk-ant-a…9z0x",
+		AccountID:       13,
+		AccountName:     "acct-primary",
+		GroupID:         14,
+		GroupName:       "vip-group",
+		Platform:        "anthropic",
+		Model:           "claude-sonnet",
+		Endpoint:        "/v1/messages",
+		EndpointClass:   "responses",
+	}
 	h.r.AttachMeta(meta)
 	h.body()
 	attempt := h.send()
@@ -32,9 +48,14 @@ func TestOpsSampleRecorderFieldMapping(t *testing.T) {
 	require.Equal(t, meta.RequestID, sample.RequestID)
 	require.Equal(t, "client-correlation", *sample.ClientRequestID)
 	require.EqualValues(t, 11, *sample.UserID)
+	require.Equal(t, "alice@example.com", *sample.UserEmail)
 	require.EqualValues(t, 12, *sample.APIKeyID)
+	require.Equal(t, "prod-key", *sample.APIKeyName)
+	require.Equal(t, "sk-ant-a…9z0x", *sample.APIKeyMasked)
 	require.EqualValues(t, 13, *sample.AccountID)
+	require.Equal(t, "acct-primary", *sample.AccountName)
 	require.EqualValues(t, 14, *sample.GroupID)
+	require.Equal(t, "vip-group", *sample.GroupName)
 	require.Equal(t, "anthropic", *sample.Platform)
 	require.Equal(t, "claude-sonnet", *sample.Model)
 	require.Equal(t, "/v1/messages", *sample.Endpoint)
@@ -65,6 +86,12 @@ func TestOpsSampleRecorderFieldMapping(t *testing.T) {
 	require.Equal(t, "response_body_read", *sample.BytesRespUpstreamSource)
 	require.Equal(t, "writer_size", *sample.BytesRespDownstreamSource)
 	require.Nil(t, sample.CreatedAt, "DB owns created_at default")
+	// Verify sub2api_gateway_request_duration_seconds observed the 110ms total duration.
+	allMetrics := readRecorderMetrics(t, h.registry)
+	durMetrics := allMetrics["sub2api_gateway_request_duration_seconds"]
+	require.Len(t, durMetrics, 1)
+	require.EqualValues(t, 1, durMetrics[0].count)
+	require.InDelta(t, 0.110, durMetrics[0].sum, 1e-6)
 }
 
 func runSampleScenario(h *recorderHarness, name string) FinalizeInput {

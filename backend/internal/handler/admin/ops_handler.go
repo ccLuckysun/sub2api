@@ -14,7 +14,15 @@ import (
 )
 
 type OpsHandler struct {
-	opsService *service.OpsService
+	opsService             *service.OpsService
+	realtimeRequestsReader service.RealtimeRequestsReader
+}
+
+func (h *OpsHandler) SetRealtimeRequestsReader(reader service.RealtimeRequestsReader) {
+	if h == nil {
+		return
+	}
+	h.realtimeRequestsReader = reader
 }
 
 // GetErrorLogByID returns ops error log detail.

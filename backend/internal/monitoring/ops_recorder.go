@@ -20,6 +20,8 @@ type OpsRequestMeta struct {
 	RequestID                                string
 	ClientRequestID                          string
 	UserID, APIKeyID, AccountID, GroupID     int64
+	UserEmail, APIKeyName, APIKeyMasked      string
+	AccountName, GroupName                   string
 	Platform, Model, Endpoint, EndpointClass string
 }
 
@@ -590,6 +592,10 @@ func (r *OpsRecorder) Finalize(in FinalizeInput) {
 		last = r.attempts[len(r.attempts)-1]
 	}
 	phases, ttft, hasTTFT := r.phases(now, last)
+	var totalDuration time.Duration
+	for _, d := range phases {
+		totalDuration += d
+	}
 	m := r.metrics
 	if m.RequestPhase != nil {
 		for phase, d := range phases {
@@ -598,6 +604,9 @@ func (r *OpsRecorder) Finalize(in FinalizeInput) {
 		if hasTTFT {
 			m.RequestPhase.WithLabelValues("headers_end").Observe(ttft.Seconds())
 		}
+	}
+	if m.GatewayRequestDuration != nil {
+		m.GatewayRequestDuration.Observe(totalDuration.Seconds())
 	}
 	result, reason := r.requestResult(in, last)
 	if m.GatewayRequests != nil {
@@ -799,7 +808,10 @@ func (r *OpsRecorder) makeSample(in FinalizeInput, result, reason string, phases
 	sample := OpsSample{
 		ObservedAt: r.entry, RequestID: r.sampleRequestID(),
 		ClientRequestID: optionalSampleText(strings.TrimSpace(r.meta.ClientRequestID)),
-		UserID:          optionalSampleID(r.meta.UserID), APIKeyID: optionalSampleID(r.meta.APIKeyID), AccountID: optionalSampleID(r.meta.AccountID), GroupID: optionalSampleID(r.meta.GroupID),
+		UserID:          optionalSampleID(r.meta.UserID), UserEmail: optionalSampleText(r.meta.UserEmail),
+		APIKeyID: optionalSampleID(r.meta.APIKeyID), APIKeyName: optionalSampleText(r.meta.APIKeyName), APIKeyMasked: optionalSampleText(r.meta.APIKeyMasked),
+		AccountID: optionalSampleID(r.meta.AccountID), AccountName: optionalSampleText(r.meta.AccountName),
+		GroupID: optionalSampleID(r.meta.GroupID), GroupName: optionalSampleText(r.meta.GroupName),
 		Platform: optionalSampleText(r.meta.Platform), Model: optionalSampleText(r.meta.Model), Endpoint: samplePtr(endpoint), EndpointClass: samplePtr(class),
 		Result: samplePtr(result), HTTPStatus: samplePtr(in.Status), FailureReason: samplePtr(reason), AttemptCount: samplePtr(len(r.attempts)), FailedAttempts: samplePtr(failed), Node: samplePtr(opsSampleNode),
 		BodyReadMs: sampleMilliseconds(phases["body_read"]), GatewayMs: sampleMilliseconds(phases["gateway"]), WaitMs: sampleMilliseconds(phases["wait"]), UpstreamMs: sampleMilliseconds(phases["upstream"]), ResponseMs: sampleMilliseconds(phases["response"]), FinishMs: sampleMilliseconds(phases["finish"]), TotalMs: sampleMilliseconds(total),

@@ -69,7 +69,7 @@ fi
 COPYFILE_DISABLE=1 tar ${TAR_METADATA_FLAGS[@]+"${TAR_METADATA_FLAGS[@]}"} --exclude='._*' --exclude='.DS_Store' -czf "$LOCAL_DIR/monitoring-assets.tar.gz" -C deploy \
   compose-deploy.sh docker-compose.monitoring.yml monitoring.env.example \
   monitoring/render-prometheus-config.sh monitoring/prometheus.yml.tmpl \
-  monitoring/prometheus/rules monitoring/alertmanager monitoring/sql \
+  monitoring/prometheus/rules monitoring/alertmanager \
   monitoring/backup/snapshot.sh monitoring/backup/crontab.example \
   monitoring/grafana/dashboard-preflight.sh monitoring/grafana/provisioning monitoring/grafana/dashboards
 REMOTE_DIR="$(ssh "${SSH_OPTS[@]}" "$REMOTE_HOST" mktemp -d /tmp/sub2api-deploy.XXXXXX)"

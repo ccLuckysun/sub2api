@@ -16,10 +16,11 @@ services:
       # 叠加文件存在即启用，普通业务开发（不带 -f 本文件）不受影响。
       - MONITORING_METRICS_ENABLED=${MONITORING_METRICS_ENABLED:-true}
       - MONITORING_METRICS_BIND=${MONITORING_METRICS_BIND:-0.0.0.0:9091}
-      # V2 Ops instrumentation and 100% PG samples; both require V1 metrics.
+      # V2 Ops Prometheus instrumentation and Redis ring-buffer samples; both require V1 metrics.
       - MONITORING_OPS_METRICS_ENABLED=${MONITORING_OPS_METRICS_ENABLED:-true}
       - MONITORING_OPS_SAMPLES_ENABLED=${MONITORING_OPS_SAMPLES_ENABLED:-true}
-      - OPS_SAMPLE_RETENTION_DAYS=${OPS_SAMPLE_RETENTION_DAYS:-30}
+      - MONITORING_OPS_SAMPLE_MAX_ITEMS=${MONITORING_OPS_SAMPLE_MAX_ITEMS:-2000}
+      - MONITORING_OPS_SAMPLE_TTL_HOURS=${MONITORING_OPS_SAMPLE_TTL_HOURS:-24}
 
   # ---------------------------------------------------------------
   # 一次性初始化同卷 snapshots 子目录（Prometheus 镜像以 nobody:65534 运行）
@@ -89,7 +90,7 @@ services:
     entrypoint:
       - /bin/sh
       - -ec
-      - sh /etc/grafana/dashboard-preflight.sh --metadata /etc/grafana/provisioning && sh /etc/grafana/dashboard-preflight.sh --volume /var/lib/grafana/dashboards/v2 && exec /run.sh "$$@"
+      - sh /etc/grafana/dashboard-preflight.sh --metadata /etc/grafana/provisioning && sh /etc/grafana/dashboard-preflight.sh --volume /etc/grafana/dashboards/v2 && exec /run.sh "$$@"
       - grafana-dashboard-preflight
     restart: unless-stopped
     security_opt:
@@ -100,8 +101,6 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
       # 本地一律绑回环：下方 ports 已用 127.0.0.1 前缀限制宿主侧监听；
       # Grafana 进程本身须绑容器 0.0.0.0，否则宿主回环端口转发不可达
-      - GRAFANA_PG_PASSWORD=${GRAFANA_PG_PASSWORD:-not-configured}
-      - GRAFANA_PG_DATABASE=${POSTGRES_DB:-sub2api}
       - GF_USERS_ALLOW_SIGN_UP=false
       # 13.x 默认后台预装/更新多个插件，2GB 小机器上可能在 256m 限额内 OOM；
       # 本看板仅用内建 Prometheus 数据源和基础面板，无需额外插件。
@@ -112,42 +111,27 @@ services:
     volumes:
       # provisioning 目录只读挂载：数据源 + 看板 provider 随容器启动生效
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      # Validate the provider directory (including stale grafana_data artifacts)
-      # before /run.sh starts Grafana. Missing bind sources must never become dirs.
+      # Validate the provider directory outside grafana_data before /run.sh starts
+      # Grafana. Missing bind sources must never become directories.
       - type: bind
         source: ./monitoring/grafana/dashboard-preflight.sh
         target: /etc/grafana/dashboard-preflight.sh
         read_only: true
         bind: {create_host_path: false}
-      # Six canonical dashboards; retired 02-chain.json is deliberately NOT mounted.
+      # Three canonical pure-Prometheus dashboards mounted outside the persistent volume.
       - type: bind
         source: ./monitoring/grafana/dashboards/01-overview.json
-        target: /var/lib/grafana/dashboards/v2/01-overview.json
+        target: /etc/grafana/dashboards/v2/01-overview.json
         read_only: true
         bind: {create_host_path: false}
       - type: bind
-        source: ./monitoring/grafana/dashboards/02-requests.json
-        target: /var/lib/grafana/dashboards/v2/02-requests.json
+        source: ./monitoring/grafana/dashboards/02-nodes-chain.json
+        target: /etc/grafana/dashboards/v2/02-nodes-chain.json
         read_only: true
         bind: {create_host_path: false}
       - type: bind
-        source: ./monitoring/grafana/dashboards/03-nodes.json
-        target: /var/lib/grafana/dashboards/v2/03-nodes.json
-        read_only: true
-        bind: {create_host_path: false}
-      - type: bind
-        source: ./monitoring/grafana/dashboards/04-users.json
-        target: /var/lib/grafana/dashboards/v2/04-users.json
-        read_only: true
-        bind: {create_host_path: false}
-      - type: bind
-        source: ./monitoring/grafana/dashboards/05-host.json
-        target: /var/lib/grafana/dashboards/v2/05-host.json
-        read_only: true
-        bind: {create_host_path: false}
-      - type: bind
-        source: ./monitoring/grafana/dashboards/06-request.json
-        target: /var/lib/grafana/dashboards/v2/06-request.json
+        source: ./monitoring/grafana/dashboards/03-host.json
+        target: /etc/grafana/dashboards/v2/03-host.json
         read_only: true
         bind: {create_host_path: false}
       - grafana_data:/var/lib/grafana

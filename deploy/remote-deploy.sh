@@ -42,11 +42,22 @@ if [ -n "$ENV_FILES" ] && [ "$ENV_FILES" != '<no value>' ]; then
 fi
 [ "$BASE_COUNT" -gt 0 ] || { echo 'No base Compose file found' >&2; exit 1; }
 [ "$MODE" != monitoring ] || ARGS+=(--monitoring)
-RETIRED_DASHBOARD=monitoring/grafana/dashboards/02-chain.json
-if [[ -L "$RETIRED_DASHBOARD" || ( -e "$RETIRED_DASHBOARD" && ! -f "$RETIRED_DASHBOARD" ) ]]; then
-  echo "Cannot archive unexpected file type: $WORKDIR/$RETIRED_DASHBOARD" >&2
-  exit 1
-fi
+RETIRED_FILES=(
+  monitoring/grafana/dashboards/02-chain.json
+  monitoring/grafana/dashboards/02-requests.json
+  monitoring/grafana/dashboards/03-nodes.json
+  monitoring/grafana/dashboards/04-users.json
+  monitoring/grafana/dashboards/05-host.json
+  monitoring/grafana/dashboards/06-request.json
+  monitoring/grafana/provisioning/datasources/postgres.yml
+  monitoring/sql/grafana-ro.sql
+)
+for retired in "${RETIRED_FILES[@]}"; do
+  if [[ -L "$retired" || ( -e "$retired" && ! -f "$retired" ) ]]; then
+    echo "Cannot archive unexpected file type: $WORKDIR/$retired" >&2
+    exit 1
+  fi
+done
 STAMP="$(date +%Y%m%dT%H%M%S)-$$"
 ROLLBACK_IMAGE="${IMAGE_NAME}:rollback-${STAMP}"
 # Tag the running image ID before loading: redeploying the same tag must not
@@ -68,10 +79,19 @@ done
 if [ "${#SAVED[@]}" -gt 0 ]; then
   COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$CONFIG_BACKUP" "${SAVED[@]}"
 fi
-if [ -f "$RETIRED_DASHBOARD" ]; then
-  RETIRED_DIR="$(mktemp -d "$WORKDIR/sub2api-retired-dashboards-${STAMP}.XXXXXX")"
-  mv -- "$RETIRED_DASHBOARD" "$RETIRED_DIR/"
-  printf 'Archived retired dashboard: %s/02-chain.json\n' "$RETIRED_DIR"
+RETIRED_DIR=""
+for retired in "${RETIRED_FILES[@]}"; do
+  if [ -f "$retired" ]; then
+    if [ -z "$RETIRED_DIR" ]; then
+      RETIRED_DIR="$(mktemp -d "$WORKDIR/sub2api-retired-monitoring-${STAMP}.XXXXXX")"
+    fi
+    mkdir -p "$RETIRED_DIR/$(dirname "$retired")"
+    mv -- "$retired" "$RETIRED_DIR/$retired"
+    printf 'Archived retired monitoring file: %s/%s\n' "$RETIRED_DIR" "$retired"
+  fi
+done
+if [ -d monitoring/sql ]; then
+  rmdir monitoring/sql 2>/dev/null || true
 fi
 # Reject platform metadata on extraction as well, for older uploaded bundles.
 COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -xzf "$STAGING/monitoring-assets.tar.gz" -C "$WORKDIR"
@@ -111,7 +131,6 @@ if grep -qx grafana <<< "$ACTIVE_SERVICES"; then
   if grep -qx backup <<< "$ACTIVE_SERVICES"; then SERVICES+=(backup); fi
   ./sub2api-compose up -d --no-deps --wait --wait-timeout 180 --force-recreate "${SERVICES[@]}"
   ./compose-deploy.sh --check-monitoring
-  ./compose-deploy.sh --setup-grafana-db
   echo 'Grafana listens on server loopback only. Use an SSH tunnel; password is in monitoring.env.'
 fi
 trap - ERR

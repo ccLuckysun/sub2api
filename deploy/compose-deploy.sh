@@ -31,24 +31,7 @@ USAGE
 }
 fail() { echo "[deploy] ERROR: $*" >&2; exit 1; }
 setup_grafana_db() {
-  local pg_user pg_db pg_pw
-  pg_user="$(./sub2api-compose exec -T postgres printenv POSTGRES_USER | tr -d '\r')"
-  pg_db="$(./sub2api-compose exec -T postgres printenv POSTGRES_DB | tr -d '\r')"
-  pg_pw="$(./sub2api-compose exec -T grafana sh -ec 'printf "%s." "${GRAFANA_PG_PASSWORD:?required}"')"
-  [[ "$pg_pw" == *. ]] || fail 'Could not read the effective Grafana database credential'
-  pg_pw="${pg_pw%.}"
-  case "$pg_pw" in
-    ''|not-configured|*$'\n'*|*$'\r'*) fail 'Grafana database credential must be configured and single-line' ;;
-  esac
-  {
-    printf '%s\n' "$pg_pw" '\getenv password GRAFANA_PG_PASSWORD'
-    cat monitoring/sql/grafana-ro.sql
-  } | ./sub2api-compose exec -T postgres sh -ec '
-    IFS= read -r GRAFANA_PG_PASSWORD
-    export GRAFANA_PG_PASSWORD
-    exec psql -X -v ON_ERROR_STOP=1 -U "$1" -d "$2"
-  ' psql "${pg_user:-sub2api}" "${pg_db:-sub2api}"
-  echo '[deploy] Grafana read-only role provisioned (grafana_ro).'
+  echo '[deploy] Grafana is Prometheus-only; no PostgreSQL role setup is required.'
 }
 check_monitoring() {
   local enabled
@@ -148,17 +131,14 @@ if $MONITORING; then
       monitoring/grafana/provisioning/datasources monitoring/grafana/provisioning/dashboards \
       monitoring/grafana/provisioning/plugins monitoring/grafana/provisioning/alerting \
       monitoring/grafana/dashboards monitoring/backup monitoring/prometheus \
-      monitoring/prometheus/rules monitoring/alertmanager monitoring/alertmanager/templates \
-      monitoring/sql; do
+      monitoring/prometheus/rules monitoring/alertmanager monitoring/alertmanager/templates; do
     [ ! -d "$dir" ] || chmod 755 "$dir"
   done
   for file in monitoring/prometheus.yml.tmpl \
       monitoring/prometheus/rules/*.yml \
       monitoring/alertmanager/alertmanager.yml.tmpl \
       monitoring/alertmanager/templates/*.tmpl \
-      monitoring/sql/*.sql \
       monitoring/grafana/provisioning/datasources/prometheus.yml \
-      monitoring/grafana/provisioning/datasources/postgres.yml \
       monitoring/grafana/provisioning/dashboards/dashboards.yml \
       monitoring/grafana/dashboard-preflight.sh \
       monitoring/grafana/dashboards/*.json; do
@@ -170,10 +150,6 @@ if $MONITORING; then
   if [ -z "$(setting GRAFANA_ADMIN_PASSWORD)" ]; then
     command -v openssl >/dev/null || fail 'openssl is required to generate the Grafana password'
     set_setting GRAFANA_ADMIN_PASSWORD "$(openssl rand -hex 24)"
-  fi
-  if [ -z "$(setting GRAFANA_PG_PASSWORD)" ]; then
-    command -v openssl >/dev/null || fail 'openssl is required to generate the Grafana PG password'
-    set_setting GRAFANA_PG_PASSWORD "$(openssl rand -hex 24)"
   fi
   # Keep previously enabled extensions on subsequent upgrades.
   [ "$(setting MONITORING_HOST_METRICS_ENABLED)" != true ] || HOST_METRICS=true
@@ -246,7 +222,6 @@ if $START; then
   ./sub2api-compose up -d --wait --wait-timeout 180
   if $MONITORING; then
     check_monitoring
-    setup_grafana_db
   fi
   echo '[deploy] Services are ready. Use ./sub2api-compose for subsequent commands.'
 else

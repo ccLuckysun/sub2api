@@ -82,9 +82,9 @@ func registerOps(instruments *RegistryAndMetrics) error {
 	return nil
 }
 
-// ProvideOpsRuntime starts coverage flushing after successful registration.
+// ProvideOpsRuntime starts coverage flushing and app-state polling after successful registration.
 // The application cleanup provider must call Stop before exiting.
-func ProvideOpsRuntime(instruments *RegistryAndMetrics, accounts *AccountLabels, sink OpsSampleSink) *OpsRuntime {
+func ProvideOpsRuntime(instruments *RegistryAndMetrics, accounts *AccountLabels, sink OpsSampleSink, probe AppStateProbe) *OpsRuntime {
 	if instruments == nil {
 		return nil
 	}
@@ -92,6 +92,7 @@ func ProvideOpsRuntime(instruments *RegistryAndMetrics, accounts *AccountLabels,
 	if runtime != nil {
 		runtime.Accounts = accounts
 		runtime.SampleSink = sink
+		runtime.AppStateProbe = probe
 	}
 	runtime.Start()
 	return runtime

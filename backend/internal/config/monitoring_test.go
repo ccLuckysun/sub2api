@@ -76,6 +76,8 @@ func TestMonitoringV2Defaults(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, cfg.Monitoring.OpsMetricsEnabled)
 	require.False(t, cfg.Monitoring.OpsSamplesEnabled)
+	require.Equal(t, DefaultOpsSampleMaxItems, cfg.Monitoring.OpsSampleMaxItems)
+	require.Equal(t, DefaultOpsSampleTTLHours, cfg.Monitoring.OpsSampleTTLHours)
 	require.Equal(t, 30, cfg.Ops.SampleRetentionDays)
 }
 
@@ -84,12 +86,40 @@ func TestMonitoringV2FromEnv(t *testing.T) {
 	t.Setenv("MONITORING_METRICS_ENABLED", "true")
 	t.Setenv("MONITORING_OPS_METRICS_ENABLED", "true")
 	t.Setenv("MONITORING_OPS_SAMPLES_ENABLED", "true")
+	t.Setenv("MONITORING_OPS_SAMPLE_MAX_ITEMS", "5000")
+	t.Setenv("MONITORING_OPS_SAMPLE_TTL_HOURS", "12")
 	t.Setenv("OPS_SAMPLE_RETENTION_DAYS", "45")
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.True(t, cfg.Monitoring.OpsMetricsEnabled)
 	require.True(t, cfg.Monitoring.OpsSamplesEnabled)
+	require.Equal(t, 5000, cfg.Monitoring.OpsSampleMaxItems)
+	require.Equal(t, 12, cfg.Monitoring.OpsSampleTTLHours)
 	require.Equal(t, 45, cfg.Ops.SampleRetentionDays)
+}
+
+func TestMonitoringOpsSampleRingBufferConfigValidation(t *testing.T) {
+	t.Run("zero falls back to defaults", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("MONITORING_OPS_SAMPLE_MAX_ITEMS", "0")
+		t.Setenv("MONITORING_OPS_SAMPLE_TTL_HOURS", "0")
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.Equal(t, DefaultOpsSampleMaxItems, cfg.Monitoring.OpsSampleMaxItems)
+		require.Equal(t, DefaultOpsSampleTTLHours, cfg.Monitoring.OpsSampleTTLHours)
+	})
+	t.Run("negative max items rejected", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("MONITORING_OPS_SAMPLE_MAX_ITEMS", "-1")
+		_, err := Load()
+		require.ErrorContains(t, err, "monitoring.ops_sample_max_items")
+	})
+	t.Run("negative ttl hours rejected", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("MONITORING_OPS_SAMPLE_TTL_HOURS", "-2")
+		_, err := Load()
+		require.ErrorContains(t, err, "monitoring.ops_sample_ttl_hours")
+	})
 }
 
 func TestMonitoringV2Dependencies(t *testing.T) {

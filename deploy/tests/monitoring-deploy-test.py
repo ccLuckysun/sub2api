@@ -24,7 +24,7 @@ ASSETS = [
     'monitoring/backup/snapshot.sh', 'monitoring/backup/crontab.example',
     'monitoring/grafana/dashboard-preflight.sh',
     'monitoring/grafana/provisioning', 'monitoring/grafana/dashboards',
-    'monitoring/prometheus/rules', 'monitoring/alertmanager', 'monitoring/sql',
+    'monitoring/prometheus/rules', 'monitoring/alertmanager',
 ]
 
 
@@ -167,6 +167,12 @@ Path(os.environ['PSQL_CAPTURE']).write_text(json.dumps({
         self.assertNotIn('ports', config['services']['prometheus'])
         self.assertIn('http://localhost:9093/-/ready', config['services']['alertmanager']['healthcheck']['test'])
         self.assertEqual(config['services']['sub2api']['environment']['MONITORING_METRICS_ENABLED'], 'true')
+        self.assertEqual(config['services']['sub2api']['environment']['MONITORING_OPS_SAMPLE_MAX_ITEMS'], '2000')
+        self.assertEqual(config['services']['sub2api']['environment']['MONITORING_OPS_SAMPLE_TTL_HOURS'], '24')
+        self.assertNotIn('OPS_SAMPLE_RETENTION_DAYS', config['services']['sub2api']['environment'])
+        self.assertNotIn('GRAFANA_PG_PASSWORD', config['services']['grafana']['environment'])
+        self.assertNotIn('GRAFANA_PG_DATABASE', config['services']['grafana']['environment'])
+        self.assertNotIn(b'GRAFANA_PG_PASSWORD', first_env)
         self.assertNotIn('job_name: node', (self.work / 'monitoring/prometheus.yml').read_text())
         # Re-rendering identical content must keep the inode used by a bind mount.
         inode = (self.work / 'monitoring/prometheus.yml').stat().st_ino
@@ -284,27 +290,39 @@ Path(os.environ['PSQL_CAPTURE']).write_text(json.dumps({
         self.assertNotIn('Deployment complete.', result.stdout)
         self.assertFalse(self.psql_capture.exists())
 
-    def test_remote_archives_retired_source_dashboard_before_upgrade(self):
+    def test_remote_archives_retired_monitoring_files_before_upgrade(self):
         command = self.remote_fixture()
-        relative = 'monitoring/grafana/dashboards/02-chain.json'
-        retired = self.work / relative
-        original = b'{"title":"Legacy chain dashboard"}\n'
-        retired.write_bytes(original)
+        retired_files = {
+            'monitoring/grafana/dashboards/02-chain.json': b'{"title":"Legacy chain"}\n',
+            'monitoring/grafana/dashboards/02-requests.json': b'{"title":"Legacy requests"}\n',
+            'monitoring/grafana/dashboards/03-nodes.json': b'{"title":"Legacy nodes"}\n',
+            'monitoring/grafana/dashboards/04-users.json': b'{"title":"Legacy users"}\n',
+            'monitoring/grafana/dashboards/05-host.json': b'{"title":"Legacy host"}\n',
+            'monitoring/grafana/dashboards/06-request.json': b'{"title":"Legacy request"}\n',
+            'monitoring/grafana/provisioning/datasources/postgres.yml': b'datasources: []\n',
+            'monitoring/sql/grafana-ro.sql': b'SELECT 1;\n',
+        }
+        for relative, content in retired_files.items():
+            target = self.work / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
         result = self.run_command(command)
-        self.assertIn('Archived retired dashboard:', result.stdout)
+        self.assertIn('Archived retired monitoring file:', result.stdout)
         self.assertIn('Deployment complete.', result.stdout)
-        self.assertFalse(retired.exists())
-        archived, = self.work.glob('sub2api-retired-dashboards-*/02-chain.json')
-        self.assertEqual(archived.read_bytes(), original)
-        self.assertEqual(archived.parent.stat().st_mode & 0o777, 0o700)
+        archived_dir, = self.work.glob('sub2api-retired-monitoring-*')
+        self.assertEqual(archived_dir.stat().st_mode & 0o777, 0o700)
         backup, = self.work.glob('sub2api-deploy-config-*.tar.gz')
         with tarfile.open(backup) as archive:
-            self.assertEqual(archive.extractfile(relative).read(), original)
+            for relative, content in retired_files.items():
+                self.assertFalse((self.work / relative).exists(), relative)
+                self.assertEqual((archived_dir / relative).read_bytes(), content)
+                self.assertEqual(archive.extractfile(relative).read(), content)
+        self.assertFalse((self.work / 'monitoring/sql').exists())
 
     def test_remote_will_not_move_a_symlink_at_the_retired_dashboard_path(self):
         command = self.remote_fixture()
         retired = self.work / 'monitoring/grafana/dashboards/02-chain.json'
-        retired.symlink_to('02-requests.json')
+        retired.symlink_to('01-overview.json')
         result = self.run_command(command, success=False)
         self.assertIn('Cannot archive unexpected file type:', result.stderr)
         self.assertTrue(retired.is_symlink())
@@ -343,56 +361,13 @@ Path(os.environ['PSQL_CAPTURE']).write_text(json.dumps({
         self.assertTrue((self.work / 'monitoring.env').exists())
         self.assertEqual(self.config()['services']['sub2api']['environment']['DATABASE_PASSWORD'],
                          self.business_env.decode().splitlines()[0].split('=', 1)[1])
-        self.assertTrue(self.psql_capture.exists())
-
-    def test_db_role_uses_effective_compose_credential_only_on_stdin(self):
-        self.install_docker_shim()
-        env_file = self.work / 'monitoring.env'
-        dotenv_credential = 'quoted DOTENV # not a comment $literal \\ test'
-        env_file.write_text(f"GRAFANA_PG_PASSWORD='{dotenv_credential}'\n")
-        self.configure('--monitoring')
-        for expected in [dotenv_credential, "override with spaces 'quotes' \\ and $literal"]:
-            with self.subTest(expected=expected):
-                if expected != dotenv_credential:
-                    self.env['GRAFANA_PG_PASSWORD'] = expected
-                result = self.run_command([self.work / 'compose-deploy.sh', '--setup-grafana-db'])
-                captured = json.loads(self.psql_capture.read_text())
-                self.assertEqual(captured['credential'], expected)
-                self.assertEqual(captured['args'], ['-X', '-v', 'ON_ERROR_STOP=1', '-U', 'fixture_user',
-                                                     '-d', 'fixture_db'])
-                sql = (self.work / 'monitoring/sql/grafana-ro.sql').read_text()
-                self.assertEqual(captured['sql'], '\\getenv password GRAFANA_PG_PASSWORD\n' + sql)
-                self.assertNotIn(expected, result.stdout + result.stderr + self.log.read_text())
-
-    def test_db_role_rejects_multiline_credential_before_psql(self):
-        self.install_docker_shim()
-        self.configure('--monitoring')
-        self.env['GRAFANA_PG_PASSWORD'] = 'fixture-with-trailing-newline\n'
-        result = self.run_command([self.work / 'compose-deploy.sh', '--setup-grafana-db'], success=False)
-        self.assertIn('must be configured and single-line', result.stderr)
         self.assertFalse(self.psql_capture.exists())
 
-    def test_db_role_stdin_transport_with_real_psql(self):
+    def test_setup_grafana_db_flag_is_harmless_noop(self):
         self.install_docker_shim()
-        self.configure('--monitoring')
-        self.env['GRAFANA_PG_PASSWORD'] = "  literal with 'quotes', \\backslash and $dollar  "
-        sql = self.work / 'monitoring/sql/grafana-ro.sql'
-        sql.write_text("SELECT :'password';\n")
-        self.run_command([self.work / 'compose-deploy.sh', '--setup-grafana-db'])
-        captured = json.loads(self.psql_capture.read_text())
-        transport = next(event for event in self.docker_events()
-                         if 'exec' in event and 'postgres' in event and 'sh' in event)
-        shell = transport[transport.index('exec') + 3:]
-        result = subprocess.run([DOCKER, 'run', '--rm', '-i', '--network', 'none',
-                                 '--user', 'postgres', '--entrypoint', 'sh', 'postgres:18-alpine', '-ec',
-                                 'export PGDATA="$(mktemp -d)"; initdb -A trust >/dev/null; '
-                                 'pg_ctl -l "$PGDATA/server.log" -o "-c listen_addresses=" -w start >/dev/null; '
-                                 'createuser fixture_user; createdb -O fixture_user fixture_db; exec "$@"',
-                                 'fixture', *shell],
-                                input=captured['credential'] + '\n' + captured['sql'],
-                                text=True, capture_output=True, env=self.env)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn(self.env['GRAFANA_PG_PASSWORD'], result.stdout)
+        result = self.run_command([self.work / 'compose-deploy.sh', '--setup-grafana-db'])
+        self.assertIn('Prometheus-only', result.stdout)
+        self.assertFalse(self.psql_capture.exists())
 
     def test_local_deploy_rebinds_rules_even_when_rendered_config_is_unchanged(self):
         self.install_docker_shim()
@@ -452,7 +427,9 @@ class MonitoringDeploymentSafety(unittest.TestCase):
 
     Run independently: python3 deploy/tests/monitoring-deploy-test.py MonitoringDeploymentSafety
     """
-    NAMES = ['01-overview', '02-requests', '03-nodes', '04-users', '05-host', '06-request']
+    NAMES = ['01-overview', '02-nodes-chain', '03-host']
+    RETIRED = ['02-chain.json', '02-requests.json', '03-nodes.json',
+               '04-users.json', '05-host.json', '06-request.json']
 
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix='monitoring-deployment-safety-')
@@ -470,14 +447,14 @@ class MonitoringDeploymentSafety(unittest.TestCase):
         return subprocess.run(['sh', str(self.preflight), mode, str(directory or self.dashboards)],
                               text=True, capture_output=True)
 
-    def test_six_canonical_source_and_volume_pass(self):
+    def test_three_canonical_source_and_volume_pass(self):
         for mode in ['--source', '--volume']:
             result = self.check(mode)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('six canonical', result.stdout)
+            self.assertIn('three canonical', result.stdout)
 
     def test_zero_byte_json_fails_source_and_volume_without_deletion(self):
-        for name in ['02-requests.json', '02-chain.json', 'unrelated.json']:
+        for name in ['02-nodes-chain.json', '02-chain.json', 'unrelated.json']:
             for nested in [False, True]:
                 with self.subTest(name=name, nested=nested):
                     target = self.dashboards / ('nested' if nested else '') / name
@@ -498,7 +475,7 @@ class MonitoringDeploymentSafety(unittest.TestCase):
 
     def test_nonempty_binary_metadata_fails_source_and_volume_without_deletion(self):
         content = b'\x00\x05\x16\x07\x00\x02\x00\x00AppleDouble binary fixture\xff'
-        for name in ['._02-requests.json', '.DS_Store', '._datasource.yml']:
+        for name in ['._02-nodes-chain.json', '.DS_Store', '._datasource.yml']:
             for nested in [False, True]:
                 with self.subTest(name=name, nested=nested):
                     target = self.dashboards / ('nested' if nested else '') / name
@@ -517,7 +494,7 @@ class MonitoringDeploymentSafety(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         datasource = self.provisioning / 'datasources'
         datasource.mkdir()
-        for name in ['._postgres.yml', '.DS_Store']:
+        for name in ['._prometheus.yml', '.DS_Store']:
             target = datasource / name
             target.write_bytes(b'\x00\x05\x16\x07nonempty binary fixture')
             result = self.check('--metadata', self.provisioning)
@@ -526,21 +503,32 @@ class MonitoringDeploymentSafety(unittest.TestCase):
             self.assertIn(str(target), result.stderr)
             self.assertTrue(target.exists())
             target.unlink()
+        pg_ds = datasource / 'postgres.yml'
+        pg_ds.write_text('datasources: []\n')
+        result = self.check('--metadata', self.provisioning)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('retired PostgreSQL datasource artifact', result.stderr)
+        self.assertTrue(pg_ds.exists())
+        pg_ds.unlink()
 
-    def test_nonempty_historical_chain_is_explicitly_rejected(self):
-        target = self.dashboards / '02-chain.json'
-        target.write_text('{"historical": true}')
-        for mode in ['--source', '--volume']:
-            result = self.check(mode)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn('retired 02-chain.json artifact', result.stderr)
-            self.assertTrue(target.exists())
+    def test_nonempty_retired_dashboards_are_explicitly_rejected(self):
+        for name in self.RETIRED:
+            with self.subTest(name=name):
+                target = self.dashboards / name
+                target.write_text('{"historical": true}')
+                for mode in ['--source', '--volume']:
+                    result = self.check(mode)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('retired dashboard artifact', result.stderr)
+                    self.assertIn(name, result.stderr)
+                    self.assertTrue(target.exists())
+                target.unlink()
 
     def test_missing_required_json_fails(self):
-        (self.dashboards / '06-request.json').unlink()
+        (self.dashboards / '03-host.json').unlink()
         result = self.check()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('06-request.json', result.stderr)
+        self.assertIn('03-host.json', result.stderr)
 
     def test_deployment_aborts_on_empty_json_before_any_docker_call(self):
         work = self.root / 'deploy'
@@ -564,12 +552,13 @@ class MonitoringDeploymentSafety(unittest.TestCase):
         self.assertIn('zero-byte dashboard JSON', result.stderr)
         self.assertFalse(marker.exists())
 
-    def test_grafana_entrypoint_checks_volume_before_run_and_mounts_only_six(self):
+    def test_grafana_entrypoint_checks_volume_before_run_and_mounts_only_three(self):
         compose = (DEPLOY / 'docker-compose.monitoring.yml').read_text()
-        self.assertIn('--volume /var/lib/grafana/dashboards/v2 && exec /run.sh', compose)
+        self.assertIn('--volume /etc/grafana/dashboards/v2 && exec /run.sh', compose)
+        self.assertNotIn('/var/lib/grafana/dashboards', compose)
         mounted = re.findall(r'source: ./monitoring/grafana/dashboards/([^\n]+)', compose)
         self.assertEqual(mounted, [name + '.json' for name in self.NAMES])
-        self.assertGreaterEqual(compose.count('bind: {create_host_path: false}'), 7)
+        self.assertGreaterEqual(compose.count('bind: {create_host_path: false}'), 4)
         self.assertIn('monitoring/grafana/dashboard-preflight.sh', (DEPLOY / 'docker-deploy.sh').read_text())
 
     def fixture_grafana_entrypoint(self, fake_run):
@@ -584,7 +573,7 @@ class MonitoringDeploymentSafety(unittest.TestCase):
         self.assertEqual(entrypoint[3:], ['grafana-dashboard-preflight'])
         command = entrypoint[2]
         command = command.replace('/etc/grafana/dashboard-preflight.sh', shlex.quote(str(self.preflight)))
-        command = command.replace('/var/lib/grafana/dashboards/v2', shlex.quote(str(self.dashboards)))
+        command = command.replace('/etc/grafana/dashboards/v2', shlex.quote(str(self.dashboards)))
         command = command.replace('/etc/grafana/provisioning', shlex.quote(str(self.provisioning)))
         command = command.replace('/run.sh', shlex.quote(str(fake_run)))
         return [*entrypoint[:2], command, *entrypoint[3:]]
@@ -614,7 +603,7 @@ class MonitoringDeploymentSafety(unittest.TestCase):
         entrypoint = self.fixture_grafana_entrypoint(fake_run)
         env = dict(os.environ, GRAFANA_START_MARKER=str(marker))
         for directory in [self.dashboards, self.provisioning]:
-            for name in ['._02-requests.json', '.DS_Store', 'nested/._postgres.yml']:
+            for name in ['._02-nodes-chain.json', '.DS_Store', 'nested/._prometheus.yml']:
                 with self.subTest(directory=directory, name=name):
                     target = directory / name
                     target.parent.mkdir(exist_ok=True)
@@ -654,7 +643,7 @@ class MonitoringDeploymentSafety(unittest.TestCase):
             else:
                 shutil.copy2(source, dest)
         shutil.copy2(DEPLOY / 'docker-compose.local.yml', work / 'docker-compose.yml')
-        (work / 'monitoring.env').write_text('GRAFANA_ADMIN_PASSWORD=local-fixture-admin\nGRAFANA_PG_PASSWORD=local-fixture-pg')
+        (work / 'monitoring.env').write_text('GRAFANA_ADMIN_PASSWORD=local-fixture-admin\n')
         bindir = self.root / 'bin'
         bindir.mkdir()
         log = self.root / 'docker-events'
@@ -692,15 +681,15 @@ esac
             self.assertTrue(optional.is_dir(), directory)
             self.assertEqual(optional.stat().st_mode & 0o777, 0o755)
         original_log = log.read_bytes()
-        (work / 'monitoring/grafana/dashboards/02-requests.json').write_bytes(b'')
+        (work / 'monitoring/grafana/dashboards/02-nodes-chain.json').write_bytes(b'')
         for action in ['up', 'start', 'restart']:
             result = subprocess.run([str(work / 'sub2api-compose'), action, '-d'],
                                     env=env, text=True, capture_output=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('zero-byte dashboard JSON', result.stderr)
             self.assertEqual(log.read_bytes(), original_log)
-        (work / 'monitoring/grafana/dashboards/02-requests.json').write_text('{}')
-        (work / 'monitoring/grafana/provisioning/._postgres.yml').write_bytes(b'\x00binary metadata')
+        (work / 'monitoring/grafana/dashboards/02-nodes-chain.json').write_text('{}')
+        (work / 'monitoring/grafana/provisioning/._prometheus.yml').write_bytes(b'\x00binary metadata')
         result = subprocess.run(['bash', str(work / 'compose-deploy.sh'), '--monitoring', '--no-start'],
                                 env=env, text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
@@ -749,7 +738,8 @@ esac
             self.assertIn('monitoring/grafana/dashboards/' + name + '.json', names)
         self.assertFalse(any(part.startswith('._') or part == '.DS_Store'
                              for name in names for part in Path(name).parts))
-        self.assertFalse(any(Path(name).name == '02-chain.json' for name in names))
+        for retired in self.RETIRED + ['postgres.yml', 'grafana-ro.sql']:
+            self.assertFalse(any(Path(name).name == retired for name in names), retired)
 
     def test_all_monitoring_tar_paths_disable_metadata_and_no_json_sed_in_place(self):
         paths = [REPO / 'deploy-us1.sh', DEPLOY / 'remote-deploy.sh',

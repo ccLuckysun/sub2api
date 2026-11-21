@@ -93,6 +93,12 @@
         />
       </div>
 
+      <!-- Realtime Requests (Redis ring buffer) -->
+      <OpsRealtimeRequestsCard
+        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
+        :refresh-token="dashboardRefreshToken"
+      />
+
       <!-- Alert Events -->
       <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce)" />
 
@@ -141,7 +147,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDebounceFn, useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -169,6 +175,7 @@ import OpsThroughputTrendChart from './components/OpsThroughputTrendChart.vue'
 import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
 import OpsOpenAITokenStatsCard from './components/OpsOpenAITokenStatsCard.vue'
+import OpsRealtimeRequestsCard from './components/OpsRealtimeRequestsCard.vue'
 import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
@@ -821,6 +828,7 @@ onMounted(async () => {
 
   if (opsEnabled.value) {
     await fetchData()
+    await scrollToHashAnchor()
   }
 
   // Start auto refresh if enabled
@@ -828,6 +836,25 @@ onMounted(async () => {
     resumeCountdown()
   }
 })
+
+async function scrollToHashAnchor() {
+  const hash = (route.hash || '').replace(/^#/, '').trim()
+  if (!hash) return
+  await nextTick()
+  const el = document.getElementById(hash)
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+watch(
+  () => route.hash,
+  () => {
+    if (hasLoadedOnce.value) {
+      void scrollToHashAnchor()
+    }
+  }
+)
 
 async function loadThresholds() {
   try {
