@@ -2511,7 +2511,9 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 // ResponsesWebSocket handles OpenAI Responses API WebSocket ingress endpoint
 // GET /openai/v1/responses (Upgrade: websocket)
 func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
+	wsObs := monitoring.WSObserverFromContext(c.Request.Context())
 	if !isOpenAIWSUpgradeRequest(c.Request) {
+		wsObs.MarkRejected()
 		h.errorResponse(c, http.StatusUpgradeRequired, "invalid_request_error", "WebSocket upgrade required (Upgrade: websocket)")
 		return
 	}
@@ -2519,11 +2521,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
+		wsObs.MarkRejected()
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
+		wsObs.MarkRejected()
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
@@ -2537,6 +2541,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		zap.Bool("openai_ws_mode", true),
 	)
 	if !h.ensureResponsesDependencies(c, reqLog) {
+		wsObs.MarkRejected()
 		return
 	}
 	reqLog.Info("openai.websocket_ingress_started")
@@ -2550,11 +2555,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	ingressLease, ingressLeaseAcquired, ingressLeaseErr := h.concurrencyHelper.AcquireOpenAIWSIngressLease(ctx, apiKey.ID, maxIngressConnections)
 	if ingressLeaseErr != nil {
+		wsObs.MarkRejected()
 		reqLog.Error("openai.websocket_ingress_lease_acquire_failed", zap.Error(ingressLeaseErr))
 		h.errorResponse(c, http.StatusServiceUnavailable, "service_unavailable", "WebSocket ingress capacity is temporarily unavailable")
 		return
 	}
 	if !ingressLeaseAcquired {
+		wsObs.MarkRejected()
 		reqLog.Info("openai.websocket_ingress_capacity_rejected", zap.Int("max_ingress_connections_per_api_key", maxIngressConnections))
 		c.Header("Retry-After", "5")
 		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many open WebSocket connections, please retry later")
@@ -2570,6 +2577,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		CompressionMode: coderws.CompressionContextTakeover,
 	})
 	if err != nil {
+		wsObs.MarkHandshakeFailed()
 		reqLog.Warn("openai.websocket_accept_failed",
 			zap.Error(err),
 			zap.String("client_ip", clientIP),
@@ -2581,7 +2589,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		)
 		return
 	}
+	wsClosedNormal := false
+	wsObs.MarkConnected()
 	defer func() {
+		wsObs.MarkClosed(wsClosedNormal)
 		_ = wsConn.CloseNow()
 	}()
 	wsConn.SetReadLimit(service.ResolveOpenAIWSClientReadLimitBytes(h.cfg))
@@ -2595,6 +2606,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		"missing first response.create message",
 	)
 	if err != nil {
+		if closeCode := coderws.CloseStatus(err); closeCode == coderws.StatusNormalClosure || closeCode == coderws.StatusGoingAway {
+			wsClosedNormal = true
+		}
 		if errors.Is(context.Cause(ctx), service.ErrOpenAIWSIngressLeaseLost) {
 			reqLog.Warn("openai.websocket_ingress_lease_lost_before_first_message", zap.Error(err))
 			closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "websocket ingress capacity lease lost; please reconnect")
@@ -3350,6 +3364,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			markForwardedAccountSwitch(ctx, &forwardedAccountID, account.ID)
 			err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks)
 			if err == nil {
+				wsClosedNormal = true
 				reqLog.Info("openai.websocket_ingress_closed", zap.Int64("account_id", account.ID))
 				return
 			}
@@ -3415,6 +3430,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			var closeErr *service.OpenAIWSClientCloseError
 			hasClientCloseErr := errors.As(err, &closeErr)
 			if openAIWSIngressEndedByClient(err) {
+				if hasClientCloseErr {
+					wsClosedNormal = closeErr.StatusCode() == coderws.StatusNormalClosure || closeErr.StatusCode() == coderws.StatusGoingAway
+				} else {
+					wsClosedNormal = true
+				}
 				closedFields := []zap.Field{zap.Int64("account_id", account.ID)}
 				if hasClientCloseErr {
 					closedFields = append(closedFields, zap.String("reason", closeErr.Reason()))
@@ -3471,13 +3491,18 @@ func (h *OpenAIGatewayHandler) recoverResponsesPanic(c *gin.Context, streamStart
 		return
 	}
 
+	brokenPipe := middleware2.RecordRecoveredPanic(c, recovered)
 	started := false
 	if streamStarted != nil {
 		started = *streamStarted
 	}
-	wroteFallback := h.ensureForwardErrorResponse(c, started)
+	wroteFallback := false
+	if !brokenPipe {
+		wroteFallback = h.ensureForwardErrorResponse(c, started)
+	}
 	requestLogger(c, "handler.openai_gateway.responses").Error(
 		"openai.responses_panic_recovered",
+		zap.Bool("broken_pipe", brokenPipe),
 		zap.Bool("fallback_error_response_written", wroteFallback),
 		zap.Any("panic", recovered),
 		zap.ByteString("stack", debug.Stack()),
@@ -3492,14 +3517,16 @@ func (h *OpenAIGatewayHandler) recoverAnthropicMessagesPanic(c *gin.Context, str
 		return
 	}
 
+	brokenPipe := middleware2.RecordRecoveredPanic(c, recovered)
 	started := streamStarted != nil && *streamStarted
 	requestLogger(c, "handler.openai_gateway.messages").Error(
 		"openai.messages_panic_recovered",
+		zap.Bool("broken_pipe", brokenPipe),
 		zap.Bool("stream_started", started),
 		zap.Any("panic", recovered),
 		zap.ByteString("stack", debug.Stack()),
 	)
-	if !started {
+	if !brokenPipe && !started && c != nil && c.Writer != nil && !c.Writer.Written() {
 		h.anthropicErrorResponse(c, http.StatusInternalServerError, "api_error", "Internal server error")
 	}
 }
@@ -3747,8 +3774,15 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	}
 
 	// 记录原始上游状态码，以便 ops 错误日志捕获真实的上游错误
-	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
-	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+	if !failoverErr.TransportError {
+		upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
+		service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+		if failoverErr.StreamFailedFrame != nil && len(failoverErr.StreamFailedFrame.Payload) > 0 {
+			service.RecordOpsUpstreamErrorFromBody(c.Request.Context(), c, statusCode, failoverErr.StreamFailedFrame.Payload, upstreamMsg)
+		} else if len(responseBody) > 0 {
+			service.RecordOpsUpstreamErrorFromBody(c.Request.Context(), c, statusCode, responseBody, upstreamMsg)
+		}
+	}
 
 	// 使用默认的错误映射
 	status, errType, errMsg := h.mapUpstreamError(statusCode)
@@ -4079,6 +4113,9 @@ func openAIFirstOutputFailoverExhausted(failoverErr *service.UpstreamFailoverErr
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
+	if status >= 400 {
+		middleware2.RecordOpsAbortError(c, errType, message)
+	}
 	// body-signal compact 心跳可能已把响应头提交为 200：JSON 错误体会与已
 	// 提交的 SSE 流交错，必须降级为 response.failed 终止事件（#3887）。
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {

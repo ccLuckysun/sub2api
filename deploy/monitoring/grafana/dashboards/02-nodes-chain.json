@@ -932,7 +932,7 @@
       "id": 8,
       "title": "6 段耗时 P95",
       "type": "bargauge",
-      "description": "当前 $__range 内 6 个互斥链路段直方图 P95（排除 headers_end）。各段 P95 不可直接相加等于总耗时 P95。",
+      "description": "当前 $__range 内 6 个互斥链路段直方图 P95（排除 headers_end）。仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）；`response`（响应传输）段在流式模型请求下主要反映模型持续生成输出的时间，而非单纯网络带宽慢。各段 P95 不可直接相加等于总耗时 P95。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
@@ -1491,6 +1491,528 @@
                 "value": {
                   "mode": "fixed",
                   "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "textMode": "value_and_name",
+        "sizing": "manual",
+        "minVizWidth": 8,
+        "minVizHeight": 22,
+        "maxVizHeight": 34,
+        "text": {
+          "valueSize": 13
+        },
+        "legend": {
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "WebSocket 活跃连接",
+      "type": "bargauge",
+      "description": "当前活跃 WebSocket 长连接数（sub2api_ws_active_connections，按 endpoint 区分，覆盖 responses / realtime / live 网关 WS 端点）。与 HTTP 6 段耗时及网关请求指标完全独立。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "sum by (endpoint)(sub2api_ws_active_connections)",
+          "legendFormat": "{{endpoint}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "未采集",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "responses"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "活跃 · Responses WS"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "realtime"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "活跃 · Realtime WS"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1aa57a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "live"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "活跃 · Live WS"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*未采集.*"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "未采集"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "textMode": "value_and_name",
+        "sizing": "manual",
+        "minVizWidth": 8,
+        "minVizHeight": 22,
+        "maxVizHeight": 34,
+        "text": {
+          "valueSize": 13
+        },
+        "legend": {
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "WebSocket 连接状态（握手与断开速率）",
+      "type": "bargauge",
+      "description": "当前 $__range 内 WebSocket 握手与断开速率（sub2api_ws_connections_total 按 endpoint 与 outcome 聚合，覆盖 responses / realtime / live 网关 WS 端点）。与 HTTP 请求指标完全分开，无 WS 流量时显示无流量。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "sub2api-prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 16,
+        "x": 8,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "sum by (endpoint, outcome)(rate(sub2api_ws_connections_total[$__range]))",
+          "legendFormat": "{{endpoint}} · {{outcome}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "interval": "15s",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 2,
+          "noValue": "无流量",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3ecf8e",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "responses · connected"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Responses · 握手成功"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3ecf8e"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "responses · handshake_failed"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Responses · 握手失败"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ef6b6b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "responses · rejected"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Responses · 拒绝连接"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e07a3f"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "responses · closed_normal"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Responses · 正常关闭"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6c7782"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "responses · closed_error"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Responses · 异常关闭"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d9669a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "realtime · connected"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Realtime · 握手成功"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1aa57a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "realtime · handshake_failed"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Realtime · 握手失败"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ef6b6b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "realtime · rejected"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Realtime · 拒绝连接"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d4a72c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "realtime · closed_normal"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Realtime · 正常关闭"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6c7782"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "realtime · closed_error"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Realtime · 异常关闭"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "live · connected"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Live · 握手成功"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "live · handshake_failed"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Live · 握手失败"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ef6b6b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "live · rejected"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Live · 拒绝连接"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e07a3f"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "live · closed_normal"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Live · 正常关闭"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6c7782"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "live · closed_error"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Live · 异常关闭"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d9669a"
                 }
               }
             ]

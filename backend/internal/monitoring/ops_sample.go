@@ -24,9 +24,13 @@ type OpsSample struct {
 	Model                       *string    `json:"model,omitempty"`
 	EndpointClass               *string    `json:"endpoint_class,omitempty"`
 	Endpoint                    *string    `json:"endpoint,omitempty"`
+	HTTPMethod                  *string    `json:"http_method,omitempty"`
 	Result                      *string    `json:"result,omitempty"`
 	HTTPStatus                  *int       `json:"http_status,omitempty"`
 	FailureReason               *string    `json:"failure_reason,omitempty"`
+	ErrorMessage                *string    `json:"error_message,omitempty"`
+	UpstreamStatus              *int       `json:"upstream_status,omitempty"`
+	UpstreamErrorCode           *string    `json:"upstream_error_code,omitempty"`
 	AttemptCount                *int       `json:"attempt_count,omitempty"`
 	FailedAttempts              *int       `json:"failed_attempts,omitempty"`
 	Node                        *string    `json:"node,omitempty"`

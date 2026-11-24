@@ -244,7 +244,7 @@
       "id": 4,
       "title": "P95 总耗时",
       "type": "stat",
-      "description": "当前 $__range 内网关总耗时直方图 P95；受桶边界插值影响，不是各段 P95 相加。",
+      "description": "当前 $__range 内网关总耗时直方图 P95；受桶边界插值影响，不是各段 P95 相加。仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
@@ -340,7 +340,7 @@
       "id": 5,
       "title": "P95 TTFT",
       "type": "stat",
-      "description": "最终 attempt 首次发送到尾响应首字节；与 upstream 重叠，不参与段堆叠。无首字节不观察。",
+      "description": "最终 attempt 首次发送到尾响应首字节；与 upstream 重叠，不参与段堆叠。无首字节不观察。仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
@@ -804,7 +804,7 @@
       "id": 10,
       "title": "链路段耗时占比",
       "type": "bargauge",
-      "description": "当前 $__range 内 6 个互斥链路段平均耗时（sum/count，排除与 upstream 重叠的 headers_end）。均值受长流式请求拉高，排查看 02 页 P95。",
+      "description": "当前 $__range 内 6 个互斥链路段平均耗时（sum/count，排除与 upstream 重叠的 headers_end）。仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）；`response`（响应传输）段在流式模型请求下主要反映模型持续生成输出的时间，而非单纯网络带宽慢。均值受长流式请求拉高，排查看 02 页 P95。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
@@ -1006,9 +1006,9 @@
     },
     {
       "id": 11,
-      "title": "失败根因 Top 6",
+      "title": "失败分类与根因 Top 6",
       "type": "bargauge",
-      "description": "近 $__range 内 M-10 失败请求数 Top 6；无失败时无数据是健康状态，不是未采集。unknown 长期偏高说明分类缺失。",
+      "description": "近 $__range 内 M-10 HTTP 失败请求按 result 分类汇总与 failure_reason Top 6（已排除 WebSocket 101 升级）；无失败时无数据是健康状态，不是未采集。unknown 长期偏高说明分类缺失。",
       "datasource": {
         "type": "prometheus",
         "uid": "sub2api-prometheus"
@@ -1022,6 +1022,17 @@
       "targets": [
         {
           "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "sub2api-prometheus"
+          },
+          "expr": "sum by (result)(increase(sub2api_gateway_requests_total{result!=\"success\"}[$__range]))",
+          "legendFormat": "结果 · {{result}}",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "B",
           "datasource": {
             "type": "prometheus",
             "uid": "sub2api-prometheus"
@@ -1057,6 +1068,101 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "结果 · upstream_error"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "结果 · 上游错误"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e07a3f"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "结果 · gateway_error"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "结果 · 网关错误"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ef6b6b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "结果 · rejected"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "结果 · 客户端拒收"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6c7782"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "结果 · client_abort"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "结果 · 客户端中断"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "结果 · timeout"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "结果 · 超时"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d9669a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "upstream_rate_limit"
             },
             "properties": [
@@ -1076,12 +1182,31 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "upstream_server_error"
+              "options": "upstream_auth"
             },
             "properties": [
               {
                 "id": "displayName",
-                "value": "上游 5xx"
+                "value": "上游鉴权失败"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#f5b942"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "upstream_model_or_request"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "上游模型或请求无效"
               },
               {
                 "id": "color",
@@ -1095,12 +1220,31 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "upstream_read_timeout"
+              "options": "upstream_server_error"
             },
             "properties": [
               {
                 "id": "displayName",
-                "value": "上游超时"
+                "value": "上游 5xx 错误"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d4a72c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "upstream_connect_timeout"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "上游连接超时"
               },
               {
                 "id": "color",
@@ -1114,7 +1258,235 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "upstream_read_timeout"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "上游读取超时"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d9669a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "proxy_unreachable"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "代理不可达"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ef6b6b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "client_abort_during_body_read"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "客户端读体中断"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "client_abort_during_response"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "客户端响应中断"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "gateway_panic"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "网关异常 Panic"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ef6b6b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "gateway_db"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "网关数据库错误"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ef6b6b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "gateway_ratelimit"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "网关限流"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e07a3f"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "client_bad_request"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "请求参数错误"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "client_auth_failed"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "客户端鉴权失败"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1aa57a"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "client_forbidden"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "访问被拒绝"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#f5b942"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "client_not_found"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "接口或资源不存在"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#6c7782"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "body_too_large"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "请求体过大"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "client_abort"
             },
             "properties": [
               {
@@ -1133,50 +1505,12 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "gateway_error"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "网关错误"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#ef6b6b"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rejected"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "请求被拒"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#6c7782"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
               "options": "unknown"
             },
             "properties": [
               {
                 "id": "displayName",
-                "value": "未知"
+                "value": "未知失败"
               },
               {
                 "id": "color",

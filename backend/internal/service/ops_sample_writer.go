@@ -34,10 +34,11 @@ const (
 
 // RealtimeRequestsFilter defines query parameters for the realtime requests ring buffer.
 type RealtimeRequestsFilter struct {
-	Result string // "all" (default), "success", "failure"
-	Model  string // exact match if non-empty and != "__all__"
-	Search string // case-insensitive substring across metadata fields
-	Limit  int    // default 100, clamped to 1..500
+	Result        string // "all" (default), "success", "failure"
+	Model         string // exact match if non-empty and != "__all__"
+	FailureReason string // exact case-insensitive match if non-empty and != "__all__"
+	Search        string // case-insensitive substring across metadata fields
+	Limit         int    // default 100, clamped to 1..500
 }
 
 // RealtimeRequestsSummary summarizes filtered items from the Redis ring buffer.
@@ -52,14 +53,15 @@ type RealtimeRequestsSummary struct {
 
 // RealtimeRequestsResponse is the API response contract for GET /api/v1/admin/ops/realtime-requests.
 type RealtimeRequestsResponse struct {
-	Enabled       bool                    `json:"enabled"`
-	BufferSize    int                     `json:"buffer_size"`
-	TTLHours      int                     `json:"ttl_hours"`
-	TotalInBuffer int                     `json:"total_in_buffer"`
-	Summary       RealtimeRequestsSummary `json:"summary"`
-	Items         []monitoring.OpsSample  `json:"items"`
-	Models        []string                `json:"models"`
-	Timestamp     time.Time               `json:"timestamp"`
+	Enabled        bool                    `json:"enabled"`
+	BufferSize     int                     `json:"buffer_size"`
+	TTLHours       int                     `json:"ttl_hours"`
+	TotalInBuffer  int                     `json:"total_in_buffer"`
+	Summary        RealtimeRequestsSummary `json:"summary"`
+	Items          []monitoring.OpsSample  `json:"items"`
+	Models         []string                `json:"models"`
+	FailureReasons []string                `json:"failure_reasons"`
+	Timestamp      time.Time               `json:"timestamp"`
 }
 
 // RealtimeRequestsReader reads realtime request samples from the ring buffer.
@@ -337,10 +339,11 @@ func (w *OpsSampleWriter) run() {
 func (w *OpsSampleWriter) ListRealtimeRequests(ctx context.Context, filter RealtimeRequestsFilter) (*RealtimeRequestsResponse, error) {
 	if w == nil {
 		return &RealtimeRequestsResponse{
-			Enabled:   false,
-			Items:     []monitoring.OpsSample{},
-			Models:    []string{},
-			Timestamp: time.Now().UTC(),
+			Enabled:        false,
+			Items:          []monitoring.OpsSample{},
+			Models:         []string{},
+			FailureReasons: []string{},
+			Timestamp:      time.Now().UTC(),
 		}, nil
 	}
 	if w.store == nil {
@@ -361,6 +364,7 @@ func (w *OpsSampleWriter) ListRealtimeRequests(ctx context.Context, filter Realt
 
 	parsed := make([]monitoring.OpsSample, 0, len(rawItems))
 	modelSet := make(map[string]struct{})
+	failureReasonSet := make(map[string]struct{})
 	for _, raw := range rawItems {
 		var item monitoring.OpsSample
 		if err := json.Unmarshal([]byte(raw), &item); err != nil {
@@ -372,6 +376,11 @@ func (w *OpsSampleWriter) ListRealtimeRequests(ctx context.Context, filter Realt
 				modelSet[m] = struct{}{}
 			}
 		}
+		if !opsSampleIsSuccess(item) && item.FailureReason != nil {
+			if fr := strings.TrimSpace(*item.FailureReason); fr != "" {
+				failureReasonSet[fr] = struct{}{}
+			}
+		}
 	}
 
 	models := make([]string, 0, len(modelSet))
@@ -380,8 +389,18 @@ func (w *OpsSampleWriter) ListRealtimeRequests(ctx context.Context, filter Realt
 	}
 	sort.Strings(models)
 
+	failureReasons := make([]string, 0, len(failureReasonSet))
+	for fr := range failureReasonSet {
+		failureReasons = append(failureReasons, fr)
+	}
+	sort.Strings(failureReasons)
+
 	resultFilter := strings.ToLower(strings.TrimSpace(filter.Result))
 	modelFilter := strings.TrimSpace(filter.Model)
+	failureReasonFilter := strings.ToLower(strings.TrimSpace(filter.FailureReason))
+	if failureReasonFilter == "__all__" {
+		failureReasonFilter = ""
+	}
 	searchFilter := strings.ToLower(strings.TrimSpace(filter.Search))
 
 	filtered := make([]monitoring.OpsSample, 0, len(parsed))
@@ -404,6 +423,12 @@ func (w *OpsSampleWriter) ListRealtimeRequests(ctx context.Context, filter Realt
 
 		if modelFilter != "" && modelFilter != "__all__" {
 			if item.Model == nil || *item.Model != modelFilter {
+				continue
+			}
+		}
+
+		if failureReasonFilter != "" {
+			if isSuccess || item.FailureReason == nil || strings.ToLower(strings.TrimSpace(*item.FailureReason)) != failureReasonFilter {
 				continue
 			}
 		}
@@ -441,14 +466,15 @@ func (w *OpsSampleWriter) ListRealtimeRequests(ctx context.Context, filter Realt
 	}
 
 	return &RealtimeRequestsResponse{
-		Enabled:       true,
-		BufferSize:    w.maxItems,
-		TTLHours:      w.ttlHours,
-		TotalInBuffer: len(parsed),
-		Summary:       summary,
-		Items:         items,
-		Models:        models,
-		Timestamp:     time.Now().UTC(),
+		Enabled:        true,
+		BufferSize:     w.maxItems,
+		TTLHours:       w.ttlHours,
+		TotalInBuffer:  len(parsed),
+		Summary:        summary,
+		Items:          items,
+		Models:         models,
+		FailureReasons: failureReasons,
+		Timestamp:      time.Now().UTC(),
 	}, nil
 }
 
@@ -468,7 +494,10 @@ func opsSampleMatchesSearch(item monitoring.OpsSample, needleLower string) bool 
 		item.GroupName,
 		item.Model,
 		item.Endpoint,
+		item.HTTPMethod,
 		item.FailureReason,
+		item.ErrorMessage,
+		item.UpstreamErrorCode,
 	} {
 		if field != nil && strings.Contains(strings.ToLower(*field), needleLower) {
 			return true

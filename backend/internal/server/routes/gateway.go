@@ -7,6 +7,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -100,6 +101,7 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokImages(c)
 		default:
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			middleware.RecordOpsAbortError(c, "not_found_error", "Images API is not supported for this platform")
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": gin.H{
 					"type":    "not_found_error",
@@ -117,6 +119,7 @@ func RegisterGatewayRoutes(
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		middleware.RecordOpsAbortError(c, "not_found_error", "Videos API is not supported for this platform")
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{
 				"type":    "not_found_error",
@@ -133,6 +136,7 @@ func RegisterGatewayRoutes(
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		middleware.RecordOpsAbortError(c, "not_found_error", "Videos API is not supported for this platform")
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{
 				"type":    "not_found_error",
@@ -149,6 +153,7 @@ func RegisterGatewayRoutes(
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		middleware.RecordOpsAbortError(c, "not_found_error", "Videos API is not supported for this platform")
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{
 				"type":    "not_found_error",
@@ -162,6 +167,7 @@ func RegisterGatewayRoutes(
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		middleware.RecordOpsAbortError(c, "not_found_error", "Videos API is not supported for this platform")
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
 	}
 	videoExtensionHandler := func(c *gin.Context) {
@@ -170,6 +176,7 @@ func RegisterGatewayRoutes(
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		middleware.RecordOpsAbortError(c, "not_found_error", "Videos API is not supported for this platform")
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Videos API is not supported for this platform"}})
 	}
 	// /responses/*subpath 的子路径会被转发到上游同名端点之后，因此在入口就拒掉
@@ -179,6 +186,7 @@ func RegisterGatewayRoutes(
 		return func(c *gin.Context) {
 			if !service.IsForwardableOpenAIResponsesRequestPath(c) {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+				middleware.RecordOpsAbortError(c, "not_found_error", "Unsupported responses subpath")
 				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
 					"error": gin.H{
 						"type":    "not_found_error",
@@ -260,6 +268,7 @@ func RegisterGatewayRoutes(
 		gateway.POST("/embeddings", func(c *gin.Context) {
 			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				middleware.RecordOpsAbortError(c, "not_found_error", "Embeddings API is not supported for this platform")
 				c.JSON(http.StatusNotFound, gin.H{
 					"error": gin.H{
 						"type":    "not_found_error",
@@ -306,6 +315,7 @@ func RegisterGatewayRoutes(
 			return func(c *gin.Context) {
 				if getGroupPlatform(c) != service.PlatformGrok {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+					middleware.RecordOpsAbortError(c, "not_found_error", "Voice API is not supported for this platform")
 					c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Voice API is not supported for this platform"}})
 					return
 				}
@@ -318,6 +328,7 @@ func RegisterGatewayRoutes(
 		customVoicePathHandler := func(c *gin.Context) {
 			if getGroupPlatform(c) != service.PlatformGrok {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				middleware.RecordOpsAbortError(c, "not_found_error", "Voice API is not supported for this platform")
 				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Voice API is not supported for this platform"}})
 				return
 			}
@@ -331,6 +342,7 @@ func RegisterGatewayRoutes(
 		gateway.GET("/realtime", func(c *gin.Context) {
 			if getGroupPlatform(c) != service.PlatformGrok {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				middleware.RecordOpsAbortError(c, "not_found_error", "Realtime API is not supported for this platform")
 				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Realtime API is not supported for this platform"}})
 				return
 			}
@@ -339,6 +351,7 @@ func RegisterGatewayRoutes(
 		gateway.POST("/web_search", func(c *gin.Context) {
 			if getGroupPlatform(c) != service.PlatformGrok {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				middleware.RecordOpsAbortError(c, "not_found_error", "Web Search API is not supported for this platform")
 				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Web Search API is not supported for this platform"}})
 				return
 			}
@@ -347,6 +360,7 @@ func RegisterGatewayRoutes(
 		gateway.POST("/x_search", func(c *gin.Context) {
 			if getGroupPlatform(c) != service.PlatformGrok {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				middleware.RecordOpsAbortError(c, "not_found_error", "X Search API is not supported for this platform")
 				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "X Search API is not supported for this platform"}})
 				return
 			}
@@ -429,6 +443,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, func(c *gin.Context) {
 		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			middleware.RecordOpsAbortError(c, "not_found_error", "Embeddings API is not supported for this platform")
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": gin.H{
 					"type":    "not_found_error",
@@ -461,6 +476,7 @@ func RegisterGatewayRoutes(
 		return func(c *gin.Context) {
 			if getGroupPlatform(c) != service.PlatformGrok {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				middleware.RecordOpsAbortError(c, "not_found_error", "Voice API is not supported for this platform")
 				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Voice API is not supported for this platform"}})
 				return
 			}
@@ -473,6 +489,7 @@ func RegisterGatewayRoutes(
 	rootCustomVoicePathHandler := func(c *gin.Context) {
 		if getGroupPlatform(c) != service.PlatformGrok {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			middleware.RecordOpsAbortError(c, "not_found_error", "Voice API is not supported for this platform")
 			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Voice API is not supported for this platform"}})
 			return
 		}
@@ -486,6 +503,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodGet, "/realtime", bodyLimit, func(c *gin.Context) {
 		if getGroupPlatform(c) != service.PlatformGrok {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			middleware.RecordOpsAbortError(c, "not_found_error", "Realtime API is not supported for this platform")
 			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Realtime API is not supported for this platform"}})
 			return
 		}
@@ -494,6 +512,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodPost, "/web_search", bodyLimit, func(c *gin.Context) {
 		if getGroupPlatform(c) != service.PlatformGrok {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			middleware.RecordOpsAbortError(c, "not_found_error", "Web Search API is not supported for this platform")
 			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Web Search API is not supported for this platform"}})
 			return
 		}
@@ -502,6 +521,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodPost, "/x_search", bodyLimit, func(c *gin.Context) {
 		if getGroupPlatform(c) != service.PlatformGrok {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			middleware.RecordOpsAbortError(c, "not_found_error", "X Search API is not supported for this platform")
 			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "X Search API is not supported for this platform"}})
 			return
 		}
@@ -598,8 +618,12 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 		routePath := c.FullPath()
 		model := requestmodel.FromBodyForRoute(routePath, c.GetHeader("Content-Type"), body)
 		if model != "" {
+			if rec := monitoring.RecorderFromContext(c.Request.Context()); rec != nil {
+				rec.MergeMeta(monitoring.OpsRequestMeta{Model: model})
+			}
 			decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, compositeRouteEndpointForPath(c.Request.URL.Path))
 			if err != nil {
+				middleware.RecordOpsAbortError(c, "server_error", "Failed to resolve composite model route")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"}})
 				c.Abort()
 				return
@@ -609,6 +633,7 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 			// OAuth 凭据被送进不匹配的协议管线（如 ChatGPT token 发往 Anthropic）。
 			if decision.OAuthAmbiguous() {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+				middleware.RecordOpsAbortError(c, "invalid_request_error", decision.AmbiguousMessage())
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": decision.AmbiguousMessage()}})
 				return
 			}
@@ -635,8 +660,12 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 		if ok && apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
 			model := compositeGeminiModelFromParams(c)
 			if model != "" {
+				if rec := monitoring.RecorderFromContext(c.Request.Context()); rec != nil {
+					rec.MergeMeta(monitoring.OpsRequestMeta{Model: model})
+				}
 				decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, service.CompositeRouteEndpointGemini)
 				if err != nil {
+					middleware.RecordOpsAbortError(c, "server_error", "Failed to resolve composite model route")
 					c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"}})
 					c.Abort()
 					return

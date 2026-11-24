@@ -159,3 +159,33 @@ func ClassifyFailure(result string, ev FailureEvidence) string {
 	}
 	return "unknown"
 }
+
+// ClassifyRejectedStatus maps 0-attempt HTTP error statuses (>= 400) to
+// structured (result, failure_reason) pairs without altering ClassifyFailure's
+// upstream 13-reason contract.
+func ClassifyRejectedStatus(status int) (result, reason string) {
+	if status < 400 {
+		return "", ""
+	}
+	switch status {
+	case 400:
+		return "rejected", "client_bad_request"
+	case 401:
+		return "rejected", "client_auth_failed"
+	case 403:
+		return "rejected", "client_forbidden"
+	case 404:
+		return "rejected", "client_not_found"
+	case 413:
+		return "rejected", "body_too_large"
+	case 429:
+		return "rejected", "gateway_ratelimit"
+	case 499:
+		return "client_abort", "client_abort"
+	default:
+		if status < 500 {
+			return "rejected", "unknown"
+		}
+		return "gateway_error", "unknown"
+	}
+}

@@ -59,7 +59,10 @@ func TestProductionObservabilityOrder(t *testing.T) {
 			require.True(t, authSawRecorder, "entry must run before authentication or rate limiting")
 			status := scenario.reject
 			result, reason := "rejected", "unknown"
-			if scenario.reject == 429 {
+			switch scenario.reject {
+			case 401:
+				reason = "client_auth_failed"
+			case 429:
 				reason = "gateway_ratelimit"
 			}
 			if scenario.panicFlag {

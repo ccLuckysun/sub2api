@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent } from 'vue'
+import { defineComponent, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import OpsRealtimeRequestsCard from '../OpsRealtimeRequestsCard.vue'
 import OpsRealtimeRequestDetailModal from '../OpsRealtimeRequestDetailModal.vue'
-import { getFailureReasonLabel, isRequestSuccess } from '../../utils/realtimeRequestFormatters'
+import {
+  CANONICAL_FAILURE_REASON_KEYS,
+  getFailureReasonLabel,
+  getFailureReasonShortLabel,
+  isRequestSuccess
+} from '../../utils/realtimeRequestFormatters'
 import type { OpsRealtimeRequestItem, OpsRealtimeRequestsResponse } from '@/api/admin/ops'
 import enLocale from '@/i18n/locales/en'
 import zhLocale from '@/i18n/locales/zh'
@@ -11,6 +16,7 @@ import zhLocale from '@/i18n/locales/zh'
 const mockGetRealtimeRequests = vi.fn()
 const mockCopyToClipboard = vi.fn()
 const mockShowWarning = vi.fn()
+const viewport = vi.hoisted(() => ({ desktop: true }))
 
 vi.mock('@/api/admin/ops', () => ({
   opsAPI: {
@@ -47,7 +53,7 @@ vi.mock('@vueuse/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@vueuse/core')>()
   return {
     ...actual,
-    useMediaQuery: () => ({ value: true })
+    useMediaQuery: () => ref(viewport.desktop)
   }
 })
 
@@ -191,6 +197,7 @@ describe('OpsRealtimeRequestsCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
+    viewport.desktop = true
     mockCopyToClipboard.mockResolvedValue(true)
     mockGetRealtimeRequests.mockResolvedValue(enabledResponse)
   })
@@ -252,10 +259,10 @@ describe('OpsRealtimeRequestsCard', () => {
       expect.any(Object)
     )
 
-    // Change model selector
+    // Change model selector (3 selects visible when result === 'failure': failure-reason, model, limit)
     const selects = wrapper.findAll('select.select-stub')
-    expect(selects.length).toBe(2)
-    await selects[0]!.setValue('gpt-5')
+    expect(selects.length).toBe(3)
+    await wrapper.get('[data-testid="model-filter"]').setValue('gpt-5')
     await flushPromises()
     expect(mockGetRealtimeRequests).toHaveBeenLastCalledWith(
       { limit: 100, result: 'failure', model: 'gpt-5' },
@@ -263,7 +270,7 @@ describe('OpsRealtimeRequestsCard', () => {
     )
 
     // Change limit selector
-    await selects[1]!.setValue('200')
+    await wrapper.get('[data-testid="limit-filter"]').setValue('200')
     await flushPromises()
     expect(mockGetRealtimeRequests).toHaveBeenLastCalledWith(
       { limit: 200, result: 'failure', model: 'gpt-5' },
@@ -394,15 +401,225 @@ describe('OpsRealtimeRequestsCard', () => {
       'gateway_panic',
       'gateway_db',
       'gateway_ratelimit',
+      'client_bad_request',
+      'client_auth_failed',
+      'client_forbidden',
+      'client_not_found',
+      'body_too_large',
+      'client_abort',
       'unknown'
     ] as const
+    expect(canonicalReasons).toEqual(CANONICAL_FAILURE_REASON_KEYS)
     const identityT = (key: string) => key
     for (const reason of canonicalReasons) {
       expect(getFailureReasonLabel(reason, identityT)).toBe(
         `admin.ops.realtimeRequests.failureReasons.${reason}`
       )
+      expect(getFailureReasonShortLabel(reason, identityT)).toBe(
+        `admin.ops.realtimeRequests.failureReasonsShort.${reason}`
+      )
       expect((zhLocale.admin.ops.realtimeRequests.failureReasons as Record<string, string>)[reason]).toBeTruthy()
       expect((enLocale.admin.ops.realtimeRequests.failureReasons as Record<string, string>)[reason]).toBeTruthy()
+      expect((zhLocale.admin.ops.realtimeRequests.failureReasonsShort as Record<string, string>)[reason]).toBeTruthy()
+      expect((enLocale.admin.ops.realtimeRequests.failureReasonsShort as Record<string, string>)[reason]).toBeTruthy()
     }
+    for (const legacyReason of ['gateway_error', 'rejected'] as const) {
+      expect(CANONICAL_FAILURE_REASON_KEYS).not.toContain(legacyReason)
+      expect(getFailureReasonLabel(legacyReason, identityT)).toBe(
+        `admin.ops.realtimeRequests.failureReasons.${legacyReason}`
+      )
+      expect(getFailureReasonShortLabel(legacyReason, identityT)).toBe(
+        `admin.ops.realtimeRequests.failureReasonsShort.${legacyReason}`
+      )
+    }
+  })
+
+  it('renders status failure badge + short reason + error_message tooltip and method-prefixed endpoints', async () => {
+    const richItems: OpsRealtimeRequestItem[] = [
+      {
+        ...sampleItems[0]!,
+        http_method: null,
+        endpoint: '/v1/messages'
+      },
+      {
+        ...sampleItems[1]!,
+        request_id: 'req-auth-401',
+        http_method: 'post',
+        endpoint: '/v1/responses',
+        endpoint_class: 'responses',
+        result: 'rejected',
+        http_status: 401,
+        failure_reason: 'client_auth_failed',
+        error_message: 'invalid api key provided'
+      },
+      {
+        ...sampleItems[1]!,
+        request_id: 'req-no-err-msg',
+        http_method: 'POST',
+        endpoint: null,
+        endpoint_class: 'messages',
+        result: 'timeout',
+        http_status: 504,
+        failure_reason: 'upstream_timeout',
+        error_message: null
+      }
+    ]
+    mockGetRealtimeRequests.mockResolvedValue({
+      ...enabledResponse,
+      items: richItems
+    })
+
+    const wrapper = mountCard()
+    await flushPromises()
+
+    const statusCells = wrapper.findAll('[data-testid="status-cell"]')
+    expect(statusCells).toHaveLength(3)
+
+    // Success row: no short failure reason badge, tooltip is status.success
+    expect(statusCells[0]!.find('[data-testid="status-failure-reason"]').exists()).toBe(false)
+    expect(statusCells[0]!.attributes('title')).toBe('admin.ops.realtimeRequests.status.success')
+
+    // Failed row with error_message: failure badge + short reason + 401 + error_message title
+    expect(statusCells[1]!.text()).toContain('admin.ops.realtimeRequests.status.failure')
+    expect(statusCells[1]!.find('[data-testid="status-failure-reason"]').text()).toBe(
+      'admin.ops.realtimeRequests.failureReasonsShort.client_auth_failed'
+    )
+    expect(statusCells[1]!.text()).toContain('401')
+    expect(statusCells[1]!.attributes('title')).toBe('invalid api key provided')
+
+    // Failed row with null error_message: tooltip falls back cleanly
+    const fallbackTooltip = statusCells[2]!.attributes('title')
+    expect(fallbackTooltip).toContain('upstream_timeout')
+    expect(fallbackTooltip).not.toBe('null')
+
+    // Model / Endpoint column renders http_method when present, omits null cleanly, falls back to endpoint_class
+    const text = wrapper.text()
+    expect(text).toContain('/v1/messages')
+    expect(text).not.toContain('null /v1/messages')
+    expect(text).toContain('POST /v1/responses')
+    expect(text).toContain('POST messages')
+
+    wrapper.unmount()
+  })
+
+  it('shows secondary failure_reason filter only under failure, forwards param, resets cleanly, and supports client-side fallback filtering', async () => {
+    const authFailItem: OpsRealtimeRequestItem = {
+      ...sampleItems[1]!,
+      request_id: 'req-auth-fail',
+      result: 'rejected',
+      http_status: 401,
+      failure_reason: 'client_auth_failed',
+      error_message: 'invalid api key'
+    }
+    const timeoutFailItem: OpsRealtimeRequestItem = {
+      ...sampleItems[1]!,
+      request_id: 'req-timeout-fail',
+      result: 'timeout',
+      http_status: 504,
+      failure_reason: 'upstream_timeout'
+    }
+
+    mockGetRealtimeRequests.mockResolvedValue({
+      ...enabledResponse,
+      items: [authFailItem, timeoutFailItem],
+      failure_reasons: ['client_auth_failed', 'upstream_timeout']
+    })
+
+    const wrapper = mountCard()
+    await flushPromises()
+
+    // Absent under 'all'
+    expect(wrapper.find('[data-testid="failure-reason-filter"]').exists()).toBe(false)
+
+    // Absent under 'success'
+    const successBtn = wrapper.findAll('button').find((b) => b.text() === 'admin.ops.realtimeRequests.filters.success')
+    await successBtn!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="failure-reason-filter"]').exists()).toBe(false)
+
+    // Appears under 'failure'
+    const failureBtn = wrapper.findAll('button').find((b) => b.text() === 'admin.ops.realtimeRequests.filters.failure')
+    await failureBtn!.trigger('click')
+    await flushPromises()
+
+    const reasonSelect = wrapper.get('[data-testid="failure-reason-filter"]')
+    expect(reasonSelect.exists()).toBe(true)
+    const optionValues = reasonSelect.findAll('option').map((opt) => opt.attributes('value'))
+    expect(optionValues).toContain('')
+    expect(optionValues).toContain('client_auth_failed')
+    expect(optionValues).toContain('upstream_timeout')
+    expect(optionValues).toContain('client_bad_request')
+
+    // Select specific failure_reason -> forwards param and filters rows client-side if backend returns mixed rows
+    mockGetRealtimeRequests.mockClear()
+    await reasonSelect.setValue('client_auth_failed')
+    await flushPromises()
+
+    expect(mockGetRealtimeRequests).toHaveBeenCalledTimes(1)
+    expect(mockGetRealtimeRequests).toHaveBeenLastCalledWith(
+      { limit: 100, result: 'failure', failure_reason: 'client_auth_failed' },
+      expect.any(Object)
+    )
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.findAll('tbody tr')[0]!.text()).toContain('401')
+
+    // Switching back to 'all' hides filter, resets failure_reason, and triggers only 1 API call
+    mockGetRealtimeRequests.mockClear()
+    const allBtn = wrapper.findAll('button').find((b) => b.text() === 'admin.ops.realtimeRequests.filters.all')
+    await allBtn!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="failure-reason-filter"]').exists()).toBe(false)
+    expect(mockGetRealtimeRequests).toHaveBeenCalledTimes(1)
+    expect(mockGetRealtimeRequests).toHaveBeenLastCalledWith(
+      { limit: 100, result: 'all' },
+      expect.any(Object)
+    )
+
+    // Client-side empty fallback when selected failure_reason has no matching rows
+    await failureBtn!.trigger('click')
+    await flushPromises()
+    mockGetRealtimeRequests.mockResolvedValueOnce({
+      ...enabledResponse,
+      items: [timeoutFailItem],
+      failure_reasons: ['upstream_timeout']
+    })
+    await wrapper.get('[data-testid="failure-reason-filter"]').setValue('client_forbidden')
+    await flushPromises()
+    expect(wrapper.text()).toContain('admin.ops.realtimeRequests.empty')
+
+    wrapper.unmount()
+  })
+
+  it('renders mobile cards with method-prefixed endpoint, short failure reason, and error tooltip', async () => {
+    viewport.desktop = false
+    mockGetRealtimeRequests.mockResolvedValue({
+      ...enabledResponse,
+      items: [
+        {
+          ...sampleItems[1]!,
+          http_method: 'POST',
+          endpoint: '/v1/responses',
+          result: 'rejected',
+          http_status: 403,
+          failure_reason: 'client_forbidden',
+          error_message: 'access denied for model'
+        }
+      ]
+    })
+
+    const wrapper = mountCard()
+    await flushPromises()
+
+    expect(wrapper.find('table').exists()).toBe(false)
+    const mobileStatus = wrapper.get('[data-testid="mobile-status-cell"]')
+    expect(mobileStatus.attributes('title')).toBe('access denied for model')
+    expect(mobileStatus.text()).toContain('admin.ops.realtimeRequests.status.failure')
+    expect(mobileStatus.find('[data-testid="mobile-status-failure-reason"]').text()).toBe(
+      'admin.ops.realtimeRequests.failureReasonsShort.client_forbidden'
+    )
+    expect(wrapper.text()).toContain('POST /v1/responses')
+
+    wrapper.unmount()
   })
 })

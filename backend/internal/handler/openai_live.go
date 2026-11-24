@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -199,17 +200,24 @@ func (h *OpenAIGatewayHandler) writeLiveCreateError(c *gin.Context, err error) {
 }
 
 func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
+	var wsObs *monitoring.WSObserver
+	if c != nil && c.Request != nil {
+		wsObs = monitoring.WSObserverFromContext(c.Request.Context())
+	}
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
+		wsObs.MarkRejected()
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
+		wsObs.MarkRejected()
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
 	if !liveEnabledForAPIKey(apiKey) {
+		wsObs.MarkRejected()
 		h.errorResponse(c, http.StatusForbidden, "permission_error", "Live is not enabled for this group")
 		return
 	}
@@ -220,6 +228,7 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 	}
 	record, err := h.gatewayService.GetLiveCallForIdentity(c.Request.Context(), c.Param("call_id"), identity)
 	if err != nil {
+		wsObs.MarkRejected()
 		if errors.Is(err, service.ErrLiveIdentityMismatch) {
 			h.errorResponse(c, http.StatusForbidden, "permission_error", "Live call belongs to another identity")
 			return
@@ -231,13 +240,23 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
+		wsObs.MarkHandshakeFailed()
 		return
 	}
-	defer func() { _ = downstream.CloseNow() }()
-	if err := h.gatewayService.ProxyLiveSideband(c.Request.Context(), record, downstream); err != nil {
+	wsObs.MarkConnected()
+	wsClosedNormal := false
+	defer func() {
+		wsObs.MarkClosed(wsClosedNormal)
+		_ = downstream.CloseNow()
+	}()
+	if proxyErr := h.gatewayService.ProxyLiveSideband(c.Request.Context(), record, downstream); proxyErr != nil {
+		if isNormalWSClose(proxyErr) {
+			wsClosedNormal = true
+		}
 		_ = downstream.Close(coderws.StatusInternalError, "live sideband closed")
 		return
 	}
+	wsClosedNormal = true
 	_ = downstream.Close(coderws.StatusNormalClosure, "")
 }
 

@@ -416,6 +416,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 // chatCompletionsErrorResponse writes an error in OpenAI Chat Completions format.
 func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int, errType, message string) {
+	if status >= 400 {
+		middleware2.RecordOpsAbortError(c, errType, message)
+	}
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"type":    errType,

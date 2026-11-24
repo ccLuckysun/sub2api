@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -125,6 +126,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// apiKey 已加载（含 User/Group）。即便后续因分组停用/Key 停用/用户停用/
 		// IP 限制等早退中断，也让 Ops 错误日志能回退取到 user/group/platform。
 		SetOpsFallbackAPIKey(c, apiKey)
+		attachOpsAuthMeta(c, apiKey)
 
 		// ── 3. 基础鉴权（始终执行） ─────────────────────────────────
 
@@ -192,6 +194,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			if !billingInfoRequest {
 				_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 			}
+			attachOpsAuthMeta(c, apiKey)
 			c.Next()
 			return
 		}
@@ -291,6 +294,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 		}
 
+		attachOpsAuthMeta(c, apiKey)
 		c.Next()
 	}
 }
@@ -463,9 +467,72 @@ func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool)
 func abortIfAPIKeyLookupClientGone(c *gin.Context, err error) bool {
 	ctx := c.Request.Context()
 	if ctx.Err() != nil {
+		RecordOpsAbortError(c, "", "Client closed connection before API key lookup completed")
 		c.AbortWithStatus(statusClientClosedRequest)
 		return true
 	}
 	logger.FromContext(ctx).Warn("api key lookup failed", zap.Error(err))
 	return false
+}
+
+func maskOpsAPIKey(key string) string {
+	key = strings.TrimSpace(key)
+	if len(key) >= 24 {
+		return key[:8] + "…" + key[len(key)-4:]
+	}
+	if key != "" {
+		return "…"
+	}
+	return ""
+}
+
+func attachOpsAuthMeta(c *gin.Context, apiKey *service.APIKey) {
+	if c == nil || c.Request == nil || apiKey == nil {
+		return
+	}
+	rec := getOpsRecorder(c)
+	if rec == nil {
+		return
+	}
+	safeObserve(func() {
+		reqID, clientReqID := extractOpsCorrelationIDs(c)
+		endpoint := strings.TrimSpace(c.GetString("_gateway_inbound_endpoint"))
+		if endpoint == "" {
+			endpoint = strings.TrimSpace(c.FullPath())
+		}
+		if endpoint == "" && c.Request.URL != nil {
+			endpoint = strings.TrimSpace(c.Request.URL.Path)
+		}
+		meta := monitoring.OpsRequestMeta{
+			RequestID:       reqID,
+			ClientRequestID: clientReqID,
+			HTTPMethod:      c.Request.Method,
+			UserID:          apiKey.UserID,
+			APIKeyID:        apiKey.ID,
+			APIKeyName:      apiKey.Name,
+			APIKeyMasked:    maskOpsAPIKey(apiKey.Key),
+			Endpoint:        endpoint,
+			EndpointClass:   monitoring.EndpointClass(endpoint),
+		}
+		if apiKey.User != nil {
+			if apiKey.User.ID != 0 {
+				meta.UserID = apiKey.User.ID
+			}
+			meta.UserEmail = apiKey.User.Email
+		}
+		if apiKey.GroupID != nil {
+			meta.GroupID = *apiKey.GroupID
+		}
+		if apiKey.Group != nil {
+			if meta.GroupID == 0 {
+				meta.GroupID = apiKey.Group.ID
+			}
+			meta.GroupName = apiKey.Group.Name
+			meta.Platform = apiKey.Group.Platform
+		}
+		if platform, ok := GetForcePlatformFromContext(c); ok && strings.TrimSpace(platform) != "" {
+			meta.Platform = strings.TrimSpace(platform)
+		}
+		rec.MergeMeta(meta)
+	})
 }

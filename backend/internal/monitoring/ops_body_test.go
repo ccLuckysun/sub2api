@@ -94,7 +94,7 @@ func TestOpsBodySettlement(t *testing.T) {
 			}
 			if !tc.read {
 				w.result = "rejected"
-				w.reason = "unknown"
+				w.reason = "client_auth_failed"
 				w.outcome = "all_failed"
 				w.bodyN = -1
 			}

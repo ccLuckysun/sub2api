@@ -48,14 +48,37 @@ DIRECTIONS = [
     ("resp_downstream", "下发客户端响应体 (resp_downstream)", PINK),
 ]
 
+RESULT_SERIES = [
+    ("结果 · upstream_error", "结果 · 上游错误", ORANGE),
+    ("结果 · gateway_error", "结果 · 网关错误", RED),
+    ("结果 · rejected", "结果 · 客户端拒收", GRAY),
+    ("结果 · client_abort", "结果 · 客户端中断", VIOLET),
+    ("结果 · timeout", "结果 · 超时", PINK),
+]
+
 REASONS = [
+    # Existing 13 ClassifyFailure reasons (ops_labels.go)
     ("upstream_rate_limit", "上游限流", ORANGE),
-    ("upstream_server_error", "上游 5xx", GOLD),
-    ("upstream_read_timeout", "上游超时", PINK),
-    ("client_abort_during_response", "客户端中断", VIOLET),
-    ("gateway_error", "网关错误", RED),
-    ("rejected", "请求被拒", GRAY),
-    ("unknown", "未知", GRAY),
+    ("upstream_auth", "上游鉴权失败", YELLOW),
+    ("upstream_model_or_request", "上游模型或请求无效", GOLD),
+    ("upstream_server_error", "上游 5xx 错误", GOLD),
+    ("upstream_connect_timeout", "上游连接超时", PINK),
+    ("upstream_read_timeout", "上游读取超时", PINK),
+    ("proxy_unreachable", "代理不可达", RED),
+    ("client_abort_during_body_read", "客户端读体中断", VIOLET),
+    ("client_abort_during_response", "客户端响应中断", VIOLET),
+    ("gateway_panic", "网关异常 Panic", RED),
+    ("gateway_db", "网关数据库错误", RED),
+    ("gateway_ratelimit", "网关限流", ORANGE),
+    # R2 4xx / abort failure_reason enums (PROJECT.md §3)
+    ("client_bad_request", "请求参数错误", BLUE),
+    ("client_auth_failed", "客户端鉴权失败", AQUA),
+    ("client_forbidden", "访问被拒绝", YELLOW),
+    ("client_not_found", "接口或资源不存在", GRAY),
+    ("body_too_large", "请求体过大", BLUE),
+    ("client_abort", "客户端中断", VIOLET),
+    # Fallback
+    ("unknown", "未知失败", GRAY),
 ]
 
 ABORT_RETRY_SERIES = [
@@ -69,6 +92,30 @@ ABORT_RETRY_SERIES = [
 ABORT_STAGES = [
     ("body_read", "读取请求体中断", BLUE),
     ("response", "响应传输中断", VIOLET),
+]
+
+WS_ACTIVE_SERIES = [
+    ("responses", "活跃 · Responses WS", BLUE),
+    ("realtime", "活跃 · Realtime WS", AQUA),
+    ("live", "活跃 · Live WS", VIOLET),
+]
+
+WS_EVENT_SERIES = [
+    ("responses · connected", "Responses · 握手成功", GREEN),
+    ("responses · handshake_failed", "Responses · 握手失败", RED),
+    ("responses · rejected", "Responses · 拒绝连接", ORANGE),
+    ("responses · closed_normal", "Responses · 正常关闭", GRAY),
+    ("responses · closed_error", "Responses · 异常关闭", PINK),
+    ("realtime · connected", "Realtime · 握手成功", AQUA),
+    ("realtime · handshake_failed", "Realtime · 握手失败", RED),
+    ("realtime · rejected", "Realtime · 拒绝连接", GOLD),
+    ("realtime · closed_normal", "Realtime · 正常关闭", GRAY),
+    ("realtime · closed_error", "Realtime · 异常关闭", VIOLET),
+    ("live · connected", "Live · 握手成功", VIOLET),
+    ("live · handshake_failed", "Live · 握手失败", RED),
+    ("live · rejected", "Live · 拒绝连接", ORANGE),
+    ("live · closed_normal", "Live · 正常关闭", GRAY),
+    ("live · closed_error", "Live · 异常关闭", PINK),
 ]
 
 
@@ -173,9 +220,9 @@ DASHBOARDS = [
             P("ov_success", "stat", "成功率（1h）", 3, 4, unit="percentunit", decimals=2,
               desc="1h 内 M-10 成功网关请求占比。业务失败可能发生在已写出 200 的 SSE 中，不能只看 HTTP 5xx。"),
             P("ov_p95_total", "stat", "P95 总耗时", 3, 4, unit="s", decimals=2,
-              desc="当前 $__range 内网关总耗时直方图 P95；受桶边界插值影响，不是各段 P95 相加。"),
+              desc="当前 $__range 内网关总耗时直方图 P95；受桶边界插值影响，不是各段 P95 相加。仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）。"),
             P("ov_ttft", "stat", "P95 TTFT", 3, 4, unit="s", decimals=2,
-              desc="最终 attempt 首次发送到尾响应首字节；与 upstream 重叠，不参与段堆叠。无首字节不观察。"),
+              desc="最终 attempt 首次发送到尾响应首字节；与 upstream 重叠，不参与段堆叠。无首字节不观察。仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）。"),
             P("ov_in", "stat", "入向带宽", 3, 4, unit="Bps", decimals=2,
               desc="当前 $__range 内客户端请求体 in_wire 实际读取字节平均速率；gzip 按压缩后长度计，不使用 Content-Length。"),
             P("ov_out", "stat", "出向带宽", 3, 4, unit="Bps", decimals=2,
@@ -185,9 +232,9 @@ DASHBOARDS = [
             P("ov_cov", "stat", "数据完整性", 3, 4, unit="percentunit", decimals=1,
               desc="M-9 request 覆盖率。0~1 比例；-1 表示无样本，不是 0% 或成功率。"),
             P("ov_share", "bargauge", "链路段耗时占比", 9, 10, unit="s", decimals=3,
-              desc="当前 $__range 内 6 个互斥链路段平均耗时（sum/count，排除与 upstream 重叠的 headers_end）。均值受长流式请求拉高，排查看 02 页 P95。"),
-            P("ov_fail", "bargauge", "失败根因 Top 6", 7, 10, unit="short", decimals=0,
-              desc="近 $__range 内 M-10 失败请求数 Top 6；无失败时无数据是健康状态，不是未采集。unknown 长期偏高说明分类缺失。"),
+              desc="当前 $__range 内 6 个互斥链路段平均耗时（sum/count，排除与 upstream 重叠的 headers_end）。仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）；`response`（响应传输）段在流式模型请求下主要反映模型持续生成输出的时间，而非单纯网络带宽慢。均值受长流式请求拉高，排查看 02 页 P95。"),
+            P("ov_fail", "bargauge", "失败分类与根因 Top 6", 7, 10, unit="short", decimals=0,
+              desc="近 $__range 内 M-10 HTTP 失败请求按 result 分类汇总与 failure_reason Top 6（已排除 WebSocket 101 升级）；无失败时无数据是健康状态，不是未采集。unknown 长期偏高说明分类缺失。"),
             P("ov_coverage", "bargauge", "数据完整性明细", 8, 10, unit="percentunit", decimals=1,
               desc="4 类 M-9 覆盖率（request/account/bytes/user）。<90% 黄；-1 灰=无样本；缺序列不等于健康。"),
             P("ov_acct", "table", "上游账号速览", 14, 10,
@@ -219,13 +266,17 @@ DASHBOARDS = [
               transformations=join_and_hide_time("model_class", 2),
               desc="当前 $__range 内按模型档位（model_class）聚合的请求数与成功率；重试会产生多次 attempt 计数。"),
             P("nc_phase_p95", "bargauge", "6 段耗时 P95", 6, 9, unit="s", decimals=3,
-              desc="当前 $__range 内 6 个互斥链路段直方图 P95（排除 headers_end）。各段 P95 不可直接相加等于总耗时 P95。"),
+              desc="当前 $__range 内 6 个互斥链路段直方图 P95（排除 headers_end）。仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）；`response`（响应传输）段在流式模型请求下主要反映模型持续生成输出的时间，而非单纯网络带宽慢。各段 P95 不可直接相加等于总耗时 P95。"),
             P("nc_transfer", "bargauge", "5 方向字节传输速率", 6, 9, unit="Bps", decimals=2,
               desc="当前 $__range 内 5 方向字节吞吐速率。上游/下发不相等属正常（gzip 解压、协议转换、重试或客户端中断）。"),
             P("nc_body_p95", "bargauge", "请求体大小 P95（按端点类）", 6, 9, unit="bytes", decimals=1,
               desc="当前 $__range 内按 endpoint_class 聚合的入站请求体实际字节 P95；大上下文请求会显著拉高 body_read 耗时。"),
             P("nc_aborts", "bargauge", "客户端中断分布", 6, 9, unit="short", decimals=0,
               desc="当前 $__range 内客户端断开阶段分布（body_read / response）；无中断时无数据属健康。"),
+            P("nc_ws_active", "bargauge", "WebSocket 活跃连接", 8, 9, unit="short", decimals=0,
+              desc="当前活跃 WebSocket 长连接数（sub2api_ws_active_connections，按 endpoint 区分，覆盖 responses / realtime / live 网关 WS 端点）。与 HTTP 6 段耗时及网关请求指标完全独立。"),
+            P("nc_ws_events", "bargauge", "WebSocket 连接状态（握手与断开速率）", 16, 9, unit="ops", decimals=2,
+              desc="当前 $__range 内 WebSocket 握手与断开速率（sub2api_ws_connections_total 按 endpoint 与 outcome 聚合，覆盖 responses / realtime / live 网关 WS 端点）。与 HTTP 请求指标完全分开，无 WS 流量时显示无流量。"),
         ],
     ),
     dict(
@@ -325,10 +376,16 @@ QUERIES = {
         expr='sum by (phase)(increase(sub2api_request_phase_seconds_sum{phase!="headers_end"}[$__range])) / clamp_min(sum by (phase)(increase(sub2api_request_phase_seconds_count{phase!="headers_end"}[$__range])), 1)',
         legend="{{phase}}",
     )],
-    "ov_fail": [dict(
-        expr='topk(6, sum by (failure_reason)(increase(sub2api_gateway_requests_total{result!="success"}[$__range])))',
-        legend="{{failure_reason}}",
-    )],
+    "ov_fail": [
+        dict(
+            expr='sum by (result)(increase(sub2api_gateway_requests_total{result!="success"}[$__range]))',
+            legend="结果 · {{result}}",
+        ),
+        dict(
+            expr='topk(6, sum by (failure_reason)(increase(sub2api_gateway_requests_total{result!="success"}[$__range])))',
+            legend="{{failure_reason}}",
+        ),
+    ],
     "ov_coverage": [dict(
         expr="sub2api_metric_coverage_ratio",
         legend="{{kind}}",
@@ -419,6 +476,14 @@ QUERIES = {
         expr="sum by (stage)(increase(sub2api_client_abort_total[$__range]))",
         legend="{{stage}}",
     )],
+    "nc_ws_active": [dict(
+        expr="sum by (endpoint)(sub2api_ws_active_connections)",
+        legend="{{endpoint}}",
+    )],
+    "nc_ws_events": [dict(
+        expr="sum by (endpoint, outcome)(rate(sub2api_ws_connections_total[$__range]))",
+        legend="{{endpoint}} · {{outcome}}",
+    )],
 
     # 03 host & app
     "hs_hostname": [dict(expr="node_uname_info", legend="{{nodename}}")],
@@ -461,7 +526,7 @@ NO_VALUE = {
         "ov_qps", "ov_success", "ov_p95_total", "ov_ttft", "ov_in", "ov_out",
         "ov_amp", "ov_share", "ov_acct", "ov_abort_retry",
         "nc_retry", "nc_switch", "nc_accounts", "nc_models",
-        "nc_phase_p95", "nc_transfer", "nc_body_p95",
+        "nc_phase_p95", "nc_transfer", "nc_body_p95", "nc_ws_events",
         "hs_qps",
     ], "无流量"),
     "ov_fail": "无失败",
@@ -493,6 +558,8 @@ STYLE = {
     "nc_transfer": dict(unit="Bps", decimals=2, min=0),
     "nc_body_p95": dict(unit="bytes", decimals=1, min=0),
     "nc_aborts": dict(unit="short", decimals=0, min=0),
+    "nc_ws_active": dict(unit="short", decimals=0, min=0),
+    "nc_ws_events": dict(unit="ops", decimals=2, min=0),
     "hs_cpu": dict(thresholds=thresholds((GREEN, None), (YELLOW, 80), (RED, 95))),
     "hs_mem": dict(thresholds=thresholds((GREEN, None), (YELLOW, 85), (RED, 95))),
     "hs_disk": dict(thresholds=thresholds((GREEN, None), (YELLOW, 80), (RED, 90))),
@@ -515,7 +582,7 @@ STYLE = {
 
 SERIES = {
     "ov_share": [(key, name, color) for key, name, color in PHASE],
-    "ov_fail": [(key, name, color) for key, name, color in REASONS],
+    "ov_fail": RESULT_SERIES + [(key, name, color) for key, name, color in REASONS],
     "ov_coverage": [
         ("request", "request（埋点完整）", None),
         ("account", "account（账号可知）", None),
@@ -526,6 +593,8 @@ SERIES = {
     "nc_phase_p95": [(key, name, color) for key, name, color in PHASE],
     "nc_transfer": [(key, name, color) for key, name, color in DIRECTIONS],
     "nc_aborts": ABORT_STAGES,
+    "nc_ws_active": WS_ACTIVE_SERIES,
+    "nc_ws_events": WS_EVENT_SERIES,
 }
 
 

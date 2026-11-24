@@ -46,9 +46,11 @@ func TestOpsHandlerGetRealtimeRequestsDisabled(t *testing.T) {
 	require.False(t, envelope.Data.Enabled)
 	require.Empty(t, envelope.Data.Items)
 	require.Empty(t, envelope.Data.Models)
+	require.Empty(t, envelope.Data.FailureReasons)
 	require.Zero(t, envelope.Data.Summary.Total)
 	require.Contains(t, w.Body.String(), `"items":[]`)
 	require.Contains(t, w.Body.String(), `"models":[]`)
+	require.Contains(t, w.Body.String(), `"failure_reasons":[]`)
 }
 
 func TestOpsHandlerGetRealtimeRequestsFiltersAndClamping(t *testing.T) {
@@ -77,12 +79,13 @@ func TestOpsHandlerGetRealtimeRequestsFiltersAndClamping(t *testing.T) {
 	t.Run("forwards filters and clamps high limit", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
-		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/ops/realtime-requests?result=success&model=claude-sonnet&search=alice&limit=999", nil)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/ops/realtime-requests?result=success&model=claude-sonnet&failure_reason=upstream_server_error&search=alice&limit=999", nil)
 		h.GetRealtimeRequests(c)
 
 		require.Equal(t, http.StatusOK, w.Code)
 		require.Equal(t, "success", reader.lastFilter.Result)
 		require.Equal(t, "claude-sonnet", reader.lastFilter.Model)
+		require.Equal(t, "upstream_server_error", reader.lastFilter.FailureReason)
 		require.Equal(t, "alice", reader.lastFilter.Search)
 		require.Equal(t, 500, reader.lastFilter.Limit)
 	})

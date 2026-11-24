@@ -20,10 +20,10 @@ func maskOpsAPIKey(key string) string {
 	return ""
 }
 
-// attachOpsRequestMeta is observation-only. Always provide the full snapshot:
-// AttachMeta replaces its input, so account failover must retain the authenticated
-// identity and original (pre-mapping) model. It never reads or rewrites a body,
-// and never queries the database.
+// attachOpsRequestMeta is observation-only. It merges the supplied fields onto
+// OpsRecorder so earlier middleware auth metadata (user/key/group/method) is
+// preserved while account failover updates account, platform, and model.
+// It never reads or rewrites a body, and never queries the database.
 func attachOpsRequestMeta(c *gin.Context, apiKey *service.APIKey, userID int64, originalModel string, account *service.Account) {
 	if c == nil || c.Request == nil {
 		return
@@ -47,6 +47,7 @@ func attachOpsRequestMeta(c *gin.Context, apiKey *service.APIKey, userID int64, 
 	meta := monitoring.OpsRequestMeta{
 		RequestID:       requestID,
 		ClientRequestID: clientRequestID,
+		HTTPMethod:      c.Request.Method,
 		UserID:          userID,
 		Model:           originalModel,
 		Endpoint:        endpoint,
@@ -67,6 +68,9 @@ func attachOpsRequestMeta(c *gin.Context, apiKey *service.APIKey, userID int64, 
 			meta.GroupName = apiKey.Group.Name
 		}
 	}
+	if publicModel, ok := service.RequestedPublicModelFromContext(ctx); ok {
+		meta.Model = publicModel
+	}
 	if platform, ok := service.ResolvedTargetPlatformFromContext(ctx); ok {
 		meta.Platform = platform
 	}
@@ -75,5 +79,5 @@ func attachOpsRequestMeta(c *gin.Context, apiKey *service.APIKey, userID int64, 
 		meta.AccountName = account.Name
 		meta.Platform = account.Platform
 	}
-	recorder.AttachMeta(meta)
+	recorder.MergeMeta(meta)
 }

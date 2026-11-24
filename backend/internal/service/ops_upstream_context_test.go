@@ -309,3 +309,27 @@ func TestOpsServiceGetErrorLogByIDNormalizesLegacyProxyAttribution(t *testing.T)
 	require.NotContains(t, detail.UpstreamErrors, `"proxy_source"`)
 	require.NotContains(t, detail.UpstreamErrors, `"proxy_fallback"`)
 }
+
+func TestOpsUpstreamErrorBodyNonStringCodeAndNilRecorder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// P1 #1: non-string error.code object/array must not become a raw JSON upstream_error_code.
+	require.Empty(t, extractOpsUpstreamCode([]byte(`{"error":{"code":{"nested":"secret"},"message":"bad"}}`)))
+	require.Empty(t, extractOpsUpstreamCode([]byte(`{"code":["arr"]}`)))
+	require.Equal(t, "overloaded_error", extractOpsUpstreamCode([]byte(`{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`)))
+
+	// P2 #6: RecordOpsUpstreamErrorFromBody returns immediately without parsing when OpsRecorder is absent.
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	RecordOpsUpstreamErrorFromBody(context.Background(), c, 502, []byte(`{"error":{"code":"should_not_attach"}}`), "fallback")
+	_, hasStatus := c.Get(OpsUpstreamStatusCodeKey)
+	require.False(t, hasStatus)
+
+	// R2-P2 #4: numeric scalar codes & Google error.status are extracted while objects/arrays stay rejected.
+	googleBody := []byte(`{"error":{"code":429,"message":"Quota exceeded","status":"RESOURCE_EXHAUSTED"}}`)
+	require.Equal(t, "RESOURCE_EXHAUSTED", extractOpsUpstreamCode(googleBody))
+	require.Equal(t, "429", extractUpstreamErrorCode(googleBody))
+	require.Equal(t, "10001", extractOpsUpstreamCode([]byte(`{"error":{"code":10001,"message":"Numeric code"}}`)))
+	require.Equal(t, "4001", extractOpsUpstreamCode([]byte(`{"code":4001,"message":"Top numeric"}`)))
+	require.Empty(t, extractUpstreamErrorCode([]byte(`{"error":{"code":{"nested":1}}}`)))
+	require.Empty(t, extractUpstreamErrorCode([]byte(`{"error":{"code":[1,2]}}`)))
+}

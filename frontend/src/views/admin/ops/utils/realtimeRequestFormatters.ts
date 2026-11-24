@@ -66,7 +66,7 @@ export interface RealtimePhaseBreakdown {
   hasAnyPhase: boolean
 }
 
-const KNOWN_FAILURE_REASON_KEYS = new Set([
+export const KNOWN_FAILURE_REASON_KEYS = new Set([
   // Canonical backend ClassifyFailure reasons (backend/internal/monitoring/ops_labels.go)
   'upstream_rate_limit',
   'upstream_auth',
@@ -80,6 +80,12 @@ const KNOWN_FAILURE_REASON_KEYS = new Set([
   'gateway_panic',
   'gateway_db',
   'gateway_ratelimit',
+  // R2 4xx client / gateway rejection reasons
+  'client_bad_request',
+  'client_auth_failed',
+  'client_forbidden',
+  'client_not_found',
+  'body_too_large',
   // Structured result fallbacks
   'client_abort',
   'gateway_error',
@@ -113,6 +119,34 @@ const KNOWN_FAILURE_REASON_KEYS = new Set([
   'network_error',
   'internal_error',
   'unknown'
+])
+
+export const CANONICAL_FAILURE_REASON_KEYS: readonly string[] = [
+  'upstream_rate_limit',
+  'upstream_auth',
+  'upstream_model_or_request',
+  'upstream_server_error',
+  'upstream_connect_timeout',
+  'upstream_read_timeout',
+  'proxy_unreachable',
+  'client_abort_during_body_read',
+  'client_abort_during_response',
+  'gateway_panic',
+  'gateway_db',
+  'gateway_ratelimit',
+  'client_bad_request',
+  'client_auth_failed',
+  'client_forbidden',
+  'client_not_found',
+  'body_too_large',
+  'client_abort',
+  'unknown'
+] as const
+
+export const SHORT_FAILURE_REASON_KEYS = new Set<string>([
+  ...CANONICAL_FAILURE_REASON_KEYS,
+  'gateway_error',
+  'rejected'
 ])
 
 export function formatDurationMs(ms?: number | null): string {
@@ -208,6 +242,31 @@ export function getFailureReasonLabel(
     return t(`admin.ops.realtimeRequests.failureReasons.${normalized}`)
   }
   return String(reason).trim()
+}
+
+export function getFailureReasonShortLabel(
+  reason: string | null | undefined,
+  t: (key: string) => string
+): string {
+  const normalized = String(reason || '').trim().toLowerCase()
+  if (!normalized) return ''
+  if (SHORT_FAILURE_REASON_KEYS.has(normalized)) {
+    return t(`admin.ops.realtimeRequests.failureReasonsShort.${normalized}`)
+  }
+  return getFailureReasonLabel(reason, t)
+}
+
+export function formatEndpointWithMethod(
+  method?: string | null,
+  endpoint?: string | null,
+  endpointClass?: string | null
+): string {
+  const normalizedMethod = String(method || '').trim().toUpperCase()
+  const target = String(endpoint || '').trim() || String(endpointClass || '').trim()
+  if (normalizedMethod && target) {
+    return `${normalizedMethod} ${target}`
+  }
+  return target || normalizedMethod
 }
 
 export function getByteStatusBadge(

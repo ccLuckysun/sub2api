@@ -21,8 +21,8 @@ jobs:
         run: python -B deploy/monitoring/grafana/lint-dashboards.py
       - name: Check generated dashboard drift (read-only)
         run: python -B deploy/monitoring/grafana/build-dashboards.py --check
-      - name: Check static dashboard contracts (no Docker or Prometheus)
-        run: python3 -B deploy/tests/monitoring-v2-dashboard-test.py --static-only
+      - name: Run full dashboard and PromQL regressions
+        run: python3 -B deploy/tests/monitoring-v2-dashboard-test.py
       - name: Check deployment preflight and clean packaging (no daemon)
         run: python3 -I deploy/tests/monitoring-deploy-test.py MonitoringDeploymentSafety
       - name: Test live PromQL rules

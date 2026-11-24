@@ -1,3 +1,7 @@
+# WS-101 排除口径：backend `isOpsGatewayRoute` 已排除 GET + Upgrade: websocket，
+# 且 `OpsRecorder.requestResult` 将 HTTP 101 视为 result="success"（不计入 gateway_error / unknown）。
+# 因此 Sub2apiGatewaySelfError、Sub2apiInstrumentationStalled、Sub2apiMetricCoverageLow、
+# Sub2apiUnknownFailureHigh 无需在 PromQL 中按 status_code 过滤，不会因 WS 101 升级误报。
 {
   "groups": [
     {
@@ -66,7 +70,7 @@
         },
         {
           "alert": "Sub2apiClientAbortSpike",
-          "expr": "sum(rate(sub2api_client_abort_total[10m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[10m])),1e-9) > 0.05",
+          "expr": "sum(rate(sub2api_gateway_requests_total{result=\"client_abort\"}[10m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[10m])),1e-9) > 0.05",
           "labels": {
             "severity": "warning"
           },

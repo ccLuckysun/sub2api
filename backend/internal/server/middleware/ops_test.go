@@ -99,7 +99,7 @@ func TestOpsMiddlewareGatewaySettlement(t *testing.T) {
 		abort          bool
 	}{
 		{"normal", func(c *gin.Context) { c.String(200, "ok") }, 200, "success", "", false, "ok", false},
-		{"auth_rejected", func(c *gin.Context) { c.AbortWithStatusJSON(401, gin.H{"error": "unauthorized"}) }, 401, "rejected", "unknown", false, "", false},
+		{"auth_rejected", func(c *gin.Context) { c.AbortWithStatusJSON(401, gin.H{"error": "unauthorized"}) }, 401, "rejected", "client_auth_failed", false, "", false},
 		{"rate_limited", func(c *gin.Context) { c.AbortWithStatusJSON(429, gin.H{"error": "rate limited"}) }, 429, "rejected", "gateway_ratelimit", false, "", false},
 		{"body_read_failed", func(c *gin.Context) {
 			body, err := io.ReadAll(c.Request.Body)
@@ -107,7 +107,7 @@ func TestOpsMiddlewareGatewaySettlement(t *testing.T) {
 				monitoring.RecorderFromContext(c.Request.Context()).MarkBodyRead(int64(len(body)), 999, "partial")
 				c.AbortWithStatus(400)
 			}
-		}, 400, "rejected", "unknown", false, "", false},
+		}, 400, "rejected", "client_bad_request", false, "", false},
 		{"panic_unwritten", func(c *gin.Context) { panic("business panic") }, 500, "gateway_error", "gateway_panic", true, "", false},
 		{"panic_written_SSE", func(c *gin.Context) {
 			c.Header("Content-Type", "text/event-stream")
@@ -206,12 +206,14 @@ func TestOpsMiddlewareExcludedRoutesAndFullPath(t *testing.T) {
 	require.Zero(t, totalOpsCounter(t, s.instruments.Registry, "sub2api_gateway_requests_total"), "raw gateway-looking URL without matched FullPath is bypassed")
 }
 
-func TestOpsMiddlewareResponsesWebSocketCountsOnlyOnCompletion(t *testing.T) {
+func TestOpsMiddlewareResponsesWebSocketExcludedFromOps(t *testing.T) {
 	stack := newOpsTestStack(t, true)
 	router := gin.New()
 	router.Use(gin.HandlerFunc(ProvideMetricsMiddleware(stack.cfg, stack.instruments.Metrics)))
 	router.Use(OpsMiddleware(stack.cfg, stack.runtime), Recovery())
+	recCh := make(chan *monitoring.OpsRecorder, 1)
 	router.GET("/backend-api/codex/responses", func(c *gin.Context) {
+		recCh <- monitoring.RecorderFromContext(c.Request.Context())
 		conn, err := websocket.Accept(c.Writer, c.Request, nil)
 		if err != nil {
 			return
@@ -227,13 +229,15 @@ func TestOpsMiddlewareResponsesWebSocketCountsOnlyOnCompletion(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.CloseNow()
 
+	require.Nil(t, <-recCh)
 	require.Zero(t, testutil.ToFloat64(stack.instruments.Metrics.OpsEligibleRequestsTotal))
 	require.Zero(t, totalOpsCounter(t, stack.instruments.Registry, "sub2api_gateway_requests_total"))
 	require.NoError(t, conn.CloseNow())
 	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(stack.instruments.Metrics.OpsEligibleRequestsTotal) == 1
+		return totalOpsCounter(t, stack.instruments.Registry, "sub2api_http_requests_total") == 1
 	}, 3*time.Second, 10*time.Millisecond)
-	require.Equal(t, 1.0, totalOpsCounter(t, stack.instruments.Registry, "sub2api_gateway_requests_total"))
+	require.Zero(t, testutil.ToFloat64(stack.instruments.Metrics.OpsEligibleRequestsTotal))
+	require.Zero(t, totalOpsCounter(t, stack.instruments.Registry, "sub2api_gateway_requests_total"))
 }
 
 func TestOpsMiddlewareDisabledBehaviorIdentical(t *testing.T) {
@@ -455,7 +459,7 @@ func TestOpsMiddlewareBodyAndDownstreamBytes(t *testing.T) {
 			}
 			result, reason := "success", ""
 			if tc.unread {
-				result, reason = "rejected", "unknown"
+				result, reason = "rejected", "client_auth_failed"
 			}
 			if tc.partial {
 				result, reason = "gateway_error", "unknown"
@@ -514,7 +518,7 @@ func TestOpsMiddlewareBodyReadFailureObservation(t *testing.T) {
 			require.EqualValues(t, 1, count)
 			require.Equal(t, 3.0, sum)
 			require.Equal(t, 3.0, testutil.ToFloat64(s.instruments.Ops.TransferBytes.WithLabelValues("in_wire")))
-			result, reason := "rejected", "unknown"
+			result, reason := "rejected", "client_bad_request"
 			if canceled {
 				result, reason = "client_abort", "client_abort_during_body_read"
 			}
@@ -606,6 +610,8 @@ func TestOpsMiddlewarePassesRuntimeSampleSink(t *testing.T) {
 	select {
 	case sample := <-samples:
 		require.Equal(t, "rejected", *sample.Result)
+		require.Equal(t, "client_auth_failed", *sample.FailureReason)
+		require.Equal(t, "POST", *sample.HTTPMethod)
 		require.Zero(t, *sample.AttemptCount)
 		require.NotEmpty(t, sample.RequestID)
 	default:

@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -299,6 +301,25 @@ func markOpsStreamError(c *gin.Context, streamErr OpsStreamError) {
 		return
 	}
 	c.Set(OpsStreamErrorKey, streamErr)
+
+	code := strings.TrimSpace(streamErr.Code)
+	if code == "" && streamErr.UpstreamStatus <= 0 {
+		code = strings.TrimSpace(streamErr.ErrType)
+	}
+	rec := opsRecorderFromContext(nil, c)
+	if rec == nil {
+		return
+	}
+	if upMsg := strings.TrimSpace(streamErr.UpstreamMessage); upMsg != "" || streamErr.UpstreamStatus > 0 {
+		rec.RecordFallbackErrorDetails(upMsg, streamErr.UpstreamStatus, code)
+	}
+	if msg := strings.TrimSpace(streamErr.Message); msg != "" || code != "" {
+		rec.RecordFallbackErrorDetails(msg, 0, code)
+	}
+	if streamErr.UpstreamStatus >= 400 || streamErr.IntendedStatus >= 400 || code != "" || strings.TrimSpace(streamErr.Message) != "" {
+		res, reason, ev := monitoring.ClassifyStreamFailure(streamErr.UpstreamStatus, streamErr.IntendedStatus, code)
+		rec.MarkFailureIfUnset(res, reason, ev)
+	}
 }
 
 func snapshotOpsStreamErrorContext(c *gin.Context, streamErr *OpsStreamError) {
@@ -404,19 +425,172 @@ func SetOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage
 	setOpsUpstreamError(c, upstreamStatusCode, upstreamMessage, upstreamDetail)
 }
 
+func opsRecorderFromContext(ctx context.Context, c *gin.Context) *monitoring.OpsRecorder {
+	if ctx != nil {
+		if rec := monitoring.RecorderFromContext(ctx); rec != nil {
+			return rec
+		}
+	}
+	if c != nil && c.Request != nil {
+		return monitoring.RecorderFromContext(c.Request.Context())
+	}
+	return nil
+}
+
 func setOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage, upstreamDetail string) {
 	if c == nil {
 		return
 	}
 	if upstreamStatusCode > 0 {
 		c.Set(OpsUpstreamStatusCodeKey, upstreamStatusCode)
+	} else if prev, exists := c.Get(OpsUpstreamStatusCodeKey); exists {
+		switch p := prev.(type) {
+		case int:
+			if p != 0 {
+				c.Set(OpsUpstreamStatusCodeKey, 0)
+			}
+		case int64:
+			if p != 0 {
+				c.Set(OpsUpstreamStatusCodeKey, 0)
+			}
+		}
 	}
 	if msg := strings.TrimSpace(upstreamMessage); msg != "" {
 		c.Set(OpsUpstreamErrorMessageKey, msg)
 	}
 	if detail := strings.TrimSpace(upstreamDetail); detail != "" {
 		c.Set(OpsUpstreamErrorDetailKey, detail)
+	} else if prev, exists := c.Get(OpsUpstreamErrorDetailKey); exists {
+		if s, _ := prev.(string); s != "" {
+			c.Set(OpsUpstreamErrorDetailKey, "")
+		}
 	}
+	rec := opsRecorderFromContext(nil, c)
+	if rec == nil {
+		return
+	}
+	msg := strings.TrimSpace(upstreamMessage)
+	if msg == "" {
+		msg = extractOpsUpstreamMessage([]byte(upstreamDetail))
+	}
+	code := extractOpsUpstreamCode([]byte(upstreamDetail))
+	if upstreamStatusCode > 0 || msg != "" || code != "" {
+		rec.RecordFallbackErrorDetails(msg, upstreamStatusCode, code)
+	}
+}
+
+// RecordOpsUpstreamErrorFromBody extracts the upstream message and error code
+// from an upstream HTTP/SSE response body and records them onto OpsRecorder.
+func RecordOpsUpstreamErrorFromBody(ctx context.Context, c *gin.Context, statusCode int, body []byte, fallbackMsg string) {
+	rec := opsRecorderFromContext(ctx, c)
+	if rec == nil {
+		return
+	}
+	msg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	if msg == "" {
+		if res := gjson.GetBytes(body, "response.error.message"); res.Type == gjson.String {
+			msg = strings.TrimSpace(res.String())
+		}
+	}
+	if msg == "" && len(bytesTrimSpace(body)) > 0 && !gjson.ValidBytes(body) {
+		msg = strings.TrimSpace(string(body))
+	}
+	if msg == "" {
+		msg = strings.TrimSpace(fallbackMsg)
+	}
+	if msg == "" {
+		msg = strings.TrimSpace(string(body))
+	}
+	code := extractOpsUpstreamCode(body)
+	rec.RecordFallbackErrorDetails(msg, statusCode, code)
+}
+
+func bytesTrimSpace(b []byte) []byte {
+	start := 0
+	for start < len(b) && (b[start] == ' ' || b[start] == '\t' || b[start] == '\n' || b[start] == '\r') {
+		start++
+	}
+	end := len(b)
+	for end > start && (b[end-1] == ' ' || b[end-1] == '\t' || b[end-1] == '\n' || b[end-1] == '\r') {
+		end--
+	}
+	return b[start:end]
+}
+
+// ExtractOpsUpstreamCode extracts an upstream error code or type from a response payload.
+func ExtractOpsUpstreamCode(body []byte) string {
+	return extractOpsUpstreamCode(body)
+}
+
+// ExtractOpsUpstreamMessage extracts an upstream error message from a response payload.
+func ExtractOpsUpstreamMessage(body []byte) string {
+	return extractOpsUpstreamMessage(body)
+}
+
+func recordOpsErrorDetailsFromContext(ctx context.Context, c *gin.Context, msg string, upstreamStatus int, code string) {
+	rec := opsRecorderFromContext(ctx, c)
+	if rec == nil {
+		return
+	}
+	rec.RecordErrorDetails(msg, upstreamStatus, code)
+}
+
+func extractOpsUpstreamCode(body []byte) string {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return ""
+	}
+	raw := []byte(trimmed)
+	for _, path := range []string{"error.code", "response.error.code", "error.status", "response.error.status", "code", "error.type", "response.error.type"} {
+		res := gjson.GetBytes(raw, path)
+		if res.Type != gjson.String {
+			continue
+		}
+		if value := strings.TrimSpace(res.String()); value != "" {
+			return value
+		}
+	}
+	if innerRes := gjson.GetBytes(raw, "error.message"); innerRes.Type == gjson.String {
+		if inner := strings.TrimSpace(innerRes.String()); strings.HasPrefix(inner, "{") {
+			innerCandidates := []string{inner}
+			if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
+				innerCandidates = append(innerCandidates, inner[:lastBrace+1])
+			}
+			for _, payload := range innerCandidates {
+				for _, path := range []string{"error.code", "error.status", "error.type"} {
+					if res := gjson.Get(payload, path); res.Type == gjson.String {
+						if value := strings.TrimSpace(res.String()); value != "" {
+							return value
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, path := range []string{"error.code", "response.error.code", "code"} {
+		if value := opsScalarErrorCode(gjson.GetBytes(raw, path)); value != "" {
+			return value
+		}
+	}
+	if code := extractUpstreamErrorCode(raw); code != "" {
+		return code
+	}
+	return ""
+}
+
+func extractOpsUpstreamMessage(body []byte) string {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return ""
+	}
+	raw := []byte(trimmed)
+	if msg := strings.TrimSpace(extractUpstreamErrorMessage(raw)); msg != "" {
+		return msg
+	}
+	if msg := strings.TrimSpace(gjson.GetBytes(raw, "response.error.message").String()); msg != "" {
+		return msg
+	}
+	return trimmed
 }
 
 // OpsUpstreamErrorEvent describes one upstream error attempt during a single gateway request.
@@ -515,6 +689,29 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	c.Set(OpsUpstreamErrorsKey, existing)
 
 	checkSkipMonitoringForUpstreamEvent(c, &evCopy)
+
+	rec := opsRecorderFromContext(nil, c)
+	if rec == nil {
+		return
+	}
+	if evCopy.Stage != string(GatewayFailureStageAccountAuth) {
+		msg := strings.TrimSpace(evCopy.Message)
+		if msg == "" {
+			msg = extractOpsUpstreamMessage([]byte(evCopy.UpstreamResponseBody))
+		}
+		if msg == "" {
+			msg = extractOpsUpstreamMessage([]byte(evCopy.Detail))
+		}
+		code := extractOpsUpstreamCode([]byte(evCopy.UpstreamResponseBody))
+		if code == "" {
+			code = extractOpsUpstreamCode([]byte(evCopy.Detail))
+		}
+		if evCopy.UpstreamStatusCode > 0 || msg != "" || code != "" {
+			rec.RecordErrorDetails(msg, evCopy.UpstreamStatusCode, code)
+		}
+	} else if evCopy.Message != "" {
+		rec.RecordErrorDetails(evCopy.Message, 0, evCopy.Reason)
+	}
 }
 
 // opsUpstreamProxyAttribution derives both attribution fields from one

@@ -58,6 +58,32 @@ const failureReasonDisplay = computed(() => {
   return getFailureReasonLabel(props.item.failure_reason, t)
 })
 
+const rawFailureReason = computed(() => String(props.item?.failure_reason ?? '').trim())
+
+const hasUpstreamStatus = computed(() => {
+  const status = props.item?.upstream_status
+  return typeof status === 'number' && Number.isFinite(status) && status > 0
+})
+
+const upstreamErrorCode = computed(() => String(props.item?.upstream_error_code ?? '').trim())
+
+const isUpstreamErrorCode = computed(() => {
+  if (hasUpstreamStatus.value) return true
+  const attempts = props.item?.attempt_count
+  return typeof attempts === 'number' && Number.isFinite(attempts) && attempts > 0
+})
+
+const normalizedErrorMessage = computed(() => String(props.item?.error_message ?? '').trim())
+const hasErrorMessage = computed(() => normalizedErrorMessage.value.length > 0)
+
+const retryCount = computed(() => {
+  const attempts = props.item?.attempt_count
+  if (typeof attempts !== 'number' || !Number.isFinite(attempts)) return 0
+  return Math.max(0, attempts - 1)
+})
+
+const httpMethod = computed(() => String(props.item?.http_method ?? '').trim().toUpperCase())
+
 const byteFlowRows = computed(() => {
   const row = props.item
   if (!row) return []
@@ -114,8 +140,9 @@ const byteFlowRows = computed(() => {
 })
 
 async function copyText(val?: string | null) {
-  if (!val) return
-  const ok = await copyToClipboard(val, t('admin.ops.realtimeRequests.detail.copied'))
+  const trimmed = val?.trim()
+  if (!trimmed) return
+  const ok = await copyToClipboard(trimmed, t('admin.ops.realtimeRequests.detail.copied'))
   if (!ok) {
     appStore.showWarning(t('admin.ops.realtimeRequests.detail.copyFailed'))
   }
@@ -141,7 +168,7 @@ function formatRawBytes(bytes?: number | null): string {
 
     <div v-else class="space-y-5">
       <!-- Top 4 KPI Tiles -->
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div data-testid="detail-kpi-grid" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div class="rounded-xl border border-ui bg-gray-50 p-3.5 dark:bg-ui-canvas">
           <div class="text-[11px] font-semibold uppercase tracking-wider text-ui-muted">
             {{ t('admin.ops.realtimeRequests.detail.kpi.totalDuration') }}
@@ -204,6 +231,150 @@ function formatRawBytes(bytes?: number | null): string {
           </div>
         </div>
       </div>
+
+      <!-- Failure Diagnostic Banner (First-Screen Visibility) -->
+      <section
+        v-if="!requestSucceeded"
+        data-testid="failure-diagnostic-banner"
+        class="rounded-xl border border-red-200 bg-red-50/80 p-4 dark:border-red-800/50 dark:bg-red-900/20"
+      >
+        <!-- Header: Title + Failure Category Label + Raw Enum -->
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <Icon
+              name="exclamationTriangle"
+              size="md"
+              class="shrink-0 text-red-600 dark:text-red-400"
+            />
+            <h4 class="text-sm font-semibold text-red-900 dark:text-red-200">
+              {{ t('admin.ops.realtimeRequests.detail.failureBanner.title') }}
+            </h4>
+            <span
+              class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-900/40 dark:text-red-200"
+            >
+              {{ failureReasonDisplay }}
+            </span>
+            <code
+              v-if="rawFailureReason"
+              data-testid="failure-raw-reason"
+              class="rounded bg-red-100/80 px-1.5 py-0.5 font-mono text-[11px] font-medium text-red-700 ring-1 ring-inset ring-red-200 dark:bg-red-950/60 dark:text-red-300 dark:ring-red-800/60"
+            >
+              {{ rawFailureReason }}
+            </code>
+          </div>
+        </div>
+
+        <!-- Diagnostic Metadata Strip: Upstream Status/Code + Retry & Attempt Counts -->
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <div
+            v-if="hasUpstreamStatus"
+            data-testid="failure-upstream-status"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1 ring-1 ring-inset ring-red-200/80 dark:bg-dark-800/70 dark:ring-red-800/50"
+          >
+            <span class="text-red-700/80 dark:text-red-300/80">
+              {{ t('admin.ops.realtimeRequests.detail.failureBanner.upstreamStatus') }}
+            </span>
+            <span
+              class="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold ring-1 ring-inset"
+              :class="getHttpStatusClass(item.upstream_status)"
+            >
+              {{ item.upstream_status }}
+            </span>
+          </div>
+
+          <div
+            v-if="upstreamErrorCode"
+            data-testid="failure-upstream-error-code"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1 ring-1 ring-inset ring-red-200/80 dark:bg-dark-800/70 dark:ring-red-800/50"
+          >
+            <span class="text-red-700/80 dark:text-red-300/80">
+              {{
+                isUpstreamErrorCode
+                  ? t('admin.ops.realtimeRequests.detail.failureBanner.upstreamErrorCode')
+                  : t('admin.ops.realtimeRequests.detail.failureBanner.errorCode')
+              }}
+            </span>
+            <code class="font-mono text-[11px] font-semibold text-red-950 dark:text-red-100">
+              {{ upstreamErrorCode }}
+            </code>
+          </div>
+
+          <div
+            data-testid="failure-retry-count"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1 ring-1 ring-inset ring-red-200/80 dark:bg-dark-800/70 dark:ring-red-800/50"
+          >
+            <span class="text-red-700/80 dark:text-red-300/80">
+              {{ t('admin.ops.realtimeRequests.detail.failureBanner.retryCount') }}
+            </span>
+            <span
+              class="font-mono font-semibold"
+              :class="retryCount > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-red-950 dark:text-red-100'"
+            >
+              {{ retryCount }}
+            </span>
+          </div>
+
+          <div
+            data-testid="failure-attempt-count"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1 ring-1 ring-inset ring-red-200/80 dark:bg-dark-800/70 dark:ring-red-800/50"
+          >
+            <span class="text-red-700/80 dark:text-red-300/80">
+              {{ t('admin.ops.realtimeRequests.detail.failureBanner.attemptCount') }}
+            </span>
+            <span class="font-mono font-semibold text-red-950 dark:text-red-100">
+              {{ item.attempt_count ?? '—' }}
+            </span>
+          </div>
+
+          <div
+            data-testid="failure-failed-attempts"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1 ring-1 ring-inset ring-red-200/80 dark:bg-dark-800/70 dark:ring-red-800/50"
+          >
+            <span class="text-red-700/80 dark:text-red-300/80">
+              {{ t('admin.ops.realtimeRequests.detail.failureBanner.failedAttempts') }}
+            </span>
+            <span
+              class="font-mono font-semibold"
+              :class="(item.failed_attempts ?? 0) > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-red-950 dark:text-red-100'"
+            >
+              {{ item.failed_attempts ?? '—' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Error Message Box with One-Click Copy -->
+        <div
+          class="mt-3 rounded-lg border border-red-200/80 bg-white/90 p-3 dark:border-red-800/50 dark:bg-dark-900/60"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-red-700 dark:text-red-300">
+              {{ t('admin.ops.realtimeRequests.detail.failureBanner.errorMessage') }}
+            </span>
+            <button
+              v-if="hasErrorMessage"
+              type="button"
+              data-testid="copy-error-message-btn"
+              class="inline-flex shrink-0 items-center gap-1 rounded-md bg-red-100/80 px-2 py-1 text-[10px] font-semibold text-red-800 transition-colors hover:bg-red-200/80 dark:bg-red-900/40 dark:text-red-200 dark:hover:bg-red-900/60"
+              @click="copyText(normalizedErrorMessage)"
+            >
+              <Icon name="copy" size="xs" />
+              {{ t('admin.ops.realtimeRequests.detail.copy') }}
+            </button>
+          </div>
+          <pre
+            v-if="hasErrorMessage"
+            data-testid="failure-error-message"
+            class="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-red-950 dark:text-red-100"
+          >{{ normalizedErrorMessage }}</pre>
+          <div
+            v-else
+            data-testid="failure-error-message-empty"
+            class="mt-1.5 text-xs italic text-red-700/70 dark:text-red-300/70"
+          >
+            {{ t('admin.ops.realtimeRequests.detail.failureBanner.emptyErrorMessage') }}
+          </div>
+        </div>
+      </section>
 
       <!-- Basic Info Grid -->
       <section class="rounded-xl border border-ui bg-gray-50/70 p-4 dark:bg-ui-canvas">
@@ -351,6 +522,13 @@ function formatRawBytes(bytes?: number | null): string {
               {{ t('admin.ops.realtimeRequests.detail.fields.endpoint') }}
             </div>
             <div class="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs font-medium text-ui-ink">
+              <span
+                v-if="httpMethod"
+                data-testid="detail-http-method"
+                class="rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-primary-700 ring-1 ring-inset ring-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-800/50"
+              >
+                {{ httpMethod }}
+              </span>
               <span class="break-all">{{ item.endpoint || '—' }}</span>
               <span
                 v-if="item.endpoint_class"

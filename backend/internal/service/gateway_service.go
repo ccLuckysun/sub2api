@@ -788,6 +788,7 @@ type UpstreamFailoverError struct {
 	ClientStatusCode         int
 	ClientMessage            string
 	StreamFailedFrame        *OpenAIStreamFailedFrame // 触发本次 failover 的流内 failed/error 帧；耗尽时用于错误透传规则匹配
+	TransportError           bool                     // true when synthesized for a transport-level failure before receiving any HTTP response
 }
 
 func (e *UpstreamFailoverError) Error() string {

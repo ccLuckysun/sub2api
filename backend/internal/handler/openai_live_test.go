@@ -8,8 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -118,4 +121,49 @@ func jsonPathString(t *testing.T, raw json.RawMessage, keys ...string) string {
 	result, ok := current.(string)
 	require.True(t, ok)
 	return result
+}
+
+func TestLiveSidebandRecordsRejectedWSMetric(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	reg := prometheus.NewPedanticRegistry()
+	m, err := monitoring.NewOpsMetrics(reg)
+	require.NoError(t, err)
+	obs := monitoring.NewWSObserver(m, "live")
+	require.NotNil(t, obs)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req := httptest.NewRequest(http.MethodGet, "/v1/live/call_123", nil)
+	req = req.WithContext(monitoring.WithWSObserver(req.Context(), obs))
+	c.Request = req
+
+	(&OpenAIGatewayHandler{}).LiveSideband(c)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+	var rejected float64
+	for _, fam := range families {
+		if fam.GetName() != "sub2api_ws_connections_total" {
+			continue
+		}
+		for _, metric := range fam.GetMetric() {
+			var endpoint, outcome string
+			for _, lp := range metric.GetLabel() {
+				switch lp.GetName() {
+				case "endpoint":
+					endpoint = lp.GetValue()
+				case "outcome":
+					outcome = lp.GetValue()
+				}
+			}
+			if endpoint == "live" && outcome == "rejected" {
+				rejected += metric.GetCounter().GetValue()
+			}
+		}
+	}
+	require.EqualValues(t, 1, rejected)
+
+	// Calling RecordOpsUpstreamError without StatusCode is guarded by dto unused import if needed:
+	var _ *dto.MetricFamily
 }

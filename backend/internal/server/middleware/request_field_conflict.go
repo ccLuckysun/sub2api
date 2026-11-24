@@ -83,11 +83,13 @@ func writeGatewayInvalidRequest(c *gin.Context, status int, message string) {
 	case strings.HasPrefix(path, "/v1beta") || strings.HasPrefix(path, "/antigravity/v1beta"):
 		GoogleErrorWriter(c, status, message)
 	case strings.Contains(path, "/messages"):
+		RecordOpsAbortError(c, "invalid_request_error", message)
 		c.JSON(status, gin.H{
 			"type":  "error",
 			"error": gin.H{"type": "invalid_request_error", "message": message},
 		})
 	default:
+		RecordOpsAbortError(c, "invalid_request_error", message)
 		c.JSON(status, gin.H{
 			"error": gin.H{"type": "invalid_request_error", "message": message},
 		})

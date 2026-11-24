@@ -475,6 +475,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				ev.ClientCanceled = true
 				opsRecorder.MarkClientAbort("response")
 			}
+			if opsRecorder != nil {
+				if status >= 400 {
+					opsRecorder.RecordErrorDetails("", status, code)
+				} else if code != "" {
+					opsRecorder.RecordErrorDetails("", 0, code)
+				}
+				if cause != nil {
+					opsRecorder.RecordErrorDetails(cause.Error(), 0, code)
+				}
+			}
 			if opsAttempt == nil {
 				opsRecorder.MarkFailure(result, monitoring.ClassifyFailure(result, ev), ev)
 			} else {
@@ -839,6 +849,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					return ""
 				}(),
 			})
+			RecordOpsUpstreamErrorFromBody(ctx, c, resp.StatusCode, respBody, "")
 			opsDoneError(nil, "headers", resp.StatusCode, opsUpstreamCode, false)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
@@ -878,6 +889,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				return ""
 			}(),
 		})
+		RecordOpsUpstreamErrorFromBody(ctx, c, resp.StatusCode, respBody, "")
 		opsDoneError(nil, "headers", resp.StatusCode, opsUpstreamCode, false)
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
@@ -932,6 +944,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					logger.LegacyPrintf("service.gateway", "Account %d: 400 error, attempting failover", account.ID)
 				}
 				s.handleFailoverSideEffects(ctx, resp, account, reqModel)
+				RecordOpsUpstreamErrorFromBody(ctx, c, resp.StatusCode, respBody, "")
 				opsDoneError(nil, "headers", resp.StatusCode, opsUpstreamCode, false)
 				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
 			}
@@ -1244,6 +1257,7 @@ func (s *GatewayService) sseStreamErrorEventFailover(ctx context.Context, c *gin
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 	})
+	RecordOpsUpstreamErrorFromBody(ctx, c, semanticStatus, body, upstreamMsg)
 
 	logger.LegacyPrintf("service.gateway",
 		"[Forward] SSE error event in stream: Account=%d(%s) RequestID=%s Body=%s",

@@ -155,7 +155,7 @@ r.Use(middleware2.Recovery())
 4. **埋点异常隔离**：只对埋点调用包 `safeObserve(func())`（内部 `recover` + 日志），**不得**包裹 `c.Next()`，不得重新执行 handler，不得吞业务 panic。
 5. **保留 Recovery 现有语义**：broken pipe 分支**不**设置 panic 标记（归 `client_abort_during_response`）；**除 broken pipe 外，在检查 `c.Writer.Written()` 之前**设置 panic 标记，即使响应已写出（如 SSE 中途 panic）也要让 Finalize 归 `gateway_panic`，同时保持原响应状态码与已写内容不变。不得把 broken pipe 误记 gateway_panic。
 
-网关路由判定用**显式前缀白名单**，与 `routes/gateway.go` 同步维护：
+网关路由判定用**显式前缀白名单**，与 `routes/gateway.go` 同步维护（`isOpsGatewayRoute(c)` 同时被 `OpsMiddleware` 与 `MetricsMiddleware` 的 `sub2api_ops_eligible_requests_total` 复用）：
 
 ```
 /v1/messages, /v1/messages/count_tokens,
@@ -164,7 +164,7 @@ r.Use(middleware2.Recovery())
 /v1beta/, /antigravity/, /v1/models (仅 POST 转发)
 ```
 
-不匹配的路径（管理接口、健康检查、静态资源）不建立 Recorder，也不计入 M-9 分母。
+WebSocket 升级请求（`GET` 且请求头含 `Upgrade: websocket`，大小写不敏感）由 `isOpsGatewayRoute(c)` 直接排除，不建立 `OpsRecorder`、不计入 `sub2api_ops_eligible_requests_total` 与 HTTP 6 段指标，也不计入 M-9 分母。不匹配的路径（管理接口、健康检查、静态资源）同样不建立 Recorder。
 
 ### 3.3 Recorder / Attempt 契约
 
@@ -256,12 +256,12 @@ type FailureEvidence struct {
 | P1 | `/antigravity/v1/messages` | `AntigravityGatewayService.Forward` | 全量 |
 | P1 | `/v1beta/*` Gemini | Gemini v1beta 上游链 | phase + 字节 |
 | P1 | Bedrock | `forwardBedrock` | phase + 字节 |
-| P2 | `/v1/images/*`、批量、WS | 各自上游链 | 仅请求级结果 M-10；M-3 归 `images`/`other` |
-| 排除 | count_tokens、models、余额/探测、管理接口 | — | 不进入 M-10/M-9 分母 |
+| P2 | `/v1/images/*`、批量 | 各自上游链 | 仅请求级结果 M-10；M-3 归 `images`/`other` |
+| 排除（HTTP 6 段） | count_tokens、models、余额/探测、管理接口、WebSocket 升级（`GET` + `Upgrade: websocket`） | — | 不进入 M-1 / M-10 / M-9 分母；WS 改由独立指标 `sub2api_ws_active_connections` / `sub2api_ws_connections_total` 观测，且 `OpsRecorder.requestResult` 兜底将 HTTP `101` 视为 `("success", "")` |
 
 > M-1/M-11 没有 `endpoint_class` 标签，P2“phase 记 endpoint_class=other”不成立；P2 只保证请求级计数与 M-3 的 `endpoint_class=images`。
 
-### 3.6 序列上界（修正账号上限）
+### 3.6 序列上界（修正账号上限与 R2/WS 扩展）
 
 账号白名单**启动时快照，最多 10 个真实名 + `unknown`**，运行期不刷新；新账号/改名一律 `unknown` 直到重启。这样避免 CounterVec 子序列只增不减。
 
@@ -270,15 +270,18 @@ type FailureEvidence struct {
 | M-1 | 7 phase × (13 桶 + Inf + sum + count) | 112 |
 | M-2 | 5 direction | 5 |
 | M-3 | 5 endpoint_class × (10 桶 + Inf + sum + count) | 65 |
-| M-4 | 11 account × 6 result × **14 reason**（13 类 + 成功空串） | 924 |
+| M-4 | 11 account × 6 result × **14 reason**（13 类上游/中断/网关原因 + 成功空串；0-attempt 4xx 不进入 M-4） | 924 |
 | M-5 | 5 model_class × 6 result | 30 |
 | M-6 | 3 outcome | 3 |
 | M-7 | 无标签 | 1 |
 | M-8 | 2 stage | 2 |
 | M-9 | 4 kind | 4 |
-| M-10 | 6 result × **14 reason** | 84 |
+| M-10 | 6 result × **20 reason**（19 类 `failure_reason` + 成功空串，理论上限 120，实际可达约 26–30） | 120 |
 | M-11 | 11 account × 16 | 176 |
-| **合计** | | **1406** |
+| M-12 (`gateway_request_duration_seconds`) | 16 桶 + Inf + sum + count | 19 |
+| M-13~M-17 (`app_*` + `ops_eligible_requests_total`) | 5 状态 gauge（6 序列）+ 1 eligible counter | 7 |
+| WS 独立指标 | `sub2api_ws_active_connections` (3 endpoint) + `sub2api_ws_connections_total` (3 endpoint × 5 outcome) | 18 |
+| **合计** | | **1480** |
 
 单族 <2000、总 <8000 均满足；**不再用“result/reason 相关性”证明上限**。CI 单测：随机 1000 个恶意账号名，输出集合必须 ≤11。
 
@@ -330,10 +333,19 @@ type FailureEvidence struct {
 | 12 | `gateway_ratelimit` | RateLimited |
 | 13 | `unknown` | 兜底 |
 
-规则：
+规则与 0-attempt 状态码细化（`OpsRecorder.requestResult`）：
 
 - `success` 的 reason 必须是空串 `""`。
-- 分类函数纯函数，输入 `FailureEvidence`，单测覆盖 13 类 + 优先级冲突 + success 空串。
+- HTTP `101 Switching Protocols`（纵深防御兜底）：视为 `("success", "")`，不计入 `gateway_error` / `unknown`。
+- 0-attempt HTTP 4xx 显式 `failure_reason` 映射（避免早退拒收落入 `unknown`）：
+  - `400` → `result="rejected"`, `failure_reason="client_bad_request"`（请求参数错误）
+  - `401` → `result="rejected"`, `failure_reason="client_auth_failed"`（客户端鉴权失败）
+  - `403` → `result="rejected"`, `failure_reason="client_forbidden"`（访问被拒绝）
+  - `404` → `result="rejected"`, `failure_reason="client_not_found"`（接口或资源不存在）
+  - `413` → `result="rejected"`, `failure_reason="body_too_large"`（请求体过大）
+  - `429` → `result="rejected"`, `failure_reason="gateway_ratelimit"`（网关限流）
+  - `499` → `result="client_abort"`, `failure_reason="client_abort"`（或按阶段归为 `client_abort_during_body_read`）
+- 分类函数纯函数，输入 `FailureEvidence`，单测覆盖 13 类 + 优先级冲突 + 4xx 显式原因 + 101 成功 + success 空串。
 - 代理 5xx 与源站 5xx 必须可区分：由 `ProxyUsed` + 错误来源判定；无法确定时落 `unknown`。
 
 ---
@@ -345,6 +357,7 @@ type FailureEvidence struct {
 - Histogram，label `phase`（7 值），桶 `0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2.5,5,10,30,60,+Inf`。
 - 六互斥段 + headers_end 在 `Finalize` 一次性 Observe；未到达的互斥段 Observe 0；`headers_end` 未到达不 Observe。
 - 占比/堆叠必须 `phase!="headers_end"`；总时长闭合单测：`sum(6 段) == total ± 1ms`（用同一请求的样本，不用 P95 相加）。
+- **统计口径与误读提示**：仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）；`response`（响应传输）段在流式模型请求下主要反映模型持续生成输出的时间，而非单纯网络带宽慢。
 
 ### 5.2 M-2 `sub2api_transfer_bytes_total`
 
@@ -409,10 +422,10 @@ type FailureEvidence struct {
 
 ### 5.10 M-10 `sub2api_gateway_requests_total`（新增）
 
-- Counter，label `result`、`failure_reason`；每网关请求 Finalize 时 +1，成功 reason 为空串。
+- Counter，label `result`、`failure_reason`；每 HTTP 网关请求 Finalize 时 +1（已排除 WebSocket 101 升级），成功 reason 为空串。
 - 解决三件事：0-attempt 失败的根因归属、断流告警的流量分母、M-4 语义纯净。
-- 理论 6×13，实际合法组合约 60；上界 78。
-- 看板：失败根因优先用 M-10（请求视角）；上游尝试视角用 M-4。
+- 理论 6×20 = 120（19 类 `failure_reason` + 成功空串），实际合法组合约 26–30（0-attempt 4xx 仅配对 `rejected`，`499` 仅配对 `client_abort`）。
+- 看板：失败根因优先用 M-10（请求视角，01 页 `ov_fail` 同时展示 `result` 分布与 `failure_reason` Top 6）；上游尝试视角用 M-4。
 
 ### 5.11 M-11 `sub2api_upstream_ttft_seconds`（新增）
 
@@ -420,6 +433,19 @@ type FailureEvidence struct {
 - 每次 attempt 在 `Done` 时 Observe **一次**：必须已 `UseResponse()` 锁定最终响应身份，且该响应首字节已到（首字节通常晚于锁定时刻，仍应接受）；内部重发产生的 400 首字节不 Observe。
 - 作用：账号 P95 TTFT（AC-5）。口径是“每 attempt 的 TTFT”，不是每请求；面板注明。
 - 上界 11×16=176。
+
+### 5.12 M-12 ~ M-17 网关总耗时、停滞基准与运行态状态（已接入）
+
+- `sub2api_gateway_request_duration_seconds`（M-12）：Histogram（16 桶），仅统计 HTTP 网关转发请求总耗时（不含 WebSocket 长连接升级）。
+- `sub2api_ops_eligible_requests_total`：无标签 Counter，与 `OpsMiddleware` 共享 `isOpsGatewayRoute(c)`，作为 `Sub2apiInstrumentationStalled` 的增量分母（已排除 WS 升级）。
+- `sub2api_app_accounts_active` / `sub2api_app_accounts_concurrency_capacity` / `sub2api_app_db_connections{state}` / `sub2api_app_concurrency_queue_depth` / `sub2api_app_redis_up`（M-13~M-17）：应用进程内态 Gauge。
+
+### 5.13 WebSocket 独立观测指标（与 HTTP 6 段隔离）
+
+为避免长连接握手与生命周期污染 HTTP 6 段耗时与 `sub2api_gateway_requests_total`，WebSocket 使用独立指标族：
+
+- `sub2api_ws_active_connections`：GaugeVec，label `endpoint` ∈ `{"responses", "realtime", "live"}`；记录当前活跃 WebSocket 长连接数（上界 3 序列）。
+- `sub2api_ws_connections_total`：CounterVec，labels `endpoint` ∈ `{"responses", "realtime", "live"}`、`outcome` ∈ `{"connected", "handshake_failed", "rejected", "closed_normal", "closed_error"}`；记录握手与关闭事件（上界 15 序列）。
 
 ---
 
@@ -440,7 +466,7 @@ type FailureEvidence struct {
 
 - 上限：head series <8000、单族 <2000。
 - 降维顺序：M-5 `model_class` 合并为 `other` → M-3 `endpoint_class` 合并为 `other` → M-1 桶裁剪。**禁止**去掉 phase、failure_reason、account。
-- 监控栈自身指标（`prometheus_*`、`node_*`、`go_*`、`process_*`、V1 HTTP）也占 head；验收必须看整机 `prometheus_tsdb_head_series`，不能只看 V2 的 1406。
+- 监控栈自身指标（`prometheus_*`、`node_*`、`go_*`、`process_*`、V1 HTTP）也占 head；验收必须看整机 `prometheus_tsdb_head_series`，不能只看 V2 的 1480。
 
 ---
 
@@ -581,55 +607,44 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 
 ---
 
-## 8. 看板契约（5 张主看板 + 1 张请求下钻，uid 固定）
+## 8. 看板契约（3 张纯 Prometheus 主看板，uid 固定）
+
+当前 V2 看板已收敛为 **3 张纯 Prometheus 看板**（零 `sub2api-pg` / PostgreSQL 数据源查询）；实时请求流与单请求明细运行在 Sub2API 管理后台（`/admin/ops#realtime-requests`，由 Redis 环形缓冲提供支持）。
 
 | uid | 标题 | 面板数 | 数据源 | 文件 |
 | --- | --- | --- | --- | --- |
-| `sub2api-v2-overview` | 01 · 总览 | 14 | Prom + PG |
-| `sub2api-v2-requests` | 02 · 请求明细 | 7 | PG |
-| `sub2api-v2-nodes` | 03 · 上游节点 | 8 | Prom + PG |
-| `sub2api-v2-users` | 04 · 用户与密钥 | 7 | PG |
-| `sub2api-v2-host` | 05 · 宿主与应用 | 23 | Prom + PG |
-| `sub2api-v2-request` | 请求详情（下钻） | 10 | PG |
+| `sub2api-v2-overview` | 01 · 总览 | 14 | Prometheus | `01-overview.json` |
+| `sub2api-v2-nodes-chain` | 02 · 上游节点与链路 | 13 | Prometheus | `02-nodes-chain.json` |
+| `sub2api-v2-host` | 03 · 宿主与应用 | 23 | Prometheus | `03-host.json` |
 
-面板数包含每张主看板顶部的 HTML 导航 text 面板；02 另含链路颜色图例 text 面板。06 不是第 6 个主模块，仅从 02 的“详情”列进入。
+面板数包含每张主看板顶部的 HTML 导航 `text` 面板（含 3 张看板互跳链接及右侧「实时请求流（管理后台）↗」外链）。
 
-通用：`editable:false`、`allowUiUpdates:false`、浏览器时区；01/03/05 刷新 30s，02 刷新 10s，04 刷新 1m，06 刷新 30s。默认时间范围：01/02/03 `now-15m`，04 `now-24h`，05/06 `now-1h`。PG 面板 `interval=1m` 是查询步长，不是独立每分钟刷新。每面板必须有 description（口径 + 误读风险）。禁止 `timeseries`/`graph`/`heatmap`（无折线图）与 `or vector(1)`；缺序列由面板 `noValue` 显示“未采集”，覆盖率 `-1` 显示“无样本”，不得把 0 冒充健康。
+通用：`editable:false`、`allowUiUpdates:false`、浏览器时区；01/02/03 均刷新 `30s`；默认时间范围：01/02 `now-15m`，03 `now-1h`。每面板必须有 `description`（口径 + 误读风险），`interval="15s"`，`instant: true`。禁止 `timeseries`/`graph`/`heatmap`（无折线图）与 `or vector(1)`；缺序列由面板 `noValue` 区分“无流量 / 无失败 / 无中断 / 未采集”，覆盖率 `-1` 显示“无样本”，不得把 0 冒充健康。
 
 ### 8.1 关键面板
 
 | 看板 | 面板 | 查询 / 口径 |
 | --- | --- | --- |
-| 01 | 链路段耗时占比 | PG samples 的 6 段平均毫秒，barchart `stacking=percent` 输出单条水平堆叠条；headers_end 不参与 |
-| 01 | 失败根因 Top 6 | `topk(6, sum by (failure_reason)(increase(sub2api_gateway_requests_total{result!="success"}[$__range])))`；无失败时无数据是健康，不是未采集 |
-| 01 | 数据完整性 | `sub2api_metric_coverage_ratio`；0~1，-1 显示“无样本” |
-| 01 | 最近异常 / 上游账号速览 | PG samples + users/api_keys/accounts/groups；账号速览为请求口径 |
-| 02 | 实时请求 | `ops_request_transfer_samples s` LEFT JOIN `usage_logs`（`api_key_id` + 精确 `client:`，无关联 UUID 时才回退 `local:`，`LATERAL ... LIMIT 1`）、`users`、`api_keys`、`accounts`、`groups`；`ORDER BY s.observed_at DESC LIMIT 200`；6 段 ms 列 + 总耗时/TTFT；详情列 data-links |
-| 02 | 4 个 mini stat | 窗口内请求、成功率、平均总耗时、慢请求 >3s；均为 PG 样本口径；无样本显示未采集 |
-| 03 | 账号健康矩阵 / 模型档位 / 并发上限 | PG samples 聚合；QPS/TTFT/失败率是请求口径，低样本百分比噪声大；并发只显示配置上限，不是实时在途 |
-| 04 | 用户 / 密钥表 | `usage_logs` 聚合，成本使用 `actual_cost`；失败率来自 PG samples；“今日”按 `Asia/Shanghai` 日界 |
-| 05 | 宿主 / 运行时 / 服务 / 应用信息 | node-exporter + go/process + `ops_system_metrics`；node-exporter 可选，未启用时显示未采集 |
-| 06 | 请求详情 | `$request` 变量；6 段分解、四方向字节与状态、token/actual_cost、失败结算 |
+| 01 | P95 总耗时 / P95 TTFT (`ov_p95_total` / `ov_ttft`) | `sub2api_gateway_request_duration_seconds_bucket` / `sub2api_request_phase_seconds_bucket{phase="headers_end"}`；仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级） |
+| 01 | 链路段耗时占比 (`ov_share`) | `sub2api_request_phase_seconds_sum/count{phase!="headers_end"}`；仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级），且 `response` 段在流式模型请求下主要反映模型持续生成输出的时间，而非单纯网络带宽慢 |
+| 01 | 失败分类与根因 Top 6 (`ov_fail`) | 2 targets：`sum by (result)(increase(sub2api_gateway_requests_total{result!="success"}[$__range]))`（`结果 · {{result}}`）+ `topk(6, sum by (failure_reason)(increase(sub2api_gateway_requests_total{result!="success"}[$__range])))`；覆盖 5 类非成功 `result` 与全量 19 类 `failure_reason`（含 R2 4xx 原因）；无失败时显示“无失败” |
+| 01 | 数据完整性 (`ov_cov` / `ov_coverage`) | `sub2api_metric_coverage_ratio`；0~1，-1 显示“无样本” |
+| 01 | 上游账号速览 / 客户端中断与重试 (`ov_acct` / `ov_abort_retry`) | M-4/M-11（attempt 口径）与 M-8/M-6 |
+| 02 | 账号健康矩阵 / 模型档位 / 并发上限 | Prometheus M-4/M-5/M-11 与 `sub2api_app_accounts_*`；QPS/TTFT/失败率是 attempt 口径 |
+| 02 | 6 段耗时 P95 (`nc_phase_p95`) | `histogram_quantile(0.95, ... sub2api_request_phase_seconds_bucket{phase!="headers_end"})`；仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级），且 `response` 段在流式模型请求下主要反映模型持续生成输出的时间 |
+| 02 | WebSocket 连接状态 (`nc_ws_active` / `nc_ws_events`) | 独立行（`y=24, h=9`）：`sum by (endpoint)(sub2api_ws_active_connections)`（`noValue="未采集"`）与 `sum by (endpoint, outcome)(rate(sub2api_ws_connections_total[$__range]))`（`noValue="无流量"`），与 HTTP 6 段指标完全分离 |
+| 03 | 宿主 / 运行时 / 应用状态 / 服务与进程 | node-exporter + go/process + `sub2api_app_*`；node-exporter 可选，未启用时显示未采集 |
 
 ### 8.2 变量
 
 | 看板 | 变量 |
 | --- | --- |
-| 02 | `user`、`api_key`、`result`（custom: all/success/failure）、`model`、`search`（textbox） |
-| 04 | `user`、`api_key` |
-| 06 | `sample_id`（单个采样主键，可由明细表链接写入 URL `var-sample_id`） |
-
-- `user`/`api_key` 为 query 变量，`includeAll=true`、`allValue=-1`、`multi=false`。
-- `model` 为 query 变量，`includeAll=true`、`allValue=__all__`；All 时 SQL 条件为 `${model:sqlstring} = '__all__'`。
-- `search` 使用 `${search:sqlstring}`，匹配用户、Key 名称、模型和请求 ID。
-- 04 的 SQL 面板同时应用 `($user = -1 OR user_id = $user)` 与 `($api_key = -1 OR api_key_id = $api_key)`；02 应用 user/api_key/result/model/search。变量不得施加到 Prom、node 或系统快照面板。
+| 01 / 02 / 03 | `admin_url`（`textbox`，默认 `http://127.0.0.1:8080`，用于顶部「实时请求流（管理后台）」外链跳转） |
 
 ### 8.3 Grafana 原生限制
 
-- Table 没有自动滚动、跟随新行或单面板暂停；02 使用“最新在前 + 10s 看板刷新”，暂停是看板级。
-- Grafana 没有抽屉；02 的“详情”链接进入 `sub2api-v2-request`，等价于 mockup 的请求详情抽屉。
-- 原生没有 Tab：使用 dashboard `links`（保留时间范围/变量）+ 顶部 HTML text 导航（当前页高亮，不可 sticky）。
-- 单条水平堆叠条用 barchart + PG wide frame 实现，不引入自定义插件。
+- 原生没有 Tab：使用顶部 HTML text 导航（当前页高亮，右侧链接跳转管理后台 Redis 实时请求流）。
+- 所有纯 Prometheus 看板禁止折线图与 PostgreSQL 查询，单面板仅用 `stat` / `bargauge` / `barchart` / `table` / `text`。
 
 ## 9. 告警契约（18 条）
 
@@ -644,7 +659,7 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 | 5 | `Sub2apiGatewaySelfError` | `sum(rate(sub2api_gateway_requests_total{result="gateway_error"}[5m])) > 0.05` | 5m | critical |
 | 6 | `Sub2apiInstrumentationStalled` | 见下方按实例集合差 | 1m | critical |
 | 7 | `Sub2apiMetricCoverageLow` | `sub2api_metric_coverage_ratio{kind="account"} >= 0 and sub2api_metric_coverage_ratio{kind="account"} < 0.8` | 30m | warning |
-| 8 | `Sub2apiClientAbortSpike` | `sum(rate(sub2api_client_abort_total[10m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[10m])),1e-9) > 0.05` | 10m | warning |
+| 8 | `Sub2apiClientAbortSpike` | `sum(rate(sub2api_gateway_requests_total{result="client_abort"}[10m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[10m])),1e-9) > 0.05` | 10m | warning |
 | 9 | `Sub2apiDownstreamShortfall` | `(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[10m])) - sum(rate(sub2api_transfer_bytes_total{direction="resp_downstream"}[10m]))) / clamp_min(sum(rate(sub2api_transfer_bytes_total{direction="resp_upstream"}[10m])),1) > 0.2` | 15m | warning |
 | 10 | `NodeExporterDown` | `up{job="node"} == 0`（未启用宿主监控时不告警） | 5m | warning |
 | 11 | `NodeDiskLow` | `node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15` | 10m | warning |
@@ -656,7 +671,7 @@ CREATE TABLE IF NOT EXISTS ops_request_transfer_samples (
 | 17 | `AlertmanagerDown` | `up{job="alertmanager"} == 0` | 5m | critical |
 | 18 | `Sub2apiUnknownFailureHigh` | `sum(rate(sub2api_gateway_requests_total{failure_reason="unknown"}[30m])) / clamp_min(sum(rate(sub2api_gateway_requests_total[30m])),1e-9) > 0.1 and sum(increase(sub2api_gateway_requests_total[30m])) > 100` | 30m | warning |
 
-第 6 条以独立的已完成网关请求计数为基准，按实例检测 V2 phase 缺失或停写。计数器与 V2 使用同一套路由判断，模型发现和 token 计数不计入；WebSocket 在请求结束后计入。
+第 6 条以独立的已完成网关请求计数为基准，按实例检测 V2 phase 缺失或停写。计数器与 V2 使用同一套路由判断（`isOpsGatewayRoute`），模型发现、token 计数以及 WebSocket 升级（`GET` + `Upgrade: websocket`）均不计入 `sub2api_ops_eligible_requests_total` 与 `OpsRecorder`；且 `OpsRecorder.requestResult` 将 HTTP `101` 视为 `("success", "")`，因此 WS 101 升级不会误触发 `Sub2apiInstrumentationStalled`、`Sub2apiGatewaySelfError`、`Sub2apiUnknownFailureHigh` 或 `Sub2apiMetricCoverageLow`。
 
 ```yaml
 - alert: Sub2apiInstrumentationStalled
@@ -762,17 +777,26 @@ docker exec sub2api-postgres psql -U sub2api -d sub2api -tAc \
 ## 附录 A：指标一览
 
 ```
-sub2api_request_phase_seconds{phase}                        histogram  s
-sub2api_transfer_bytes_total{direction}                     counter    byte
-sub2api_request_body_bytes{endpoint_class}                  histogram  byte
-sub2api_upstream_requests_total{account,result,failure_reason} counter 次
-sub2api_model_requests_total{model_class,result}            counter    次
-sub2api_attempts_total{outcome}                             counter    次
-sub2api_account_switches_total                              counter    次
-sub2api_client_abort_total{stage}                           counter    次
-sub2api_metric_coverage_ratio{kind}                         gauge      0~1 / -1
-sub2api_gateway_requests_total{result,failure_reason}       counter    次
-sub2api_upstream_ttft_seconds{account}                      histogram  s
+sub2api_request_phase_seconds{phase}                           histogram  s
+sub2api_transfer_bytes_total{direction}                        counter    byte
+sub2api_request_body_bytes{endpoint_class}                     histogram  byte
+sub2api_upstream_requests_total{account,result,failure_reason} counter    次
+sub2api_model_requests_total{model_class,result}               counter    次
+sub2api_attempts_total{outcome}                                counter    次
+sub2api_account_switches_total                                 counter    次
+sub2api_client_abort_total{stage}                              counter    次
+sub2api_metric_coverage_ratio{kind}                            gauge      0~1 / -1
+sub2api_gateway_requests_total{result,failure_reason}          counter    次
+sub2api_upstream_ttft_seconds{account}                         histogram  s
+sub2api_gateway_request_duration_seconds                       histogram  s
+sub2api_ops_eligible_requests_total                            counter    次
+sub2api_app_accounts_active                                    gauge      个
+sub2api_app_accounts_concurrency_capacity                      gauge      个
+sub2api_app_db_connections{state}                              gauge      个
+sub2api_app_concurrency_queue_depth                            gauge      个
+sub2api_app_redis_up                                           gauge      0/1
+sub2api_ws_active_connections{endpoint}                        gauge      个
+sub2api_ws_connections_total{endpoint,outcome}                 counter    次
 ```
 
 ## 附录 B：v1→v2 修订索引

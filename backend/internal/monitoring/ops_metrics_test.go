@@ -22,6 +22,8 @@ func exerciseOpsMetrics(m *OpsMetrics) {
 	m.GatewayRequests.WithLabelValues("success", "").Inc()
 	m.UpstreamTTFT.WithLabelValues("unknown").Observe(.02)
 	m.GatewayRequestDuration.Observe(.15)
+	m.WSActiveConnections.WithLabelValues("responses").Set(1)
+	m.WSConnectionsTotal.WithLabelValues("responses", "connected").Inc()
 	m.RecordAppState(AppStateSnapshot{
 		DBActiveConnections:         4,
 		DBIdleConnections:           8,
@@ -39,7 +41,7 @@ func TestOpsMetricContract(t *testing.T) {
 	exerciseOpsMetrics(m)
 	families, err := reg.Gather()
 	require.NoError(t, err)
-	require.Len(t, families, 17)
+	require.Len(t, families, 19)
 	duration := []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60}
 	reqDuration := RequestDurationBuckets()
 	body := []float64{1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456}
@@ -48,23 +50,25 @@ func TestOpsMetricContract(t *testing.T) {
 		labels  []string
 		buckets []float64
 	}{
-		"sub2api_request_phase_seconds":           {dto.MetricType_HISTOGRAM, []string{"phase"}, duration},
-		"sub2api_transfer_bytes_total":            {dto.MetricType_COUNTER, []string{"direction"}, nil},
-		"sub2api_request_body_bytes":              {dto.MetricType_HISTOGRAM, []string{"endpoint_class"}, body},
-		"sub2api_upstream_requests_total":         {dto.MetricType_COUNTER, []string{"account", "failure_reason", "result"}, nil},
-		"sub2api_model_requests_total":            {dto.MetricType_COUNTER, []string{"model_class", "result"}, nil},
-		"sub2api_attempts_total":                  {dto.MetricType_COUNTER, []string{"outcome"}, nil},
-		"sub2api_account_switches_total":          {dto.MetricType_COUNTER, nil, nil},
-		"sub2api_client_abort_total":              {dto.MetricType_COUNTER, []string{"stage"}, nil},
-		"sub2api_metric_coverage_ratio":           {dto.MetricType_GAUGE, []string{"kind"}, nil},
-		"sub2api_gateway_requests_total":          {dto.MetricType_COUNTER, []string{"failure_reason", "result"}, nil},
-		"sub2api_upstream_ttft_seconds":           {dto.MetricType_HISTOGRAM, []string{"account"}, duration},
+		"sub2api_request_phase_seconds":            {dto.MetricType_HISTOGRAM, []string{"phase"}, duration},
+		"sub2api_transfer_bytes_total":             {dto.MetricType_COUNTER, []string{"direction"}, nil},
+		"sub2api_request_body_bytes":               {dto.MetricType_HISTOGRAM, []string{"endpoint_class"}, body},
+		"sub2api_upstream_requests_total":          {dto.MetricType_COUNTER, []string{"account", "failure_reason", "result"}, nil},
+		"sub2api_model_requests_total":             {dto.MetricType_COUNTER, []string{"model_class", "result"}, nil},
+		"sub2api_attempts_total":                   {dto.MetricType_COUNTER, []string{"outcome"}, nil},
+		"sub2api_account_switches_total":           {dto.MetricType_COUNTER, nil, nil},
+		"sub2api_client_abort_total":               {dto.MetricType_COUNTER, []string{"stage"}, nil},
+		"sub2api_metric_coverage_ratio":            {dto.MetricType_GAUGE, []string{"kind"}, nil},
+		"sub2api_gateway_requests_total":           {dto.MetricType_COUNTER, []string{"failure_reason", "result"}, nil},
+		"sub2api_upstream_ttft_seconds":            {dto.MetricType_HISTOGRAM, []string{"account"}, duration},
 		"sub2api_gateway_request_duration_seconds": {dto.MetricType_HISTOGRAM, nil, reqDuration},
-		"sub2api_app_db_connections":              {dto.MetricType_GAUGE, []string{"state"}, nil},
-		"sub2api_app_redis_up":                    {dto.MetricType_GAUGE, nil, nil},
-		"sub2api_app_accounts_active":             {dto.MetricType_GAUGE, nil, nil},
+		"sub2api_app_db_connections":               {dto.MetricType_GAUGE, []string{"state"}, nil},
+		"sub2api_app_redis_up":                     {dto.MetricType_GAUGE, nil, nil},
+		"sub2api_app_accounts_active":              {dto.MetricType_GAUGE, nil, nil},
 		"sub2api_app_accounts_concurrency_capacity": {dto.MetricType_GAUGE, nil, nil},
-		"sub2api_app_concurrency_queue_depth":     {dto.MetricType_GAUGE, nil, nil},
+		"sub2api_app_concurrency_queue_depth":      {dto.MetricType_GAUGE, nil, nil},
+		"sub2api_ws_active_connections":            {dto.MetricType_GAUGE, []string{"endpoint"}, nil},
+		"sub2api_ws_connections_total":             {dto.MetricType_COUNTER, []string{"endpoint", "outcome"}, nil},
 	}
 	for _, family := range families {
 		spec, ok := specs[family.GetName()]
@@ -120,7 +124,7 @@ func TestOpsRegistrationIsolationAndErrors(t *testing.T) {
 	require.True(t, errors.As(err, &duplicate))
 	got, err := reg.Gather()
 	require.NoError(t, err)
-	require.Len(t, got, 17)
+	require.Len(t, got, 19)
 	got, err = empty.Gather()
 	require.NoError(t, err)
 	require.Empty(t, got)

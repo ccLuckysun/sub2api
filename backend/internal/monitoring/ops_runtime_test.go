@@ -51,6 +51,8 @@ func TestConfiguredRegistryV2SharedExposition(t *testing.T) {
 		"sub2api_app_accounts_active",
 		"sub2api_app_accounts_concurrency_capacity",
 		"sub2api_app_concurrency_queue_depth",
+		"sub2api_ws_active_connections",
+		"sub2api_ws_connections_total",
 	}
 	for _, name := range names {
 		require.Equal(t, 1, strings.Count(w.Body.String(), "# HELP "+name+" "), name)

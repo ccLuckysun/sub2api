@@ -148,3 +148,30 @@ func TestFailureClassification(t *testing.T) {
 	}
 	require.Len(t, reasons, 13)
 }
+
+func TestClassifyRejectedStatus(t *testing.T) {
+	tests := []struct {
+		status     int
+		wantResult string
+		wantReason string
+	}{
+		{200, "", ""},
+		{399, "", ""},
+		{400, "rejected", "client_bad_request"},
+		{401, "rejected", "client_auth_failed"},
+		{403, "rejected", "client_forbidden"},
+		{404, "rejected", "client_not_found"},
+		{413, "rejected", "body_too_large"},
+		{429, "rejected", "gateway_ratelimit"},
+		{499, "client_abort", "client_abort"},
+		{405, "rejected", "unknown"},
+		{422, "rejected", "unknown"},
+		{500, "gateway_error", "unknown"},
+		{502, "gateway_error", "unknown"},
+	}
+	for _, tc := range tests {
+		result, reason := ClassifyRejectedStatus(tc.status)
+		require.Equal(t, tc.wantResult, result, "status=%d", tc.status)
+		require.Equal(t, tc.wantReason, reason, "status=%d", tc.status)
+	}
+}

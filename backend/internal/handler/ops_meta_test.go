@@ -243,3 +243,37 @@ func TestOpsMetaEnrichedDisplayFieldsAndMasking(t *testing.T) {
 	require.NotNil(t, sample.GroupName)
 	require.Equal(t, "claude-pro", *sample.GroupName)
 }
+
+func TestOpsMetaPreservesCompositePublicModelAfterRewrite(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	metrics, err := monitoring.NewOpsMetrics(registry)
+	require.NoError(t, err)
+	samples := make(metaSampleSink, 1)
+	ctx := monitoring.WithOpsRecorderDependencies(context.Background(), nil, nil, samples)
+	ctx, rec := monitoring.BeginGatewayRequest(ctx, "/v1/responses", metrics)
+	ctx = service.WithCompositeRouteDecision(ctx, service.CompositeRouteDecision{
+		Matched:        true,
+		PublicModel:    "public-alias-v1",
+		TargetPlatform: service.PlatformOpenAI,
+		UpstreamModel:  "gpt-4o",
+	})
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/v1/responses", nil).WithContext(ctx)
+	groupID := int64(77)
+	key := &service.APIKey{
+		ID:      35,
+		GroupID: &groupID,
+		Group:   &service.Group{ID: 77, Name: "comp-group", Platform: service.PlatformComposite},
+	}
+	// Handler extracted rewritten upstream model "gpt-4o" from rewritten body;
+	// attachOpsRequestMeta must still keep the public alias "public-alias-v1".
+	attachOpsRequestMeta(c, key, 12, "gpt-4o", &service.Account{ID: 5, Name: "openai-acc", Platform: service.PlatformOpenAI})
+	rec.Finalize(monitoring.FinalizeInput{Status: 500})
+
+	sample := <-samples
+	require.NotNil(t, sample.Model)
+	require.Equal(t, "public-alias-v1", *sample.Model)
+	require.NotNil(t, sample.Platform)
+	require.Equal(t, service.PlatformOpenAI, *sample.Platform)
+}

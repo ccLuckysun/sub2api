@@ -17,10 +17,11 @@ import (
 func (h *OpsHandler) GetRealtimeRequests(c *gin.Context) {
 	if h == nil || h.realtimeRequestsReader == nil {
 		response.Success(c, &service.RealtimeRequestsResponse{
-			Enabled:   false,
-			Items:     []monitoring.OpsSample{},
-			Models:    []string{},
-			Timestamp: time.Now().UTC(),
+			Enabled:        false,
+			Items:          []monitoring.OpsSample{},
+			Models:         []string{},
+			FailureReasons: []string{},
+			Timestamp:      time.Now().UTC(),
 		})
 		return
 	}
@@ -41,10 +42,11 @@ func (h *OpsHandler) GetRealtimeRequests(c *gin.Context) {
 	}
 
 	filter := service.RealtimeRequestsFilter{
-		Result: strings.TrimSpace(c.Query("result")),
-		Model:  strings.TrimSpace(c.Query("model")),
-		Search: strings.TrimSpace(c.Query("search")),
-		Limit:  limit,
+		Result:        strings.TrimSpace(c.Query("result")),
+		Model:         strings.TrimSpace(c.Query("model")),
+		FailureReason: strings.TrimSpace(c.Query("failure_reason")),
+		Search:        strings.TrimSpace(c.Query("search")),
+		Limit:         limit,
 	}
 
 	resp, err := h.realtimeRequestsReader.ListRealtimeRequests(c.Request.Context(), filter)

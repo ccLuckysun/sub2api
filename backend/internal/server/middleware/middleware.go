@@ -76,12 +76,14 @@ func NewErrorResponse(code, message string) ErrorResponse {
 
 // AbortWithError 中断请求并返回JSON错误
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
+	RecordOpsAbortError(c, code, message)
 	c.JSON(statusCode, NewErrorResponse(code, message))
 	c.Abort()
 }
 
 // abortWithOpenAIQuotaError writes the OpenAI-compatible insufficient quota response.
 func abortWithOpenAIQuotaError(c *gin.Context, statusCode int, message string) {
+	RecordOpsAbortError(c, "insufficient_quota", message)
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
 			"message": message,
@@ -110,6 +112,7 @@ func AnthropicErrorWriter(c *gin.Context, status int, message string) {
 	case http.StatusForbidden:
 		errorType = "permission_error"
 	}
+	RecordOpsAbortError(c, errorType, message)
 	c.JSON(status, gin.H{
 		"type":  "error",
 		"error": gin.H{"type": errorType, "message": message},
@@ -118,6 +121,7 @@ func AnthropicErrorWriter(c *gin.Context, status int, message string) {
 
 // GoogleErrorWriter 按 Google API 规范输出错误
 func GoogleErrorWriter(c *gin.Context, status int, message string) {
+	RecordOpsAbortError(c, googleapi.HTTPStatusToGoogleStatus(status), message)
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"code":    status,
@@ -129,6 +133,11 @@ func GoogleErrorWriter(c *gin.Context, status int, message string) {
 
 // OpenAIErrorWriter 按 OpenAI API 规范输出模型级错误（model_not_found）。
 func OpenAIErrorWriter(c *gin.Context, status int, message string) {
+	code := "model_not_found"
+	if status != http.StatusNotFound {
+		code = ""
+	}
+	RecordOpsAbortError(c, code, message)
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"message": message,

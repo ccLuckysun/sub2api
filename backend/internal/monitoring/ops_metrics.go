@@ -36,9 +36,11 @@ type OpsMetrics struct {
 	AppAccountsActive           prometheus.Gauge
 	AppAccountsConcurrencyCap   prometheus.Gauge
 	AppConcurrencyQueueDepth    prometheus.Gauge
+	WSActiveConnections         *prometheus.GaugeVec
+	WSConnectionsTotal          *prometheus.CounterVec
 }
 
-// NewOpsMetrics registers M-1 through M-17 without touching the default registry.
+// NewOpsMetrics registers M-1 through M-19 without touching the default registry.
 // Registration failures (including duplicates) return errors, never panic.
 // Collectors registered by this call are removed if a later registration fails.
 func NewOpsMetrics(reg prometheus.Registerer) (*OpsMetrics, error) {
@@ -63,6 +65,8 @@ func NewOpsMetrics(reg prometheus.Registerer) (*OpsMetrics, error) {
 		AppAccountsActive:         prometheus.NewGauge(prometheus.GaugeOpts{Name: "sub2api_app_accounts_active", Help: "Number of active non-deleted upstream accounts."}),
 		AppAccountsConcurrencyCap: prometheus.NewGauge(prometheus.GaugeOpts{Name: "sub2api_app_accounts_concurrency_capacity", Help: "Total configured concurrency capacity across active non-deleted upstream accounts."}),
 		AppConcurrencyQueueDepth:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "sub2api_app_concurrency_queue_depth", Help: "Latest observed concurrency queue depth."}),
+		WSActiveConnections:       prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "sub2api_ws_active_connections", Help: "Current active gateway WebSocket connections by endpoint."}, []string{"endpoint"}),
+		WSConnectionsTotal:        prometheus.NewCounterVec(prometheus.CounterOpts{Name: "sub2api_ws_connections_total", Help: "Total gateway WebSocket connections by endpoint and outcome."}, []string{"endpoint", "outcome"}),
 	}
 	collectors := []prometheus.Collector{
 		m.RequestPhase,
@@ -82,6 +86,8 @@ func NewOpsMetrics(reg prometheus.Registerer) (*OpsMetrics, error) {
 		m.AppAccountsActive,
 		m.AppAccountsConcurrencyCap,
 		m.AppConcurrencyQueueDepth,
+		m.WSActiveConnections,
+		m.WSConnectionsTotal,
 	}
 	for i, c := range collectors {
 		if err := reg.Register(c); err != nil {
@@ -96,6 +102,12 @@ func NewOpsMetrics(reg prometheus.Registerer) (*OpsMetrics, error) {
 	}
 	for _, state := range []string{"active", "idle"} {
 		m.AppDBConnections.WithLabelValues(state).Set(0)
+	}
+	for _, endpoint := range []string{"responses", "realtime", "live"} {
+		m.WSActiveConnections.WithLabelValues(endpoint).Set(0)
+		for _, outcome := range []string{"connected", "closed_normal", "closed_error", "rejected", "handshake_failed"} {
+			m.WSConnectionsTotal.WithLabelValues(endpoint, outcome).Add(0)
+		}
 	}
 	return m, nil
 }

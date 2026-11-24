@@ -1242,6 +1242,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					Message:            upstreamMsg,
 					Detail:             upstreamDetail,
 				})
+				RecordOpsUpstreamErrorFromBody(ctx, c, resp.StatusCode, respBody, upstreamMsg)
 
 				shouldDisable := s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
 				ops.failure(nil, "headers", resp.StatusCode, openAIResponsesOpsCode(respBody))
@@ -1698,8 +1699,17 @@ func openAIResponsesOpsAbort(ctx context.Context) {
 	}
 }
 func openAIResponsesOpsCode(body []byte) string {
-	for _, path := range []string{"error.code", "error.type", "response.error.code", "response.error.type"} {
-		if value := strings.TrimSpace(gjson.GetBytes(body, path).String()); value != "" {
+	for _, path := range []string{"error.code", "error.status", "error.type", "response.error.code", "response.error.status", "response.error.type"} {
+		res := gjson.GetBytes(body, path)
+		if res.Type != gjson.String {
+			continue
+		}
+		if value := strings.TrimSpace(res.String()); value != "" {
+			return value
+		}
+	}
+	for _, path := range []string{"error.code", "response.error.code"} {
+		if value := opsScalarErrorCode(gjson.GetBytes(body, path)); value != "" {
 			return value
 		}
 	}
@@ -1708,6 +1718,15 @@ func openAIResponsesOpsCode(body []byte) string {
 func openAIResponsesOpsSemantic(ctx context.Context, body []byte) {
 	if ops, _ := ctx.Value(openAIResponsesOpsKey{}).(*openAIResponsesOps); ops != nil {
 		ops.code = openAIResponsesOpsCode(body)
+		if ops.rec != nil {
+			msg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+			if msg == "" {
+				msg = strings.TrimSpace(gjson.GetBytes(body, "response.error.message").String())
+			}
+			if msg != "" || ops.code != "" {
+				ops.rec.RecordErrorDetails(msg, 0, ops.code)
+			}
+		}
 	}
 }
 

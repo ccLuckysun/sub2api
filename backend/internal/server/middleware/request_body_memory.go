@@ -16,6 +16,7 @@ import (
 func RejectRequestBodyReadError(c *gin.Context, component string, err error) bool {
 	if err != nil && c != nil && c.Request != nil && c.Request.Context().Err() != nil && !pkghttputil.IsRequestBodyReadTimeout(err) {
 		logRequestBodyReadFailure(c, component, pkghttputil.DescribeRequestBodyReadFailure(c.Request, err))
+		RecordOpsAbortError(c, "", "Client closed the connection before the request body was received")
 		if !c.Writer.Written() {
 			c.Status(499)
 		}

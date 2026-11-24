@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -22,20 +23,28 @@ import (
 // GrokRealtime exposes xAI's native Voice Realtime WebSocket.
 // Only Grok-platform API keys may use this endpoint.
 func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
+	var wsObs *monitoring.WSObserver
+	if c != nil && c.Request != nil {
+		wsObs = monitoring.WSObserverFromContext(c.Request.Context())
+	}
 	if c == nil || c.Request == nil || !isOpenAIWSUpgradeRequest(c.Request) {
+		wsObs.MarkRejected()
 		h.errorResponse(c, http.StatusUpgradeRequired, "invalid_request_error", "WebSocket upgrade required (Upgrade: websocket)")
 		return
 	}
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGrok {
+		wsObs.MarkRejected()
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Realtime API is not supported for this platform")
 		return
 	}
 	if !h.ensureResponsesDependencies(c, nil) {
+		wsObs.MarkRejected()
 		return
 	}
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+		wsObs.MarkRejected()
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -52,6 +61,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
 	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, service.InflightEstimateRequest{Model: model, Kind: service.InflightEstimateAudio, AudioMode: "realtime", AudioUnits: 1})
 	if inflightErr != nil {
+		wsObs.MarkRejected()
 		status, code, message, retryAfter := billingErrorDetails(inflightErr)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -92,6 +102,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		release, slotStatus = h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", candidate, false, &streamStarted, reqLog)
 		if slotStatus != openAISlotAcquireOK {
 			if slotStatus == openAISlotAcquireFailed {
+				wsObs.MarkRejected()
 				return
 			}
 			failed[account.ID] = struct{}{}
@@ -125,6 +136,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		break
 	}
 	if selection == nil || selection.Account == nil || release == nil || upstream == nil {
+		wsObs.MarkRejected()
 		if !candidateSeen {
 			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
 		} else {
@@ -137,13 +149,22 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 
 	conn, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
 	if err != nil {
+		wsObs.MarkHandshakeFailed()
 		return
 	}
-	defer func() { _ = conn.CloseNow() }()
+	wsClosedNormal := false
+	wsObs.MarkConnected()
+	defer func() {
+		wsObs.MarkClosed(wsClosedNormal)
+		_ = conn.CloseNow()
+	}()
 
 	started := time.Now()
 	audioObserved, proxyErr := h.gatewayService.ProxyGrokRealtimeConn(c.Request.Context(), c, conn, upstream)
 	elapsed := time.Since(started)
+	if isNormalWSClose(proxyErr) {
+		wsClosedNormal = true
+	}
 	if proxyErr != nil {
 		reqLog.Info("grok_realtime.proxy_failed", zap.Error(proxyErr))
 		if !isExpectedGrokRealtimeClose(proxyErr) {
@@ -168,17 +189,23 @@ func grokRealtimeBillingResult(model string, elapsed time.Duration, audioObserve
 	}
 }
 
-func isExpectedGrokRealtimeClose(err error) bool {
+func isNormalWSClose(err error) bool {
 	if err == nil {
 		return true
 	}
 	switch coderws.CloseStatus(err) {
-	case coderws.StatusNormalClosure, coderws.StatusGoingAway,
-		coderws.StatusNoStatusRcvd, coderws.StatusAbnormalClosure:
+	case coderws.StatusNormalClosure, coderws.StatusGoingAway, coderws.StatusNoStatusRcvd:
 		return true
 	default:
 		return false
 	}
+}
+
+func isExpectedGrokRealtimeClose(err error) bool {
+	if isNormalWSClose(err) {
+		return true
+	}
+	return coderws.CloseStatus(err) == coderws.StatusAbnormalClosure
 }
 
 // GrokVoice handles xAI Voice HTTP endpoints. endpoint is "tts", "stt", or "custom-voices".

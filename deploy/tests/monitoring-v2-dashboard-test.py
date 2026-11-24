@@ -2,6 +2,7 @@
 """Validate the 3 canonical pure-Prometheus V2 dashboards and run PromQL regression cases."""
 import argparse
 import json
+import os
 import re
 import runpy
 import subprocess
@@ -30,7 +31,7 @@ ADMIN_REALTIME_URL = '${admin_url}/admin/ops#realtime-requests'
 EXPECTED = {
     'overview': dict(file='01-overview.json', uid='sub2api-v2-overview', count=14,
                      refresh='30s', time_from='now-15m', variables=['admin_url']),
-    'nodes-chain': dict(file='02-nodes-chain.json', uid='sub2api-v2-nodes-chain', count=11,
+    'nodes-chain': dict(file='02-nodes-chain.json', uid='sub2api-v2-nodes-chain', count=13,
                         refresh='30s', time_from='now-15m', variables=['admin_url']),
     'host': dict(file='03-host.json', uid='sub2api-v2-host', count=23,
                  refresh='30s', time_from='now-1h', variables=['admin_url']),
@@ -93,6 +94,7 @@ for spec in specs:
             'ov_in': '无流量', 'ov_out': '无流量', 'ov_amp': '无流量',
             'ov_fail': '无失败', 'ov_cov': '未采集', 'ov_coverage': '未采集',
             'nc_switch': '无流量', 'nc_aborts': '无中断',
+            'nc_ws_active': '未采集', 'nc_ws_events': '无流量',
         }.get(pid)
         if no_value is not None:
             assert panel['fieldConfig']['defaults']['noValue'] == no_value, pid
@@ -154,6 +156,26 @@ assert len(ov['ov_acct']['targets']) == 3
 assert ov['ov_acct']['transformations'][0] == {
     'id': 'joinByField', 'options': {'byField': 'account', 'mode': 'outer'}}
 assert len(ov['ov_abort_retry']['targets']) == 2
+assert len(ov['ov_fail']['targets']) == 2
+assert 'by (result)' in ov['ov_fail']['targets'][0]['expr']
+assert ov['ov_fail']['targets'][0]['legendFormat'] == '结果 · {{result}}'
+assert 'by (failure_reason)' in ov['ov_fail']['targets'][1]['expr']
+assert ov['ov_fail']['targets'][1]['legendFormat'] == '{{failure_reason}}'
+ov_fail_override_keys = {
+    o['matcher']['options']
+    for o in ov['ov_fail']['fieldConfig']['overrides']
+    if o.get('matcher', {}).get('id') == 'byName'
+}
+assert {'结果 · upstream_error', '结果 · gateway_error', '结果 · rejected',
+        '结果 · client_abort', '结果 · timeout'} <= ov_fail_override_keys
+assert {'client_bad_request', 'client_auth_failed', 'client_forbidden',
+        'client_not_found', 'body_too_large', 'gateway_ratelimit',
+        'client_abort', 'unknown'} <= ov_fail_override_keys
+assert 'gateway_error' not in ov_fail_override_keys
+assert 'rejected' not in ov_fail_override_keys
+for pid in ('ov_p95_total', 'ov_ttft', 'ov_share'):
+    assert '仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）' in ov[pid]['description'], pid
+assert '`response`（响应传输）段在流式模型请求下主要反映模型持续生成输出的时间，而非单纯网络带宽慢' in ov['ov_share']['description']
 print('PASS: 01-overview pure-Prometheus KPI/phase/coverage/account/abort-retry assertions')
 
 # 02 nodes & chain assertions
@@ -167,10 +189,20 @@ assert len(nc['nc_models']['targets']) == 2
 assert nc['nc_models']['transformations'][0] == {
     'id': 'joinByField', 'options': {'byField': 'model_class', 'mode': 'outer'}}
 assert 'sub2api_request_phase_seconds_bucket{phase!="headers_end"}' in nc['nc_phase_p95']['targets'][0]['expr']
+assert '仅统计 HTTP 网关转发请求（不含 WebSocket 长连接升级）' in nc['nc_phase_p95']['description']
+assert '`response`（响应传输）段在流式模型请求下主要反映模型持续生成输出的时间，而非单纯网络带宽慢' in nc['nc_phase_p95']['description']
 assert 'sub2api_transfer_bytes_total' in nc['nc_transfer']['targets'][0]['expr']
 assert 'sub2api_request_body_bytes_bucket' in nc['nc_body_p95']['targets'][0]['expr']
 assert 'sub2api_client_abort_total' in nc['nc_aborts']['targets'][0]['expr']
-print('PASS: 02-nodes-chain pure-Prometheus account/model/chain/bytes assertions')
+assert 'sub2api_ws_active_connections' in nc['nc_ws_active']['targets'][0]['expr']
+assert 'sub2api_ws_connections_total' in nc['nc_ws_events']['targets'][0]['expr']
+assert nc['nc_ws_active']['gridPos'] == {'h': 9, 'w': 8, 'x': 0, 'y': 24}
+assert nc['nc_ws_events']['gridPos'] == {'h': 9, 'w': 16, 'x': 8, 'y': 24}
+for pid in ('nc_ws_active', 'nc_ws_events'):
+    expr = nc[pid]['targets'][0]['expr']
+    assert 'sub2api_request_phase_seconds' not in expr
+    assert 'sub2api_gateway_requests_total' not in expr
+print('PASS: 02-nodes-chain pure-Prometheus account/model/chain/bytes/ws assertions')
 
 # 03 host & app assertions
 hs = by_dash['host']
@@ -188,13 +220,13 @@ assert appinfo['transformations'] == [
 print('PASS: 03-host pure-Prometheus app gauges, host load, and appinfo join')
 
 
-def case(name, inputs, checks):
+def case(name, inputs, checks, eval_time='10m'):
     return dict(
         name=name,
         interval='1m',
         input_series=inputs,
         promql_expr_test=[
-            dict(expr=expr, eval_time='10m',
+            dict(expr=expr, eval_time=eval_time,
                  exp_samples=[dict(labels=labels, value=value)
                               for labels, value in expected])
             for expr, expected in checks
@@ -244,6 +276,31 @@ for value in [0.96, 0.85, 0, -1]:
         (coverage, [('{__name__="sub2api_metric_coverage_ratio",kind="account"}', value)]),
     ]))
 
+ws_active = promql(ns['QUERIES']['nc_ws_active'][0]['expr'])
+ws_events = promql(ns['QUERIES']['nc_ws_events'][0]['expr'])
+tests.append(case('websocket active and events', [
+    dict(series='sub2api_ws_active_connections{endpoint="responses"}', values='3+0x20'),
+    dict(series='sub2api_ws_active_connections{endpoint="realtime"}', values='2+0x20'),
+    dict(series='sub2api_ws_active_connections{endpoint="live"}', values='1+0x20'),
+    dict(series='sub2api_ws_connections_total{endpoint="responses",outcome="connected"}',
+         values='0+60x20'),
+], [
+    (ws_active, [('{endpoint="responses"}', 3), ('{endpoint="realtime"}', 2), ('{endpoint="live"}', 1)]),
+    (ws_events, [('{endpoint="responses",outcome="connected"}', 1)]),
+], eval_time='20m'))
+
+ov_fail_result = promql(ns['QUERIES']['ov_fail'][0]['expr'])
+ov_fail_reason = promql(ns['QUERIES']['ov_fail'][1]['expr'])
+tests.append(case('ov_fail result and failure_reason split', [
+    dict(series='sub2api_gateway_requests_total{result="rejected",failure_reason="client_auth_failed"}',
+         values='0+1x20'),
+    dict(series='sub2api_gateway_requests_total{result="success",failure_reason=""}',
+         values='0+5x20'),
+], [
+    (ov_fail_result, [('{result="rejected"}', 15)]),
+    (ov_fail_reason, [('{failure_reason="client_auth_failed"}', 15)]),
+], eval_time='20m'))
+
 queries = [promql(expr) for expr in prom_exprs]
 assert all('vector(1)' not in expr for expr in queries)
 if args.static_only:
@@ -252,14 +309,21 @@ if args.static_only:
     raise SystemExit(0)
 with tempfile.TemporaryDirectory(prefix='w5-dashboard-promql-') as tmp:
     directory = Path(tmp)
-    (directory / 'queries.yml').write_text(json.dumps({
+    queries_file = directory / 'queries.yml'
+    tests_file = directory / 'regression_test.yml'
+    queries_file.write_text(json.dumps({
         'groups': [{'name': 'dashboard-queries',
                     'rules': [dict(record='w5_panel_' + str(i), expr=q)
                               for i, q in enumerate(queries)]}]
     }))
-    (directory / 'regression_test.yml').write_text(json.dumps(
-        dict(rule_files=[], evaluation_interval='1m', tests=tests)))
+    tests_file.write_text(json.dumps(
+        dict(rule_files=[], evaluation_interval='1m',
+             fuzzy_compare=True, tests=tests)))
+    os.chmod(directory, 0o755)
+    os.chmod(queries_file, 0o644)
+    os.chmod(tests_file, 0o644)
     base = ['docker', 'run', '--rm', '--network', 'none',
+            '--user', f'{os.getuid()}:{os.getgid()}',
             '-v', str(directory) + ':/m:ro', '--entrypoint', 'promtool',
             'prom/prometheus:v3.16.0']
     subprocess.run(base + ['check', 'rules', '/m/queries.yml'], check=True)

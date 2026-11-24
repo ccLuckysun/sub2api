@@ -3,10 +3,13 @@ package monitoring
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
@@ -267,4 +270,194 @@ func TestOpsSampleRecorderDependenciesAndNilSink(t *testing.T) {
 	require.Nil(t, sample.Model)
 	require.True(t, regexp.MustCompile(`^internal-[0-9]+-[0-9]+$`).MatchString(sample.RequestID))
 	h.r.Finalize(FinalizeInput{Status: 200}) // nil sink remains a no-op.
+}
+
+func TestOpsSampleRecorderHTTP101And4xxReasons(t *testing.T) {
+	t.Run("http_101_success_suppresses_error_fields", func(t *testing.T) {
+		h := newRecorderHarness(t)
+		var samples []OpsSample
+		h.r.sampleSink = sampleSinkFunc(func(s OpsSample) bool { samples = append(samples, s); return true })
+		h.r.SetHTTPMethod("get")
+		h.r.RecordErrorDetails("stale message", 502, "bad_gateway")
+		h.r.Finalize(FinalizeInput{Status: http.StatusSwitchingProtocols})
+		require.Len(t, samples, 1)
+		s := samples[0]
+		require.Equal(t, "success", *s.Result)
+		require.Equal(t, "", *s.FailureReason)
+		require.Equal(t, http.StatusSwitchingProtocols, *s.HTTPStatus)
+		require.Equal(t, "GET", *s.HTTPMethod)
+		require.Nil(t, s.ErrorMessage)
+		require.Nil(t, s.UpstreamStatus)
+		require.Nil(t, s.UpstreamErrorCode)
+	})
+
+	for _, tc := range []struct {
+		status     int
+		bodyAbort  bool
+		wantResult string
+		wantReason string
+	}{
+		{400, false, "rejected", "client_bad_request"},
+		{401, false, "rejected", "client_auth_failed"},
+		{403, false, "rejected", "client_forbidden"},
+		{404, false, "rejected", "client_not_found"},
+		{413, false, "rejected", "body_too_large"},
+		{429, false, "rejected", "gateway_ratelimit"},
+		{499, false, "client_abort", "client_abort"},
+		{499, true, "client_abort", "client_abort_during_body_read"},
+		{405, false, "rejected", "unknown"},
+	} {
+		t.Run(fmt.Sprintf("status_%d_abort_%v", tc.status, tc.bodyAbort), func(t *testing.T) {
+			h := newRecorderHarness(t)
+			var samples []OpsSample
+			h.r.sampleSink = sampleSinkFunc(func(s OpsSample) bool { samples = append(samples, s); return true })
+			if tc.bodyAbort {
+				h.r.MarkClientAbort("body_read")
+			}
+			h.r.Finalize(FinalizeInput{Status: tc.status})
+			require.Len(t, samples, 1)
+			require.Equal(t, tc.wantResult, *samples[0].Result)
+			require.Equal(t, tc.wantReason, *samples[0].FailureReason)
+		})
+	}
+}
+
+func TestOpsSampleRecorderMergeMetaAndSetHTTPMethod(t *testing.T) {
+	h := newRecorderHarness(t)
+	var samples []OpsSample
+	h.r.sampleSink = sampleSinkFunc(func(s OpsSample) bool { samples = append(samples, s); return true })
+
+	h.r.SetHTTPMethod("post")
+	h.r.MergeMeta(OpsRequestMeta{
+		RequestID:       "req-1",
+		ClientRequestID: "client-1",
+		UserID:          42,
+		UserEmail:       "u@example.com",
+		APIKeyID:        7,
+		APIKeyName:      "k1",
+		APIKeyMasked:    "sk-test1…9999",
+		GroupID:         3,
+		GroupName:       "g1",
+		Platform:        "openai",
+		Endpoint:        "/v1/responses",
+	})
+	// Subsequent empty MergeMeta must not clear existing values.
+	h.r.MergeMeta(OpsRequestMeta{Model: "gpt-5"})
+	// Wholesale AttachMeta must NOT wipe httpMethod.
+	h.r.AttachMeta(OpsRequestMeta{
+		RequestID: "req-2",
+		UserID:    42,
+		APIKeyID:  7,
+		Model:     "gpt-5",
+		Endpoint:  "/v1/responses",
+	})
+	h.r.Finalize(FinalizeInput{Status: 400})
+	// Post-Finalize updates are ignored.
+	h.r.SetHTTPMethod("DELETE")
+	h.r.MergeMeta(OpsRequestMeta{Model: "ignored"})
+
+	require.Len(t, samples, 1)
+	s := samples[0]
+	require.Equal(t, "POST", *s.HTTPMethod)
+	require.Equal(t, "req-2", s.RequestID)
+	require.Equal(t, "gpt-5", *s.Model)
+
+	// Verify MergeMeta alone keeps EndpointClass & earlier fields intact.
+	h2 := newRecorderHarness(t)
+	var samples2 []OpsSample
+	h2.r.sampleSink = sampleSinkFunc(func(s OpsSample) bool { samples2 = append(samples2, s); return true })
+	h2.r.MergeMeta(OpsRequestMeta{
+		RequestID: "req-merge",
+		UserID:    99,
+		APIKeyID:  88,
+		Platform:  "composite",
+		Endpoint:  "/v1/responses",
+	})
+	h2.r.MergeMeta(OpsRequestMeta{
+		Platform:    "openai",
+		AccountID:   55,
+		AccountName: "acct-openai",
+	})
+	h2.r.Finalize(FinalizeInput{Status: 200})
+	require.Len(t, samples2, 1)
+	require.EqualValues(t, 99, *samples2[0].UserID)
+	require.EqualValues(t, 88, *samples2[0].APIKeyID)
+	require.Equal(t, "openai", *samples2[0].Platform)
+	require.EqualValues(t, 55, *samples2[0].AccountID)
+	require.Equal(t, "responses", *samples2[0].EndpointClass)
+}
+
+func TestOpsSampleRecorderRecordErrorDetailsPriorityAndConcurrency(t *testing.T) {
+	t.Run("upstream_wins_and_retry_updates_latest", func(t *testing.T) {
+		h := newRecorderHarness(t)
+		var samples []OpsSample
+		h.r.sampleSink = sampleSinkFunc(func(s OpsSample) bool { samples = append(samples, s); return true })
+
+		// Generic gateway message first, then upstream attempt 1, then upstream attempt 2 without code, then final generic wrapper.
+		h.r.RecordErrorDetails("generic first", 0, "")
+		h.r.RecordErrorDetails("generic second should not overwrite", 0, "")
+		h.r.RecordErrorDetails("rate limited with sk-proj-secretkey1234", 429, "rate_limit_exceeded")
+		h.r.RecordErrorDetails(strings.Repeat("错", 600), 503, "")
+		h.r.RecordErrorDetails("Upstream request failed", 0, "ignored_code")
+
+		a := h.r.StartAttempt("acct")
+		a.Sent()
+		a.Done("upstream_error", "upstream_server_error", FailureEvidence{StatusCode: 503})
+		h.r.Finalize(FinalizeInput{Status: 503})
+
+		require.Len(t, samples, 1)
+		s := samples[0]
+		require.NotNil(t, s.ErrorMessage)
+		require.True(t, utf8.ValidString(*s.ErrorMessage))
+		require.Equal(t, maxOpsErrorMessageRunes, utf8.RuneCountInString(*s.ErrorMessage))
+		require.NotNil(t, s.UpstreamStatus)
+		require.Equal(t, 503, *s.UpstreamStatus)
+		require.Nil(t, s.UpstreamErrorCode, "stale upstream code from 429 must be cleared on 503 with empty code")
+	})
+
+	t.Run("generic_first_non_empty_preserved", func(t *testing.T) {
+		h := newRecorderHarness(t)
+		var samples []OpsSample
+		h.r.sampleSink = sampleSinkFunc(func(s OpsSample) bool { samples = append(samples, s); return true })
+
+		h.r.RecordErrorDetails("API key is disabled sk-ant-secret12345", 0, "API_KEY_DISABLED")
+		h.r.RecordErrorDetails("generic fallback wrapper", 0, "GENERIC")
+		h.r.Finalize(FinalizeInput{Status: 401})
+
+		require.Len(t, samples, 1)
+		s := samples[0]
+		require.NotNil(t, s.ErrorMessage)
+		require.NotContains(t, *s.ErrorMessage, "sk-ant-secret12345")
+		require.Contains(t, *s.ErrorMessage, "API key is disabled sk-***")
+		require.Nil(t, s.UpstreamStatus)
+		require.NotNil(t, s.UpstreamErrorCode)
+		require.Equal(t, "API_KEY_DISABLED", *s.UpstreamErrorCode)
+	})
+
+	t.Run("concurrent_mutations_race_free", func(t *testing.T) {
+		h := newRecorderHarness(t)
+		var samples []OpsSample
+		var mu sync.Mutex
+		h.r.sampleSink = sampleSinkFunc(func(s OpsSample) bool {
+			mu.Lock()
+			samples = append(samples, s)
+			mu.Unlock()
+			return true
+		})
+		var wg sync.WaitGroup
+		for i := 0; i < 32; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				h.r.SetHTTPMethod("POST")
+				h.r.MergeMeta(OpsRequestMeta{RequestID: fmt.Sprintf("r-%d", idx), UserID: int64(idx + 1)})
+				h.r.RecordErrorDetails(fmt.Sprintf("err %d Bearer sec-%d", idx, idx), 500+(idx%3), "err_code")
+			}(i)
+		}
+		wg.Wait()
+		h.r.Finalize(FinalizeInput{Status: 502})
+		mu.Lock()
+		require.Len(t, samples, 1)
+		mu.Unlock()
+	})
 }

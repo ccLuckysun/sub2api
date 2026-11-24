@@ -404,6 +404,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 // responsesErrorResponse writes an error in OpenAI Responses API format.
 func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code, message string) {
+	if status >= 400 {
+		middleware2.RecordOpsAbortError(c, code, message)
+	}
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"code":    code,

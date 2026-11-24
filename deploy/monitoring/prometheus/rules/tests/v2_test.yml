@@ -1,0 +1,1205 @@
+{
+  "rule_files": [
+    "../slo.yml",
+    "../chain.yml",
+    "../infra.yml"
+  ],
+  "evaluation_interval": "15s",
+  "tests": [
+    {
+      "name": "Sub2apiTargetDown trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"sub2api\",instance=\"a\"}",
+          "values": "0+0x60 1+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiTargetDown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "sub2api",
+                "instance": "a",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiTargetDown",
+                "description": "实例 a：Sub2apiTargetDown；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiTargetDown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiErrorRateHigh trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_http_requests_total{status_code=\"500\"}",
+          "values": "0+60x60 3600+0x60"
+        },
+        {
+          "series": "sub2api_http_requests_total{status_code=\"200\"}",
+          "values": "0+60x60 3600+10000x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiErrorRateHigh",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiErrorRateHigh",
+                "description": "实例 ：Sub2apiErrorRateHigh；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiErrorRateHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiSlowFirstByteP95 trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_request_phase_seconds_bucket{phase=\"headers_end\",le=\"1\"}",
+          "values": "0+0x60 0+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_bucket{phase=\"headers_end\",le=\"10\"}",
+          "values": "0+100x60 6000+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_bucket{phase=\"headers_end\",le=\"+Inf\"}",
+          "values": "0+100x60 6000+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiSlowFirstByteP95",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiSlowFirstByteP95",
+                "description": "实例 ：Sub2apiSlowFirstByteP95；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiSlowFirstByteP95",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiUpstreamAccountFailing trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_upstream_requests_total{account=\"a\",result=\"timeout\"}",
+          "values": "0+60x60 3600+0x60"
+        },
+        {
+          "series": "sub2api_upstream_requests_total{account=\"a\",result=\"success\"}",
+          "values": "0+60x60 3600+10000x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiUpstreamAccountFailing",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "account": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiUpstreamAccountFailing",
+                "description": "实例 ：Sub2apiUpstreamAccountFailing；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiUpstreamAccountFailing",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiGatewaySelfError trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{result=\"gateway_error\"}",
+          "values": "0+60x60 3600+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiGatewaySelfError",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiGatewaySelfError",
+                "description": "实例 ：Sub2apiGatewaySelfError；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiGatewaySelfError",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiInstrumentationStalled trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"a\"}",
+          "values": "0+10x60 600+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "a",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiInstrumentationStalled",
+                "description": "实例 a：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiMetricCoverageLow trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_metric_coverage_ratio{kind=\"account\",instance=\"a\"}",
+          "values": "0.5+0x60 0.95+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiMetricCoverageLow",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "kind": "account",
+                "instance": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiMetricCoverageLow",
+                "description": "实例 a：Sub2apiMetricCoverageLow；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiMetricCoverageLow",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiClientAbortSpike trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{result=\"client_abort\",failure_reason=\"client_abort_during_response\"}",
+          "values": "0+60x60 3600+0x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"success\",failure_reason=\"\"}",
+          "values": "0+60x60 3600+10000x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiClientAbortSpike",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiClientAbortSpike",
+                "description": "实例 ：Sub2apiClientAbortSpike；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiClientAbortSpike",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiClientAbortSpike triggers on auth-stage 499 without client_abort_total",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{result=\"client_abort\",failure_reason=\"client_abort\"}",
+          "values": "0+10x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"success\",failure_reason=\"\"}",
+          "values": "0+90x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiClientAbortSpike",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiClientAbortSpike",
+                "description": "实例 ：Sub2apiClientAbortSpike；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiDownstreamShortfall trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_transfer_bytes_total{direction=\"resp_upstream\"}",
+          "values": "0+600x60 36000+600x60"
+        },
+        {
+          "series": "sub2api_transfer_bytes_total{direction=\"resp_downstream\"}",
+          "values": "0+100x60 6000+600x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiDownstreamShortfall",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiDownstreamShortfall",
+                "description": "实例 ：Sub2apiDownstreamShortfall；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiDownstreamShortfall",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "NodeExporterDown trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"node\",instance=\"a\"}",
+          "values": "0+0x60 1+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "NodeExporterDown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node",
+                "instance": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "NodeExporterDown",
+                "description": "实例 a：NodeExporterDown；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "NodeExporterDown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "NodeDiskLow trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "node_filesystem_avail_bytes{mountpoint=\"/\",instance=\"a\"}",
+          "values": "5+0x60 50+0x60"
+        },
+        {
+          "series": "node_filesystem_size_bytes{mountpoint=\"/\",instance=\"a\"}",
+          "values": "100+0x60 100+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "NodeDiskLow",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "mountpoint": "/",
+                "instance": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "NodeDiskLow",
+                "description": "实例 a：NodeDiskLow；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "NodeDiskLow",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "NodeMemoryPressure trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "node_memory_MemAvailable_bytes{instance=\"a\"}",
+          "values": "5+0x60 50+0x60"
+        },
+        {
+          "series": "node_memory_MemTotal_bytes{instance=\"a\"}",
+          "values": "100+0x60 100+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "NodeMemoryPressure",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "NodeMemoryPressure",
+                "description": "实例 a：NodeMemoryPressure；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "NodeMemoryPressure",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "NodeLoadHigh trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "node_load5{instance=\"a\"}",
+          "values": "5+0x60 1+0x60"
+        },
+        {
+          "series": "node_cpu_seconds_total{instance=\"a\",mode=\"idle\",cpu=\"0\"}",
+          "values": "10+0x60 10+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "NodeLoadHigh",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "NodeLoadHigh",
+                "description": "实例 a：NodeLoadHigh；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "NodeLoadHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "PrometheusRuleEvalFailures trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "prometheus_rule_evaluation_failures_total{instance=\"a\"}",
+          "values": "0+1x60 60+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "PrometheusRuleEvalFailures",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "PrometheusRuleEvalFailures",
+                "description": "实例 a：PrometheusRuleEvalFailures；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "PrometheusRuleEvalFailures",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "PrometheusTsdbCompactionFailed trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "prometheus_tsdb_compactions_failed_total{instance=\"a\"}",
+          "values": "0+1x60 60+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "PrometheusTsdbCompactionFailed",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "PrometheusTsdbCompactionFailed",
+                "description": "实例 a：PrometheusTsdbCompactionFailed；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "PrometheusTsdbCompactionFailed",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "PrometheusTargetMissing trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"sub2api\",instance=\"a\"}",
+          "values": "0+0x60 1+0x60"
+        },
+        {
+          "series": "up{job=\"prometheus\",instance=\"p\"}",
+          "values": "1+0x60 1+0x60"
+        },
+        {
+          "series": "up{job=\"alertmanager\",instance=\"m\"}",
+          "values": "1+0x60 1+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "PrometheusTargetMissing",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "sub2api",
+                "instance": "a",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "PrometheusTargetMissing",
+                "description": "实例 a：PrometheusTargetMissing；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "PrometheusTargetMissing",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "AlertmanagerDown trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"alertmanager\",instance=\"a\"}",
+          "values": "0+0x60 1+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "AlertmanagerDown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "alertmanager",
+                "instance": "a",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "AlertmanagerDown",
+                "description": "实例 a：AlertmanagerDown；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "AlertmanagerDown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "Sub2apiUnknownFailureHigh trigger and recover",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"unknown\"}",
+          "values": "0+60x60 3600+0x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"\"}",
+          "values": "0+60x60 3600+10000x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiUnknownFailureHigh",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiUnknownFailureHigh",
+                "description": "实例 ：Sub2apiUnknownFailureHigh；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "110m",
+          "alertname": "Sub2apiUnknownFailureHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "instrumentation all missing",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"a\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"b\"}",
+          "values": "0+10x60 600+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "a",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiInstrumentationStalled",
+                "description": "实例 a：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。"
+              }
+            },
+            {
+              "exp_labels": {
+                "instance": "b",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiInstrumentationStalled",
+                "description": "实例 b：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "65m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "instrumentation one missing",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"a\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"b\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_count{phase=\"response\",instance=\"b\"}",
+          "values": "0+10x60 600+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "a",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiInstrumentationStalled",
+                "description": "实例 a：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "65m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "instrumentation one stalled",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"a\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_count{phase=\"response\",instance=\"a\"}",
+          "values": "0+0x60 0+0x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"b\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_count{phase=\"response\",instance=\"b\"}",
+          "values": "0+10x60 600+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "a",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiInstrumentationStalled",
+                "description": "实例 a：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "65m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "instrumentation idle",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"a\"}",
+          "values": "0+0x60 0+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_count{phase=\"response\",instance=\"a\"}",
+          "values": "0+0x60 0+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "65m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "instrumentation normal slow streaming",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"a\"}",
+          "values": "0+1x60 60+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_count{phase=\"response\",instance=\"a\"}",
+          "values": "0+1x60 60+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "65m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "instrumentation mixed instances",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"missing\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"stalled\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_count{phase=\"response\",instance=\"stalled\"}",
+          "values": "0+0x60 0+0x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"healthy\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_count{phase=\"response\",instance=\"healthy\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"idle\"}",
+          "values": "0+0x60 0+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "instance": "missing",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiInstrumentationStalled",
+                "description": "实例 missing：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。"
+              }
+            },
+            {
+              "exp_labels": {
+                "instance": "stalled",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Sub2apiInstrumentationStalled",
+                "description": "实例 stalled：Sub2apiInstrumentationStalled；请结合 V2 看板与样本核实。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "65m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "instrumentation excluded management route",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_http_requests_total{route=\"/admin/users\",instance=\"a\"}",
+          "values": "0+10x60 600+0x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"a\"}",
+          "values": "0+0x60 0+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "65m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "unknown gate high volume low ratio",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"unknown\"}",
+          "values": "0+1x60 60+0x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"\"}",
+          "values": "0+99x60 5940+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiUnknownFailureHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "unknown gate low volume high ratio",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"unknown\"}",
+          "values": "0+0.1x60 6.0+0x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"\"}",
+          "values": "0+0x60 0+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiUnknownFailureHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "unknown gate exact ratio threshold",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"unknown\"}",
+          "values": "0+1x60 60+0x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"\"}",
+          "values": "0+9x60 540+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiUnknownFailureHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "unknown gate zero traffic",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"unknown\"}",
+          "values": "0+0x60 0+0x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{failure_reason=\"\"}",
+          "values": "0+0x60 0+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiUnknownFailureHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "load vector matching original versus correction",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "node_load5{instance=\"a\",job=\"node\"}",
+          "values": "5+0x30 1+0x30"
+        },
+        {
+          "series": "node_cpu_seconds_total{instance=\"a\",job=\"node\",mode=\"idle\",cpu=\"0\"}",
+          "values": "0+10x60"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "node_load5 / count without(cpu)(node_cpu_seconds_total{mode=\"idle\"}) > 2",
+          "eval_time": "20m",
+          "exp_samples": []
+        },
+        {
+          "expr": "node_load5 / count without(cpu, mode)(node_cpu_seconds_total{mode=\"idle\"}) > 2",
+          "eval_time": "20m",
+          "exp_samples": [
+            {
+              "labels": "{instance=\"a\",job=\"node\"}",
+              "value": 5
+            }
+          ]
+        },
+        {
+          "expr": "node_load5 / count without(cpu, mode)(node_cpu_seconds_total{mode=\"idle\"}) > 2",
+          "eval_time": "50m",
+          "exp_samples": []
+        }
+      ]
+    },
+    {
+      "name": "ws 101 exclusion does not trigger ops alerts",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_http_requests_total{route=\"/v1/responses\",method=\"GET\",status_code=\"101\",instance=\"ws-only\"}",
+          "values": "0+10x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"ws-only\"}",
+          "values": "0+0x60"
+        },
+        {
+          "series": "sub2api_metric_coverage_ratio{kind=\"account\",instance=\"ws-only\"}",
+          "values": "-1+0x60"
+        },
+        {
+          "series": "sub2api_http_requests_total{route=\"/v1/responses\",method=\"GET\",status_code=\"101\",instance=\"mixed\"}",
+          "values": "0+5x60"
+        },
+        {
+          "series": "sub2api_ops_eligible_requests_total{instance=\"mixed\"}",
+          "values": "0+10x60"
+        },
+        {
+          "series": "sub2api_request_phase_seconds_count{phase=\"finish\",instance=\"mixed\"}",
+          "values": "0+10x60"
+        },
+        {
+          "series": "sub2api_metric_coverage_ratio{kind=\"account\",instance=\"mixed\"}",
+          "values": "0.95+0x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"success\",failure_reason=\"\"}",
+          "values": "0+10x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"gateway_error\",failure_reason=\"unknown\"}",
+          "values": "0+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiInstrumentationStalled",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "Sub2apiGatewaySelfError",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiGatewaySelfError",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiMetricCoverageLow",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiUnknownFailureHigh",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "r2 explicit 4xx failure reasons do not trigger Sub2apiUnknownFailureHigh",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "sub2api_gateway_requests_total{result=\"rejected\",failure_reason=\"client_bad_request\"}",
+          "values": "0+1x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"rejected\",failure_reason=\"client_auth_failed\"}",
+          "values": "0+1x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"rejected\",failure_reason=\"client_forbidden\"}",
+          "values": "0+1x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"rejected\",failure_reason=\"client_not_found\"}",
+          "values": "0+1x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"rejected\",failure_reason=\"body_too_large\"}",
+          "values": "0+1x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"rejected\",failure_reason=\"gateway_ratelimit\"}",
+          "values": "0+1x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"client_abort\",failure_reason=\"client_abort\"}",
+          "values": "0+1x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"success\",failure_reason=\"\"}",
+          "values": "0+3x60"
+        },
+        {
+          "series": "sub2api_gateway_requests_total{result=\"gateway_error\",failure_reason=\"unknown\"}",
+          "values": "0+0x60"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiUnknownFailureHigh",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "60m",
+          "alertname": "Sub2apiGatewaySelfError",
+          "exp_alerts": []
+        }
+      ]
+    }
+  ]
+}

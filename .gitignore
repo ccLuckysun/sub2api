@@ -123,6 +123,8 @@ backend/.installed
 tests
 !deploy/tests/
 !deploy/tests/**
+!deploy/monitoring/prometheus/rules/tests/
+!deploy/monitoring/prometheus/rules/tests/**
 CLAUDE.md
 .claude
 scripts

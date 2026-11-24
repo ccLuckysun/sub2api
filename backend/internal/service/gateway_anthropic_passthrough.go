@@ -223,6 +223,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				}(),
 			})
 			ops.fail(nil, "headers", resp.StatusCode, compatOpsUpstreamCode(respBody), false)
+			RecordOpsUpstreamErrorFromBody(ctx, c, resp.StatusCode, respBody, "")
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
@@ -262,6 +263,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			}(),
 		})
 		ops.fail(nil, "headers", resp.StatusCode, compatOpsUpstreamCode(respBody), false)
+		RecordOpsUpstreamErrorFromBody(ctx, c, resp.StatusCode, respBody, "")
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           respBody,
@@ -1010,6 +1012,16 @@ func (o *compatForwardOps) fail(err error, stage string, status int, code string
 			ev.ClientCanceled = true
 			o.rec.MarkClientAbort("response")
 		}
+		if o.rec != nil {
+			if status >= 400 {
+				o.rec.RecordErrorDetails("", status, code)
+			} else if code != "" {
+				o.rec.RecordErrorDetails("", 0, code)
+			}
+			if err != nil {
+				o.rec.RecordErrorDetails(err.Error(), 0, code)
+			}
+		}
 		reason := monitoring.ClassifyFailure(result, ev)
 		if o.attempt == nil {
 			o.rec.MarkFailure(result, reason, ev)
@@ -1022,7 +1034,15 @@ func (o *compatForwardOps) finish(result *ForwardResult, err error) {
 	if err != nil {
 		var sseErr *sseStreamErrorEventError
 		if errors.As(err, &sseErr) {
-			o.fail(nil, "body", o.responseStatus, compatOpsUpstreamCode([]byte(sseErr.RawData)), false)
+			raw := []byte(sseErr.RawData)
+			sseCode := compatOpsUpstreamCode(raw)
+			if sseCode == "" {
+				sseCode = extractOpsUpstreamCode(raw)
+			}
+			if o.rec != nil {
+				o.rec.RecordErrorDetails(extractOpsUpstreamMessage(raw), o.responseStatus, sseCode)
+			}
+			o.fail(nil, "body", o.responseStatus, sseCode, false)
 			return
 		}
 		o.fail(err, "body", 0, "", result != nil && result.ClientDisconnect)
@@ -1074,7 +1094,14 @@ func (o *compatForwardOps) consumeHTTPError(resp *http.Response, consume func() 
 	result, err := consume()
 	code := ""
 	if capture != nil {
-		code = compatOpsUpstreamCode(capture.captured.Bytes())
+		capturedBytes := capture.captured.Bytes()
+		code = compatOpsUpstreamCode(capturedBytes)
+		if code == "" {
+			code = extractOpsUpstreamCode(capturedBytes)
+		}
+		if o.rec != nil && resp != nil && resp.StatusCode >= 400 {
+			o.rec.RecordErrorDetails(extractOpsUpstreamMessage(capturedBytes), resp.StatusCode, code)
+		}
 	}
 	o.fail(nil, "headers", resp.StatusCode, code, false)
 	return result, err

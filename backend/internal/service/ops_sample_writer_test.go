@@ -280,18 +280,21 @@ func TestOpsSampleWriterRedisRingBufferAndQuery(t *testing.T) {
 			TotalMs:         intPtr(500),
 		},
 		{
-			ObservedAt:    base.Add(3 * time.Second),
-			RequestID:     "req-2",
-			UserEmail:     strPtr("bob@example.com"),
-			APIKeyName:    strPtr("bob-dev"),
-			AccountName:   strPtr("acct-b"),
-			GroupName:     strPtr("grp-silver"),
-			Model:         strPtr("gpt-5"),
-			Endpoint:      strPtr("/v1/responses"),
-			Result:        strPtr("upstream_error"),
-			HTTPStatus:    intPtr(502),
-			FailureReason: strPtr("upstream_server_error"),
-			TotalMs:       intPtr(3500),
+			ObservedAt:        base.Add(3 * time.Second),
+			RequestID:         "req-2",
+			UserEmail:         strPtr("bob@example.com"),
+			APIKeyName:        strPtr("bob-dev"),
+			AccountName:       strPtr("acct-b"),
+			GroupName:         strPtr("grp-silver"),
+			Model:             strPtr("gpt-5"),
+			Endpoint:          strPtr("/v1/responses"),
+			HTTPMethod:        strPtr("POST"),
+			Result:            strPtr("upstream_error"),
+			HTTPStatus:        intPtr(502),
+			FailureReason:     strPtr("upstream_server_error"),
+			ErrorMessage:      strPtr("bad gateway from origin"),
+			UpstreamErrorCode: strPtr("origin_timeout"),
+			TotalMs:           intPtr(3500),
 		},
 		{
 			ObservedAt:  base.Add(4 * time.Second),
@@ -348,6 +351,7 @@ func TestOpsSampleWriterRedisRingBufferAndQuery(t *testing.T) {
 	require.Equal(t, 12, resp.TTLHours)
 	require.Equal(t, 5, resp.TotalInBuffer)
 	require.Equal(t, []string{"claude-sonnet", "gemini-2.5-pro", "gpt-5"}, resp.Models)
+	require.Equal(t, []string{"upstream_server_error"}, resp.FailureReasons)
 	require.Len(t, resp.Items, 5)
 	require.Equal(t, "req-5-newest", resp.Items[0].RequestID)
 	require.Equal(t, "req-4", resp.Items[1].RequestID)
@@ -385,11 +389,23 @@ func TestOpsSampleWriterRedisRingBufferAndQuery(t *testing.T) {
 	require.Len(t, allModelResp.Items, 5)
 
 	// 4. Search filter across display metadata (case-insensitive).
-	for _, query := range []string{"CID-1", "ALICE@EXAMPLE", "alice-prod", "acct-a", "grp-gold", "UPSTREAM_SERVER_ERROR"} {
+	for _, query := range []string{"CID-1", "ALICE@EXAMPLE", "alice-prod", "acct-a", "grp-gold", "UPSTREAM_SERVER_ERROR", "bad gateway", "ORIGIN_TIMEOUT", "post"} {
 		searchResp, err := w.ListRealtimeRequests(context.Background(), RealtimeRequestsFilter{Search: query})
 		require.NoError(t, err)
 		require.Len(t, searchResp.Items, 1, "query=%s", query)
 	}
+
+	// 4b. FailureReason filter: case-insensitive match + "__all__" passthrough.
+	frResp, err := w.ListRealtimeRequests(context.Background(), RealtimeRequestsFilter{FailureReason: "UPSTREAM_SERVER_ERROR"})
+	require.NoError(t, err)
+	require.Len(t, frResp.Items, 1)
+	require.Equal(t, "req-2", frResp.Items[0].RequestID)
+	require.Equal(t, 1, frResp.Summary.Total)
+	require.Equal(t, 1, frResp.Summary.Failure)
+
+	allFrResp, err := w.ListRealtimeRequests(context.Background(), RealtimeRequestsFilter{FailureReason: "__all__"})
+	require.NoError(t, err)
+	require.Len(t, allFrResp.Items, 5)
 
 	// 5. Limit slices items while summary still reflects all filtered items.
 	limResp, err := w.ListRealtimeRequests(context.Background(), RealtimeRequestsFilter{Limit: 2})
@@ -403,6 +419,7 @@ func TestOpsSampleWriterRedisRingBufferAndQuery(t *testing.T) {
 	rawJSON, err := json.Marshal(emptyResp)
 	require.NoError(t, err)
 	require.Contains(t, string(rawJSON), `"items":[]`)
+	require.Contains(t, string(rawJSON), `"failure_reasons":["upstream_server_error"]`)
 	require.Contains(t, string(rawJSON), `"success_rate":0`)
 
 	// 7. Nil writer returns disabled empty response cleanly.
@@ -412,4 +429,5 @@ func TestOpsSampleWriterRedisRingBufferAndQuery(t *testing.T) {
 	require.False(t, disabledResp.Enabled)
 	require.NotNil(t, disabledResp.Items)
 	require.NotNil(t, disabledResp.Models)
+	require.NotNil(t, disabledResp.FailureReasons)
 }

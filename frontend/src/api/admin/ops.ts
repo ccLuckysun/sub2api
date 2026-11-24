@@ -486,9 +486,13 @@ export interface OpsRealtimeRequestItem {
   model?: string | null
   endpoint_class?: string | null
   endpoint?: string | null
+  http_method?: string | null
   result?: string | null
   http_status?: number | null
   failure_reason?: string | null
+  error_message?: string | null
+  upstream_status?: number | null
+  upstream_error_code?: string | null
   attempt_count?: number | null
   failed_attempts?: number | null
   node?: string | null
@@ -520,12 +524,14 @@ export interface OpsRealtimeRequestsResponse {
   summary: OpsRealtimeRequestSummary
   items: OpsRealtimeRequestItem[]
   models: string[]
+  failure_reasons?: string[]
   timestamp: string
 }
 
 export interface OpsRealtimeRequestsParams {
   limit?: number
   result?: 'all' | 'success' | 'failure'
+  failure_reason?: string
   model?: string
   search?: string
 }

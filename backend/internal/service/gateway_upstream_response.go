@@ -313,22 +313,37 @@ func extractUpstreamErrorMessage(body []byte) string {
 	return gjson.GetBytes(body, "message").String()
 }
 
+func opsScalarErrorCode(res gjson.Result) string {
+	switch res.Type {
+	case gjson.String:
+		return strings.TrimSpace(res.String())
+	case gjson.Number:
+		return strings.TrimSpace(res.Raw)
+	default:
+		return ""
+	}
+}
+
 func extractUpstreamErrorCode(body []byte) string {
-	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
+	if code := opsScalarErrorCode(gjson.GetBytes(body, "error.code")); code != "" {
 		return code
 	}
 
-	inner := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
+	innerRes := gjson.GetBytes(body, "error.message")
+	if innerRes.Type != gjson.String {
+		return ""
+	}
+	inner := strings.TrimSpace(innerRes.String())
 	if !strings.HasPrefix(inner, "{") {
 		return ""
 	}
 
-	if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
+	if code := opsScalarErrorCode(gjson.Get(inner, "error.code")); code != "" {
 		return code
 	}
 
 	if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
-		if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String()); code != "" {
+		if code := opsScalarErrorCode(gjson.Get(inner[:lastBrace+1], "error.code")); code != "" {
 			return code
 		}
 	}
@@ -402,6 +417,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+	RecordOpsUpstreamErrorFromBody(ctx, c, resp.StatusCode, body, upstreamMsg)
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		ProxyID:            opsUpstreamProxyID(account),
 		ProxyName:          opsUpstreamProxyName(account),

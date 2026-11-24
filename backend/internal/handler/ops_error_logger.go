@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/monitoring"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -1090,6 +1091,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		c.Writer = w
 		c.Next()
 		w.finalizeCapture()
+		syncOpsRecorderFromErrorResponse(c, w)
 
 		if _, rejected := middleware2.GetIngressRejectReason(c); rejected {
 			return
@@ -1668,6 +1670,206 @@ func isTokenCountRequestPath(path string) bool {
 	return strings.Contains(path, "/count_tokens") || strings.Contains(path, "/responses/input_tokens")
 }
 
+func extractOpsUpstreamDetailsForRecorder(c *gin.Context) (string, int, string) {
+	if c == nil {
+		return "", 0, ""
+	}
+	var msg, code string
+	var status int
+	isAccountAuth := false
+	hasEvent := false
+	if v, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
+		if events, ok := v.([]*service.OpsUpstreamErrorEvent); ok {
+			for i := len(events) - 1; i >= 0; i-- {
+				ev := events[i]
+				if ev == nil {
+					continue
+				}
+				hasEvent = true
+				if ev.Stage == string(service.GatewayFailureStageAccountAuth) {
+					isAccountAuth = true
+					msg = strings.TrimSpace(ev.Message)
+					code = strings.TrimSpace(ev.Reason)
+				} else {
+					status = ev.UpstreamStatusCode
+					msg = strings.TrimSpace(ev.Message)
+					if msg == "" {
+						msg = service.ExtractOpsUpstreamMessage([]byte(ev.UpstreamResponseBody))
+					}
+					if msg == "" {
+						msg = service.ExtractOpsUpstreamMessage([]byte(ev.Detail))
+					}
+					code = service.ExtractOpsUpstreamCode([]byte(ev.UpstreamResponseBody))
+					if code == "" {
+						code = service.ExtractOpsUpstreamCode([]byte(ev.Detail))
+					}
+				}
+				break
+			}
+		}
+	}
+	if !hasEvent && !isAccountAuth && status <= 0 {
+		if v, ok := c.Get(service.OpsUpstreamStatusCodeKey); ok {
+			switch t := v.(type) {
+			case int:
+				if t > 0 {
+					status = t
+				}
+			case int64:
+				if t > 0 {
+					status = int(t)
+				}
+			}
+		}
+	}
+	if msg == "" {
+		if v, ok := c.Get(service.OpsUpstreamErrorMessageKey); ok {
+			if value, ok := v.(string); ok {
+				msg = strings.TrimSpace(value)
+			}
+		}
+	}
+	if v, ok := c.Get(service.OpsUpstreamErrorDetailKey); ok {
+		if value, ok := v.(string); ok {
+			detail := strings.TrimSpace(value)
+			if detail != "" {
+				if msg == "" {
+					msg = service.ExtractOpsUpstreamMessage([]byte(detail))
+				}
+				if code == "" {
+					code = service.ExtractOpsUpstreamCode([]byte(detail))
+				}
+			}
+		}
+	}
+	return msg, status, code
+}
+
+func syncOpsRecorderFromErrorResponse(c *gin.Context, w *opsCaptureWriter) {
+	if c == nil || c.Request == nil {
+		return
+	}
+	rec := monitoring.RecorderFromContext(c.Request.Context())
+	if rec == nil {
+		return
+	}
+
+	apiKey := getOpsAPIKey(c)
+	meta := monitoring.OpsRequestMeta{
+		HTTPMethod: c.Request.Method,
+		Endpoint:   GetInboundEndpoint(c),
+	}
+	if model, ok := c.Get(opsModelKey); ok {
+		if modelName, ok := model.(string); ok {
+			meta.Model = strings.TrimSpace(modelName)
+		}
+	}
+	if platform := resolveOpsPlatform(c.Request.Context(), apiKey, ""); platform != "" {
+		meta.Platform = platform
+	}
+	if apiKey != nil {
+		meta.APIKeyID = apiKey.ID
+		meta.APIKeyName = apiKey.Name
+		meta.APIKeyMasked = maskOpsAPIKey(apiKey.Key)
+		if apiKey.User != nil {
+			meta.UserID = apiKey.User.ID
+			meta.UserEmail = apiKey.User.Email
+		} else if apiKey.UserID > 0 {
+			meta.UserID = apiKey.UserID
+		}
+		if apiKey.GroupID != nil && *apiKey.GroupID > 0 {
+			meta.GroupID = *apiKey.GroupID
+		}
+		if apiKey.Group != nil {
+			if apiKey.Group.ID > 0 {
+				meta.GroupID = apiKey.Group.ID
+			}
+			meta.GroupName = apiKey.Group.Name
+		}
+	}
+	rec.MergeMetaIfMissing(meta)
+
+	status := 0
+	if c.Writer != nil {
+		status = c.Writer.Status()
+	}
+	var body []byte
+	if w != nil {
+		body = w.capturedBytes()
+	}
+
+	upMsg, upStatus, upCode := extractOpsUpstreamDetailsForRecorder(c)
+	if upStatus > 0 || upMsg != "" || upCode != "" {
+		rec.RecordFallbackErrorDetails(upMsg, upStatus, upCode)
+	}
+
+	parsed := parseOpsErrorResponse(body)
+	if !parsed.StreamFailure && w != nil {
+		if terminal, ok := w.capturedTerminalError(); ok {
+			parsed = terminal
+		}
+	}
+
+	streamErr, hasStreamErr := service.GetOpsStreamError(c)
+	if hasStreamErr {
+		sCode := strings.TrimSpace(streamErr.Code)
+		if sCode == "" && streamErr.UpstreamStatus <= 0 {
+			sCode = strings.TrimSpace(streamErr.ErrType)
+		}
+		if upMsg := strings.TrimSpace(streamErr.UpstreamMessage); upMsg != "" || streamErr.UpstreamStatus > 0 {
+			rec.RecordFallbackErrorDetails(upMsg, streamErr.UpstreamStatus, sCode)
+		}
+		if msg := strings.TrimSpace(streamErr.Message); msg != "" || sCode != "" {
+			rec.RecordFallbackErrorDetails(msg, 0, sCode)
+		}
+		if status < http.StatusBadRequest {
+			upSt := streamErr.UpstreamStatus
+			if upSt <= 0 && parsed.StreamFailure && parsed.StatusCode > 0 {
+				upSt = parsed.StatusCode
+				if sCode == "" {
+					sCode = strings.TrimSpace(parsed.Code)
+				}
+			}
+			res, reason, ev := monitoring.ClassifyStreamFailure(upSt, streamErr.IntendedStatus, sCode)
+			rec.MarkFailureIfUnset(res, reason, ev)
+		}
+	}
+
+	if parsed.StreamFailure && upStatus == 0 && (!hasStreamErr || streamErr.UpstreamStatus == 0) && parsed.StatusCode > 0 {
+		rec.RecordErrorDetails(strings.TrimSpace(parsed.Message), parsed.StatusCode, strings.TrimSpace(parsed.Code))
+	}
+	if status < http.StatusBadRequest && !hasStreamErr && parsed.StreamFailure {
+		pCode := strings.TrimSpace(parsed.Code)
+		if pCode == "" && parsed.StatusCode <= 0 {
+			pCode = strings.TrimSpace(parsed.ErrorType)
+		}
+		res, reason, ev := monitoring.ClassifyStreamFailure(parsed.StatusCode, 0, pCode)
+		rec.MarkFailureIfUnset(res, reason, ev)
+	}
+
+	if status >= 400 || parsed.StreamFailure || hasStreamErr {
+		msg := strings.TrimSpace(parsed.Message)
+		if msg == "" {
+			msg = strings.TrimSpace(string(body))
+		}
+		code := strings.TrimSpace(parsed.Code)
+		if code == "" {
+			if errType, localCode := service.OpsLocalErrorType(c); localCode != "" {
+				code = localCode
+			} else if errType != "" {
+				code = errType
+			}
+		}
+		if code == "" && parsed.ErrorType != "" && parsed.ErrorType != "api_error" && parsed.ErrorType != "upstream_error" {
+			code = parsed.ErrorType
+		}
+		if msg != "" || code != "" {
+			rec.RecordFallbackErrorDetails(msg, 0, code)
+		}
+	}
+}
+
+// applyOpsLatencyFieldsFromContext collects phase latencies into entry.
 func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
 	if c == nil || entry == nil {
 		return

@@ -57,12 +57,22 @@ func TestGatewayRoutesOpsEligibilityParity(t *testing.T) {
 				}
 				return count
 			}
-			check := func(method, path, template, wantEndpoint string, eligible bool) {
-				t.Run(method+" "+path, func(t *testing.T) {
+			checkWithHeaders := func(method, path, template, wantEndpoint string, eligible bool, headers map[string]string) {
+				name := method + " " + path
+				if len(headers) > 0 {
+					for k, v := range headers {
+						name += " [" + k + "=" + v + "]"
+					}
+				}
+				t.Run(name, func(t *testing.T) {
 					eligibleBefore := testutil.ToFloat64(instruments.Metrics.OpsEligibleRequestsTotal)
 					settledBefore := settled()
 					response := httptest.NewRecorder()
-					router.ServeHTTP(response, httptest.NewRequest(method, path, nil))
+					req := httptest.NewRequest(method, path, nil)
+					for k, v := range headers {
+						req.Header.Set(k, v)
+					}
+					router.ServeHTTP(response, req)
 					require.Equal(t, template, matchedTemplate)
 					if wantEndpoint != "" {
 						require.Equal(t, wantEndpoint, endpoint)
@@ -83,9 +93,15 @@ func TestGatewayRoutesOpsEligibilityParity(t *testing.T) {
 					require.Equal(t, settledBefore, settled())
 				})
 			}
+			check := func(method, path, template, wantEndpoint string, eligible bool) {
+				checkWithHeaders(method, path, template, wantEndpoint, eligible, nil)
+			}
 
 			for _, root := range []string{"/v1/responses", "/responses", "/backend-api/codex/responses"} {
 				check(http.MethodGet, root, root, handler.EndpointResponses, true)
+				checkWithHeaders(http.MethodGet, root, root, handler.EndpointResponses, false, map[string]string{"Upgrade": "websocket"})
+				checkWithHeaders(http.MethodGet, root, root, handler.EndpointResponses, false, map[string]string{"Upgrade": "WebSocket", "Connection": "Upgrade"})
+				checkWithHeaders(http.MethodPost, root, root, handler.EndpointResponses, true, map[string]string{"Upgrade": "websocket"})
 				check(http.MethodPost, root, root, handler.EndpointResponses, true)
 				check(http.MethodPost, root+"/compact", root+"/*subpath", handler.EndpointResponsesCompact, true)
 				check(http.MethodPost, root+"/resp_123/cancel", root+"/*subpath", handler.EndpointResponses, true)

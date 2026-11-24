@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 type OpsRequestMeta struct {
 	RequestID                                string
 	ClientRequestID                          string
+	HTTPMethod                               string
 	UserID, APIKeyID, AccountID, GroupID     int64
 	UserEmail, APIKeyName, APIKeyMasked      string
 	AccountName, GroupName                   string
@@ -132,6 +134,11 @@ type OpsRecorder struct {
 	entry                        time.Time
 	path                         string
 	meta                         OpsRequestMeta
+	httpMethod                   string
+	errorMessage                 string
+	upstreamStatus               int
+	upstreamErrorCode            string
+	errorAttemptIdx              int
 	accounts                     *AccountLabels
 	coverage                     *OpsCoverage
 	coverageToken                *CoverageToken
@@ -161,6 +168,222 @@ func (r *OpsRecorder) AttachMeta(m OpsRequestMeta) {
 	if !r.finalized {
 		r.meta = m
 	}
+}
+
+// MergeMeta incrementally enriches r.meta with non-empty strings and non-zero
+// IDs without clearing fields already populated by earlier layers.
+func (r *OpsRecorder) MergeMeta(m OpsRequestMeta) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finalized {
+		return
+	}
+	mergeNonEmptyString(&r.meta.RequestID, m.RequestID)
+	mergeNonEmptyString(&r.meta.ClientRequestID, m.ClientRequestID)
+	if method := strings.ToUpper(strings.TrimSpace(m.HTTPMethod)); method != "" {
+		r.httpMethod = method
+		r.meta.HTTPMethod = method
+	}
+	mergeNonZeroID(&r.meta.UserID, m.UserID)
+	mergeNonZeroID(&r.meta.APIKeyID, m.APIKeyID)
+	mergeNonZeroID(&r.meta.AccountID, m.AccountID)
+	mergeNonZeroID(&r.meta.GroupID, m.GroupID)
+	mergeNonEmptyString(&r.meta.UserEmail, m.UserEmail)
+	mergeNonEmptyString(&r.meta.APIKeyName, m.APIKeyName)
+	mergeNonEmptyString(&r.meta.APIKeyMasked, m.APIKeyMasked)
+	mergeNonEmptyString(&r.meta.AccountName, m.AccountName)
+	mergeNonEmptyString(&r.meta.GroupName, m.GroupName)
+	mergeNonEmptyString(&r.meta.Platform, m.Platform)
+	mergeNonEmptyString(&r.meta.Model, m.Model)
+	endpointUpdated := false
+	if ep := strings.TrimSpace(m.Endpoint); ep != "" {
+		r.meta.Endpoint = ep
+		endpointUpdated = true
+	}
+	if cls := strings.TrimSpace(m.EndpointClass); cls != "" {
+		r.meta.EndpointClass = cls
+	} else if endpointUpdated && r.meta.EndpointClass == "" {
+		r.meta.EndpointClass = EndpointClass(r.meta.Endpoint)
+	}
+}
+
+func mergeNonEmptyString(dst *string, src string) {
+	if s := strings.TrimSpace(src); s != "" {
+		*dst = s
+	}
+}
+
+func mergeNonZeroID(dst *int64, src int64) {
+	if src != 0 {
+		*dst = src
+	}
+}
+
+// MergeMetaIfMissing fills only currently empty/zero metadata fields on r.meta
+// without overwriting attribution already set by an active fallback or route.
+func (r *OpsRecorder) MergeMetaIfMissing(m OpsRequestMeta) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finalized {
+		return
+	}
+	mergeMissingString(&r.meta.RequestID, m.RequestID)
+	mergeMissingString(&r.meta.ClientRequestID, m.ClientRequestID)
+	if r.httpMethod == "" {
+		if method := strings.ToUpper(strings.TrimSpace(m.HTTPMethod)); method != "" {
+			r.httpMethod = method
+			r.meta.HTTPMethod = method
+		}
+	}
+	mergeMissingID(&r.meta.UserID, m.UserID)
+	mergeMissingID(&r.meta.APIKeyID, m.APIKeyID)
+	mergeMissingID(&r.meta.AccountID, m.AccountID)
+	mergeMissingID(&r.meta.GroupID, m.GroupID)
+	mergeMissingString(&r.meta.UserEmail, m.UserEmail)
+	mergeMissingString(&r.meta.APIKeyName, m.APIKeyName)
+	mergeMissingString(&r.meta.APIKeyMasked, m.APIKeyMasked)
+	mergeMissingString(&r.meta.AccountName, m.AccountName)
+	mergeMissingString(&r.meta.GroupName, m.GroupName)
+	mergeMissingString(&r.meta.Platform, m.Platform)
+	mergeMissingString(&r.meta.Model, m.Model)
+	if strings.TrimSpace(r.meta.Endpoint) == "" {
+		if ep := strings.TrimSpace(m.Endpoint); ep != "" {
+			r.meta.Endpoint = ep
+		}
+	}
+	if strings.TrimSpace(r.meta.EndpointClass) == "" {
+		if cls := strings.TrimSpace(m.EndpointClass); cls != "" {
+			r.meta.EndpointClass = cls
+		} else if r.meta.Endpoint != "" {
+			r.meta.EndpointClass = EndpointClass(r.meta.Endpoint)
+		}
+	}
+}
+
+func mergeMissingString(dst *string, src string) {
+	if strings.TrimSpace(*dst) != "" {
+		return
+	}
+	if s := strings.TrimSpace(src); s != "" {
+		*dst = s
+	}
+}
+
+func mergeMissingID(dst *int64, src int64) {
+	if *dst == 0 && src != 0 {
+		*dst = src
+	}
+}
+
+// SetHTTPMethod records the inbound HTTP method on the recorder outside r.meta
+// so wholesale AttachMeta calls cannot wipe it.
+func (r *OpsRecorder) SetHTTPMethod(method string) {
+	if r == nil {
+		return
+	}
+	normalized := strings.ToUpper(strings.TrimSpace(method))
+	if normalized == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.finalized {
+		r.httpMethod = normalized
+		r.meta.HTTPMethod = normalized
+	}
+}
+
+// ClassifyStreamFailure maps an in-band HTTP 200 stream error onto a
+// canonical (result, failure_reason, evidence) tuple.
+func ClassifyStreamFailure(upstreamStatus, intendedStatus int, errCode string) (string, string, FailureEvidence) {
+	code := sanitizeOpsErrorCode(errCode)
+	if upstreamStatus >= 400 {
+		ev := FailureEvidence{StatusCode: upstreamStatus, Stage: "body", UpstreamCode: code}
+		return "upstream_error", ClassifyFailure("upstream_error", ev), ev
+	}
+	if intendedStatus >= 400 {
+		res, reason := ClassifyRejectedStatus(intendedStatus)
+		return res, reason, FailureEvidence{}
+	}
+	if code != "" {
+		ev := FailureEvidence{StatusCode: http.StatusOK, Stage: "body", UpstreamCode: code}
+		if reason := ClassifyFailure("upstream_error", ev); reason != "unknown" {
+			return "upstream_error", reason, ev
+		}
+	}
+	return "gateway_error", "unknown", FailureEvidence{}
+}
+
+// RecordErrorDetails records error message/upstream status/code onto the
+// recorder. Secrets in message and code are redacted and truncated. Errors are
+// scoped per attempt index so details never bleed across failover attempts; within
+// the same attempt upstream errors (upstreamStatus > 0) win over generic gateway
+// wrappers while generic errors (upstreamStatus <= 0) keep the first message.
+func (r *OpsRecorder) RecordErrorDetails(message string, upstreamStatus int, upstreamErrorCode string) {
+	if r == nil {
+		return
+	}
+	msg := sanitizeOpsErrorMessage(message)
+	code := sanitizeOpsErrorCode(upstreamErrorCode)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finalized {
+		return
+	}
+	attemptIdx := len(r.attempts)
+	if attemptIdx > r.errorAttemptIdx && (upstreamStatus > 0 || msg != "" || code != "") {
+		r.upstreamStatus = 0
+		r.upstreamErrorCode = ""
+		r.errorMessage = ""
+		r.errorAttemptIdx = attemptIdx
+	}
+	if upstreamStatus > 0 {
+		if r.upstreamStatus != upstreamStatus && code == "" {
+			r.upstreamErrorCode = ""
+		}
+		r.upstreamStatus = upstreamStatus
+		if code != "" {
+			r.upstreamErrorCode = code
+		}
+		if msg != "" {
+			r.errorMessage = msg
+		}
+		return
+	}
+	if msg != "" && r.errorMessage == "" {
+		r.errorMessage = msg
+	}
+	if code != "" && r.upstreamErrorCode == "" && r.upstreamStatus == 0 {
+		r.upstreamErrorCode = code
+	}
+}
+
+// RecordFallbackErrorDetails records upstream error details from Gin context
+// fallback without letting an earlier attempt's HTTP status overwrite a newer
+// attempt's transport failure (which has no HTTP status).
+func (r *OpsRecorder) RecordFallbackErrorDetails(message string, upstreamStatus int, upstreamErrorCode string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	if r.finalized {
+		r.mu.Unlock()
+		return
+	}
+	if len(r.attempts) > 0 && r.errorAttemptIdx == len(r.attempts) &&
+		r.upstreamStatus == 0 && r.errorMessage != "" &&
+		r.attempts[len(r.attempts)-1].response().status == 0 && (upstreamStatus > 0 || upstreamErrorCode != "") {
+		r.mu.Unlock()
+		return
+	}
+	r.mu.Unlock()
+	r.RecordErrorDetails(message, upstreamStatus, upstreamErrorCode)
 }
 
 func (r *OpsRecorder) MarkBodyRead(n, declared int64, status string) {
@@ -371,6 +594,27 @@ func (r *OpsRecorder) MarkFailure(result, reason string, ev FailureEvidence) {
 	r.failureAt = r.now()
 }
 
+// MarkFailureIfUnset records a request-path failure only when no earlier
+// failure has been recorded, preserving higher-specificity root causes.
+func (r *OpsRecorder) MarkFailureIfUnset(result, reason string, ev FailureEvidence) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finalized || r.failureResult != "" {
+		return
+	}
+	if len(r.attempts) > 0 {
+		last := r.attempts[len(r.attempts)-1]
+		if last.done && last.result != "" && last.result != "success" && last.reason != "" && last.reason != "unknown" {
+			return
+		}
+	}
+	r.failureResult, r.failureReason = opsResultReason(result, reason, ev)
+	r.failureAt = r.now()
+}
+
 func opsResultReason(result, reason string, ev FailureEvidence) (string, string) {
 	result = NormalizeResult(result)
 	classified := ClassifyFailure(result, ev)
@@ -378,7 +622,7 @@ func opsResultReason(result, reason string, ev FailureEvidence) (string, string)
 		return result, classified
 	}
 	switch reason {
-	case "upstream_rate_limit", "upstream_auth", "upstream_model_or_request", "upstream_server_error", "upstream_connect_timeout", "upstream_read_timeout", "proxy_unreachable", "client_abort_during_body_read", "client_abort_during_response", "gateway_panic", "gateway_db", "gateway_ratelimit":
+	case "upstream_rate_limit", "upstream_auth", "upstream_model_or_request", "upstream_server_error", "upstream_connect_timeout", "upstream_read_timeout", "proxy_unreachable", "client_abort_during_body_read", "client_abort_during_response", "client_abort", "gateway_panic", "gateway_db", "gateway_ratelimit", "client_bad_request", "client_auth_failed", "client_forbidden", "client_not_found", "body_too_large":
 		return result, reason
 	default:
 		return result, "unknown"
@@ -659,13 +903,7 @@ func (r *OpsRecorder) requestResult(in FinalizeInput, last *OpsAttempt) (string,
 		return result, reason
 	}
 	if in.Status >= 400 {
-		if in.Status == 429 {
-			return "rejected", "gateway_ratelimit"
-		}
-		if in.Status < 500 {
-			return "rejected", "unknown"
-		}
-		return "gateway_error", "unknown"
+		return ClassifyRejectedStatus(in.Status)
 	}
 	if r.bodyMarked && r.bodyStatus == "partial" {
 		return "gateway_error", "unknown"
@@ -673,19 +911,40 @@ func (r *OpsRecorder) requestResult(in FinalizeInput, last *OpsAttempt) (string,
 	if last != nil {
 		return last.result, last.reason
 	}
-	if in.Status >= 200 && in.Status < 400 {
+	if in.Status == http.StatusSwitchingProtocols || (in.Status >= 200 && in.Status < 400) {
 		return "success", ""
 	}
 	return "gateway_error", "unknown"
 }
 
 func failurePriority(reason string) int {
-	for i, value := range []string{"upstream_rate_limit", "upstream_auth", "upstream_model_or_request", "upstream_server_error", "upstream_connect_timeout", "upstream_read_timeout", "proxy_unreachable", "client_abort_during_body_read", "client_abort_during_response", "gateway_panic", "gateway_db", "gateway_ratelimit", "unknown"} {
+	order := []string{
+		"upstream_rate_limit",
+		"upstream_auth",
+		"upstream_model_or_request",
+		"upstream_server_error",
+		"upstream_connect_timeout",
+		"upstream_read_timeout",
+		"proxy_unreachable",
+		"client_abort_during_body_read",
+		"client_abort_during_response",
+		"client_abort",
+		"gateway_panic",
+		"gateway_db",
+		"gateway_ratelimit",
+		"client_bad_request",
+		"client_auth_failed",
+		"client_forbidden",
+		"client_not_found",
+		"body_too_large",
+		"unknown",
+	}
+	for i, value := range order {
 		if value == reason {
 			return i
 		}
 	}
-	return 13
+	return len(order)
 }
 
 func (r *OpsRecorder) phases(now time.Time, last *OpsAttempt) (map[string]time.Duration, time.Duration, bool) {
@@ -812,9 +1071,16 @@ func (r *OpsRecorder) makeSample(in FinalizeInput, result, reason string, phases
 		APIKeyID: optionalSampleID(r.meta.APIKeyID), APIKeyName: optionalSampleText(r.meta.APIKeyName), APIKeyMasked: optionalSampleText(r.meta.APIKeyMasked),
 		AccountID: optionalSampleID(r.meta.AccountID), AccountName: optionalSampleText(r.meta.AccountName),
 		GroupID: optionalSampleID(r.meta.GroupID), GroupName: optionalSampleText(r.meta.GroupName),
-		Platform: optionalSampleText(r.meta.Platform), Model: optionalSampleText(r.meta.Model), Endpoint: samplePtr(endpoint), EndpointClass: samplePtr(class),
+		Platform: optionalSampleText(r.meta.Platform), Model: optionalSampleText(r.meta.Model), Endpoint: samplePtr(endpoint), EndpointClass: samplePtr(class), HTTPMethod: optionalSampleText(r.httpMethod),
 		Result: samplePtr(result), HTTPStatus: samplePtr(in.Status), FailureReason: samplePtr(reason), AttemptCount: samplePtr(len(r.attempts)), FailedAttempts: samplePtr(failed), Node: samplePtr(opsSampleNode),
 		BodyReadMs: sampleMilliseconds(phases["body_read"]), GatewayMs: sampleMilliseconds(phases["gateway"]), WaitMs: sampleMilliseconds(phases["wait"]), UpstreamMs: sampleMilliseconds(phases["upstream"]), ResponseMs: sampleMilliseconds(phases["response"]), FinishMs: sampleMilliseconds(phases["finish"]), TotalMs: sampleMilliseconds(total),
+	}
+	if result != "success" {
+		sample.ErrorMessage = optionalSampleText(r.errorMessage)
+		if r.upstreamStatus > 0 {
+			sample.UpstreamStatus = samplePtr(r.upstreamStatus)
+		}
+		sample.UpstreamErrorCode = optionalSampleText(r.upstreamErrorCode)
 	}
 	if hasTTFT {
 		sample.HeadersEndMs = sampleMilliseconds(ttft)

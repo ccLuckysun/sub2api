@@ -8,18 +8,22 @@ import Icon from '@/components/icons/Icon.vue'
 import {
   opsAPI,
   type OpsRealtimeRequestItem,
+  type OpsRealtimeRequestsParams,
   type OpsRealtimeRequestsResponse,
   type OpsRealtimeRequestSummary
 } from '@/api/admin/ops'
 import { formatRelativeTime } from '@/utils/format'
 import OpsRealtimeRequestDetailModal from './OpsRealtimeRequestDetailModal.vue'
 import {
+  CANONICAL_FAILURE_REASON_KEYS,
   computePhaseBreakdown,
   formatByteSize,
   formatDurationMs,
+  formatEndpointWithMethod,
   formatObservedDateTimeFull,
   formatObservedTime,
   getFailureReasonLabel,
+  getFailureReasonShortLabel,
   getHttpStatusClass,
   isRequestSuccess,
   REALTIME_REQUEST_PHASES
@@ -43,6 +47,7 @@ const response = ref<OpsRealtimeRequestsResponse | null>(null)
 
 // Filters
 const resultFilter = ref<'all' | 'success' | 'failure'>('all')
+const failureReasonFilter = ref<string>('')
 const modelFilter = ref<string>('')
 const searchInput = ref<string>('')
 const appliedSearch = ref<string>('')
@@ -77,6 +82,20 @@ function abortInFlight() {
 
 const isEnabled = computed(() => response.value?.enabled !== false)
 const items = computed(() => response.value?.items ?? [])
+const filteredItems = computed(() => {
+  const list = items.value
+  if (resultFilter.value !== 'failure') {
+    return list
+  }
+  const targetReason = failureReasonFilter.value.trim().toLowerCase()
+  if (!targetReason) {
+    return list
+  }
+  return list.filter((row) => {
+    if (isRequestSuccess(row)) return false
+    return String(row.failure_reason || '').trim().toLowerCase() === targetReason
+  })
+})
 const summary = computed<OpsRealtimeRequestSummary>(() => {
   return (
     response.value?.summary ?? {
@@ -103,6 +122,34 @@ const resultFilterOptions = computed<Array<{ value: 'all' | 'success' | 'failure
   { value: 'success', label: t('admin.ops.realtimeRequests.filters.success') },
   { value: 'failure', label: t('admin.ops.realtimeRequests.filters.failure') }
 ])
+
+const failureReasonOptions = computed(() => {
+  const seen = new Set<string>()
+  const opts: Array<{ value: string; label: string }> = [
+    { value: '', label: t('admin.ops.realtimeRequests.filters.allFailureReasons') }
+  ]
+  const pushReason = (raw: string | null | undefined) => {
+    const trimmed = String(raw || '').trim()
+    if (!trimmed || seen.has(trimmed)) return
+    seen.add(trimmed)
+    opts.push({ value: trimmed, label: getFailureReasonLabel(trimmed, t) })
+  }
+  for (const r of response.value?.failure_reasons ?? []) {
+    pushReason(r)
+  }
+  for (const row of items.value) {
+    if (!isRequestSuccess(row)) {
+      pushReason(row.failure_reason)
+    }
+  }
+  for (const r of CANONICAL_FAILURE_REASON_KEYS) {
+    pushReason(r)
+  }
+  if (failureReasonFilter.value) {
+    pushReason(failureReasonFilter.value)
+  }
+  return opts
+})
 
 const modelOptions = computed(() => {
   const seen = new Set<string>()
@@ -140,14 +187,12 @@ async function fetchRealtimeRequests(options: { silent?: boolean } = {}) {
   errorMessage.value = ''
 
   try {
-    const params: {
-      limit: number
-      result: 'all' | 'success' | 'failure'
-      model?: string
-      search?: string
-    } = {
+    const params: OpsRealtimeRequestsParams = {
       limit: limit.value,
       result: resultFilter.value
+    }
+    if (resultFilter.value === 'failure' && failureReasonFilter.value.trim()) {
+      params.failure_reason = failureReasonFilter.value.trim()
     }
     if (modelFilter.value.trim()) {
       params.model = modelFilter.value.trim()
@@ -219,7 +264,17 @@ function clearSearch() {
   void fetchRealtimeRequests({ silent: false })
 }
 
-watch([resultFilter, modelFilter, limit], () => {
+watch(
+  resultFilter,
+  (next) => {
+    if (next !== 'failure' && failureReasonFilter.value !== '') {
+      failureReasonFilter.value = ''
+    }
+  },
+  { flush: 'sync' }
+)
+
+watch([resultFilter, failureReasonFilter, modelFilter, limit], () => {
   void fetchRealtimeRequests({ silent: false })
 })
 
@@ -249,6 +304,26 @@ function formatPhaseTooltip(item: OpsRealtimeRequestItem): string {
 function formatTimeTooltip(iso?: string | null): string {
   if (!iso) return ''
   return `${formatObservedDateTimeFull(iso)} (${formatRelativeTime(iso)})\n${iso}`
+}
+
+function formatEndpointDisplay(row: OpsRealtimeRequestItem): string {
+  return formatEndpointWithMethod(row.http_method, row.endpoint, row.endpoint_class)
+}
+
+function getStatusTooltip(row: OpsRealtimeRequestItem): string {
+  if (isRequestSuccess(row)) {
+    return t('admin.ops.realtimeRequests.status.success')
+  }
+  const errMsg = String(row.error_message || '').trim()
+  if (errMsg) {
+    return errMsg
+  }
+  const rawReason = String(row.failure_reason || '').trim()
+  if (rawReason) {
+    const label = getFailureReasonLabel(rawReason, t)
+    return label !== rawReason ? `${label} (${rawReason})` : rawReason
+  }
+  return t('admin.ops.realtimeRequests.status.failure')
 }
 
 let isUnmounted = false
@@ -457,9 +532,18 @@ onUnmounted(() => {
           </button>
         </div>
 
+        <!-- Failure Reason Selector (only when resultFilter === 'failure') -->
+        <div v-if="resultFilter === 'failure'" class="w-44 sm:w-52">
+          <Select
+            v-model="failureReasonFilter"
+            :options="failureReasonOptions"
+            data-testid="failure-reason-filter"
+          />
+        </div>
+
         <!-- Model Selector -->
         <div class="w-44 sm:w-52">
-          <Select v-model="modelFilter" :options="modelOptions" />
+          <Select v-model="modelFilter" :options="modelOptions" data-testid="model-filter" />
         </div>
 
         <!-- Search Input -->
@@ -488,7 +572,7 @@ onUnmounted(() => {
 
         <!-- Limit Selector -->
         <div class="w-32">
-          <Select v-model="limit" :options="limitOptions" />
+          <Select v-model="limit" :options="limitOptions" data-testid="limit-filter" />
         </div>
       </div>
 
@@ -519,7 +603,7 @@ onUnmounted(() => {
 
       <!-- Empty -->
       <EmptyState
-        v-else-if="items.length === 0"
+        v-else-if="filteredItems.length === 0"
         :title="t('admin.ops.realtimeRequests.empty')"
         :description="t('admin.ops.realtimeRequests.emptyHint')"
       />
@@ -530,7 +614,7 @@ onUnmounted(() => {
           <!-- Mobile Card Layout (< 768px) -->
           <div v-if="!isDesktopViewport" class="divide-y divide-gray-100 dark:divide-dark-800">
             <div
-              v-for="row in items"
+              v-for="row in filteredItems"
               :key="`${row.request_id}-${row.observed_at}`"
               class="cursor-pointer space-y-2.5 p-3.5 transition-colors hover:bg-gray-50 dark:hover:bg-dark-800/60"
               @click="openDetail(row)"
@@ -542,9 +626,13 @@ onUnmounted(() => {
                 >
                   {{ formatObservedTime(row.observed_at) }}
                 </span>
-                <div class="flex items-center gap-1.5">
+                <div
+                  class="flex flex-wrap items-center justify-end gap-1.5"
+                  :title="getStatusTooltip(row)"
+                  data-testid="mobile-status-cell"
+                >
                   <span
-                    class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
                     :class="
                       isRequestSuccess(row)
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
@@ -554,8 +642,15 @@ onUnmounted(() => {
                     {{
                       isRequestSuccess(row)
                         ? t('admin.ops.realtimeRequests.status.success')
-                        : getFailureReasonLabel(row.failure_reason, t)
+                        : t('admin.ops.realtimeRequests.status.failure')
                     }}
+                  </span>
+                  <span
+                    v-if="!isRequestSuccess(row) && row.failure_reason && row.failure_reason.trim()"
+                    class="max-w-[120px] truncate text-[11px] font-medium text-red-600 dark:text-red-400"
+                    data-testid="mobile-status-failure-reason"
+                  >
+                    {{ getFailureReasonShortLabel(row.failure_reason, t) }}
                   </span>
                   <span
                     v-if="row.http_status != null"
@@ -569,6 +664,13 @@ onUnmounted(() => {
 
               <div class="text-xs">
                 <div class="truncate font-medium text-ui-ink">{{ row.model || '—' }}</div>
+                <div
+                  v-if="formatEndpointDisplay(row)"
+                  class="mt-0.5 truncate font-mono text-[11px] text-ui-muted"
+                  :title="formatEndpointDisplay(row)"
+                >
+                  {{ formatEndpointDisplay(row) }}
+                </div>
                 <div class="mt-0.5 truncate text-[11px] text-ui-muted">
                   {{ row.user_email || (row.user_id != null ? `#${row.user_id}` : '—') }}
                   · {{ row.account_name || (row.account_id != null ? `#${row.account_id}` : '—') }}
@@ -645,7 +747,7 @@ onUnmounted(() => {
             </thead>
             <tbody class="divide-y divide-gray-200 bg-ui-surface dark:divide-dark-700/80 dark:bg-ui-surface">
               <tr
-                v-for="(row, idx) in items"
+                v-for="(row, idx) in filteredItems"
                 :key="`${row.request_id}-${row.observed_at}-${idx}`"
                 class="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-dark-800/60"
                 @click="openDetail(row)"
@@ -703,11 +805,11 @@ onUnmounted(() => {
                     {{ row.model || '—' }}
                   </div>
                   <div
-                    v-if="row.endpoint || row.endpoint_class"
+                    v-if="formatEndpointDisplay(row)"
                     class="mt-0.5 truncate font-mono text-[10px] text-ui-muted"
-                    :title="row.endpoint || row.endpoint_class || ''"
+                    :title="formatEndpointDisplay(row)"
                   >
-                    {{ row.endpoint || row.endpoint_class }}
+                    {{ formatEndpointDisplay(row) }}
                   </div>
                 </td>
 
@@ -783,25 +885,31 @@ onUnmounted(() => {
 
                 <!-- Status -->
                 <td class="whitespace-nowrap px-3 py-2.5">
-                  <div class="flex items-center gap-1.5">
+                  <div
+                    class="group relative flex items-center gap-1.5"
+                    :title="getStatusTooltip(row)"
+                    data-testid="status-cell"
+                  >
                     <span
-                      class="inline-flex max-w-[140px] items-center truncate rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                      class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
                       :class="
                         isRequestSuccess(row)
                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                           : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
                       "
-                      :title="
-                        isRequestSuccess(row)
-                          ? t('admin.ops.realtimeRequests.status.success')
-                          : row.failure_reason || getFailureReasonLabel(row.failure_reason, t)
-                      "
                     >
                       {{
                         isRequestSuccess(row)
                           ? t('admin.ops.realtimeRequests.status.success')
-                          : getFailureReasonLabel(row.failure_reason, t)
+                          : t('admin.ops.realtimeRequests.status.failure')
                       }}
+                    </span>
+                    <span
+                      v-if="!isRequestSuccess(row) && row.failure_reason && row.failure_reason.trim()"
+                      class="max-w-[110px] truncate text-[11px] font-medium text-red-600 dark:text-red-400"
+                      data-testid="status-failure-reason"
+                    >
+                      {{ getFailureReasonShortLabel(row.failure_reason, t) }}
                     </span>
                     <span
                       v-if="row.http_status != null"
@@ -809,6 +917,26 @@ onUnmounted(() => {
                     >
                       {{ row.http_status }}
                     </span>
+
+                    <!-- Rich hover popover for failed requests -->
+                    <div
+                      v-if="!isRequestSuccess(row) && (row.error_message || row.failure_reason)"
+                      class="pointer-events-none absolute right-0 z-30 hidden w-72 whitespace-normal break-words rounded-lg border border-red-200 bg-ui-surface p-2.5 text-[11px] shadow-lg group-hover:block dark:border-red-800/60 dark:bg-dark-800"
+                      :class="idx < 2 ? 'top-full mt-1.5' : 'bottom-full mb-1.5'"
+                    >
+                      <div class="font-semibold text-red-700 dark:text-red-300">
+                        {{ getFailureReasonLabel(row.failure_reason, t) }}
+                        <span v-if="row.failure_reason" class="ml-1 font-mono text-[10px] font-normal text-ui-muted">
+                          ({{ row.failure_reason }})
+                        </span>
+                      </div>
+                      <div
+                        v-if="row.error_message"
+                        class="mt-1 whitespace-pre-wrap break-words font-mono text-[10px] text-ui-ink"
+                      >
+                        {{ row.error_message }}
+                      </div>
+                    </div>
                   </div>
                 </td>
 

@@ -62,3 +62,93 @@ tests:
       - eval_time: 7m
         alertname: Sub2apiInstrumentationStalled
         exp_alerts: []
+
+  - name: WS 101 exclusion and HTTP 101 success do not trigger ops alerts
+    interval: 1m
+    input_series:
+      - series: 'sub2api_http_requests_total{route="/v1/responses",method="GET",status_code="101",instance="ws-only"}'
+        values: '0+10x60'
+      - series: 'sub2api_ops_eligible_requests_total{instance="ws-only"}'
+        values: '0+0x60'
+      - series: 'sub2api_metric_coverage_ratio{kind="account",instance="ws-only"}'
+        values: '-1+0x60'
+      - series: 'sub2api_http_requests_total{route="/v1/responses",method="GET",status_code="101",instance="mixed"}'
+        values: '0+5x60'
+      - series: 'sub2api_ops_eligible_requests_total{instance="mixed"}'
+        values: '0+10x60'
+      - series: 'sub2api_request_phase_seconds_count{phase="finish",instance="mixed"}'
+        values: '0+10x60'
+      - series: 'sub2api_metric_coverage_ratio{kind="account",instance="mixed"}'
+        values: '0.95+0x60'
+      - series: 'sub2api_gateway_requests_total{result="success",failure_reason=""}'
+        values: '0+10x60'
+      - series: 'sub2api_gateway_requests_total{result="gateway_error",failure_reason="unknown"}'
+        values: '0+0x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: Sub2apiInstrumentationStalled
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: Sub2apiInstrumentationStalled
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: Sub2apiGatewaySelfError
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: Sub2apiGatewaySelfError
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: Sub2apiMetricCoverageLow
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: Sub2apiUnknownFailureHigh
+        exp_alerts: []
+
+  - name: R2 explicit 4xx failure reasons do not trigger Sub2apiUnknownFailureHigh
+    interval: 1m
+    input_series:
+      - series: 'sub2api_gateway_requests_total{result="rejected",failure_reason="client_bad_request"}'
+        values: '0+1x60'
+      - series: 'sub2api_gateway_requests_total{result="rejected",failure_reason="client_auth_failed"}'
+        values: '0+1x60'
+      - series: 'sub2api_gateway_requests_total{result="rejected",failure_reason="client_forbidden"}'
+        values: '0+1x60'
+      - series: 'sub2api_gateway_requests_total{result="rejected",failure_reason="client_not_found"}'
+        values: '0+1x60'
+      - series: 'sub2api_gateway_requests_total{result="rejected",failure_reason="body_too_large"}'
+        values: '0+1x60'
+      - series: 'sub2api_gateway_requests_total{result="rejected",failure_reason="gateway_ratelimit"}'
+        values: '0+1x60'
+      - series: 'sub2api_gateway_requests_total{result="client_abort",failure_reason="client_abort"}'
+        values: '0+1x60'
+      - series: 'sub2api_gateway_requests_total{result="success",failure_reason=""}'
+        values: '0+3x60'
+      - series: 'sub2api_gateway_requests_total{result="gateway_error",failure_reason="unknown"}'
+        values: '0+0x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: Sub2apiUnknownFailureHigh
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: Sub2apiGatewaySelfError
+        exp_alerts: []
+
+  - name: Auth-stage 499 spike triggers Sub2apiClientAbortSpike without sub2api_client_abort_total
+    interval: 1m
+    input_series:
+      - series: 'sub2api_gateway_requests_total{result="client_abort",failure_reason="client_abort"}'
+        values: '0+6x60'
+      - series: 'sub2api_gateway_requests_total{result="success",failure_reason=""}'
+        values: '0+94x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: Sub2apiClientAbortSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Sub2apiClientAbortSpike
+              description: "实例 ：Sub2apiClientAbortSpike；请结合 V2 看板与样本核实。"
+      - eval_time: 60m
+        alertname: Sub2apiUnknownFailureHigh
+        exp_alerts: []
