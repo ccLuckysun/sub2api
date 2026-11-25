@@ -78,8 +78,12 @@ func IsOpenCodeUnsupportedModel(model string) bool {
 	return strings.HasPrefix(normalized, "gemini-") || strings.HasPrefix(normalized, "jev-")
 }
 
+func openCodeUnsupportedModelMessage(model string) string {
+	return fmt.Sprintf("Model '%s' is not supported on OpenCode standard gateway (gemini models require Google SDK endpoint, jev models require System One endpoint)", model)
+}
+
 func writeOpenCodeUnsupportedModelError(c *gin.Context, isAnthropic bool, model string) error {
-	msg := fmt.Sprintf("Model '%s' is not supported on OpenCode standard gateway (gemini models require Google SDK endpoint, jev models require System One endpoint)", model)
+	msg := openCodeUnsupportedModelMessage(model)
 	if c != nil {
 		if isAnthropic {
 			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", msg)
@@ -93,6 +97,11 @@ func writeOpenCodeUnsupportedModelError(c *gin.Context, isAnthropic bool, model 
 			})
 		}
 	}
+	return fmt.Errorf("opencode unsupported model: %s", model)
+}
+
+func writeChatOpenCodeUnsupportedModelError(c *gin.Context, model string) error {
+	writeChatCompletionsErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", "model_not_supported", openCodeUnsupportedModelMessage(model))
 	return fmt.Errorf("opencode unsupported model: %s", model)
 }
 

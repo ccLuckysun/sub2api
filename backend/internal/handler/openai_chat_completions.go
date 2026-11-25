@@ -257,7 +257,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		writerSizeBeforeForward := c.Writer.Size()
+		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -332,6 +332,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			})
 		}
 		if err != nil {
+			if result != nil && result.ClientDisconnect {
+				reqLog.Info("openai_chat_completions.client_disconnected",
+					zap.Int64("account_id", account.ID),
+					zap.Error(err),
+				)
+				submitChatUsage(result)
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai_chat_completions.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
@@ -348,10 +356,15 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						)
 						return
 					}
-					if c.Writer.Size() != writerSizeBeforeForward {
+					if service.OpenAICompactKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeForward {
 						h.gatewayService.ObserveOpenAIAccountHealthFailure(c.Request.Context(), account, err)
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
+					}
+					// Only keepalive bytes were written, so failover may continue, but
+					// every later error must be written as an SSE event.
+					if c.Writer.Written() {
+						streamStarted = true
 					}
 					if failoverErr.ShouldReportAccountScheduleFailure() {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, nil), false, nil, err)

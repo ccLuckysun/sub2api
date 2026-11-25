@@ -129,12 +129,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	logCodexCLIOnlyDetection(ctx, c, account, getAPIKeyIDFromContext(c), restrictionResult, body)
 	if restrictionResult.Enabled && !restrictionResult.Matched {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": gin.H{
-				"type":    "forbidden_error",
-				"message": "This account only allows Codex official clients",
-			},
-		})
+		writeChatCompletionsError(c, http.StatusForbidden, "forbidden_error", "This account only allows Codex official clients")
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
@@ -169,7 +164,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// openai_responses_supported=false，否则会命中 CC 直转。
 	routingModel := upstreamRoutingModel(account, body, defaultMappedModel)
 	if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(routingModel) {
-		return nil, writeOpenCodeUnsupportedModelError(c, false, routingModel)
+		return nil, writeChatOpenCodeUnsupportedModelError(c, routingModel)
 	}
 	switch s.resolveUpstreamProtocolFor(ctx, account, inbound, routingModel) {
 	case APIProtocolAnthropic:
@@ -317,7 +312,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			OmitPromotedSystemMessagesFromInput: !isResponsesShape && !isJSONObjectFormat,
 		})
 		if codexResult.Error != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": codexResult.Error.Error()}})
+			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", codexResult.Error.Error())
 			return nil, codexResult.Error
 		}
 		setCodexToolNameReverse(c, codexResult.ToolNameReverse)
@@ -451,7 +446,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			(ctx == nil || ctx.Err() == nil) &&
 			(c.Request == nil || c.Request.Context().Err() == nil) &&
 			!IsResponseCommitted(c) &&
-			!c.Writer.Written() &&
+			!openAIStreamClientOutputStarted(c, false) &&
 			completeErrorBody &&
 			isConvertedResponsesInputStringRejection(resp.StatusCode, respBody) {
 			logger.L().Info("openai chat_completions: structured Responses input rejected, falling back to raw chat completions",
@@ -902,6 +897,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	firstChunk := true
 	clientDisconnected := false
 	clientOutputStarted := false
+	// Track downstream writes separately from upstream reads: upstream SSE events
+	// that do not emit Chat Completions chunks (e.g. encrypted reasoning / lifecycle
+	// events) must not starve downstream keepalive comments.
+	lastDownstreamWriteAt := time.Now()
 	pendingSSE := make([]string, 0, 4)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
@@ -946,6 +945,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Stream:                        true,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			ClientDisconnect:              clientDisconnected,
 		}
 		if searchCount > 0 {
 			out.SearchCount = searchCount
@@ -1027,7 +1027,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if strings.TrimSpace(event.Type) == "error" {
 				shouldFailover = openAIStreamErrorEventShouldFailover(payloadBytes, message)
 			}
-			if !clientOutputStarted && shouldFailover {
+			if !clientDisconnected && !clientOutputStarted && shouldFailover {
 				streamFailoverErr = s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, payloadBytes, message, upstreamModel, resp.Header)
 				return true
 			}
@@ -1045,26 +1045,28 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				defaultStatus, defaultErrType, defaultMsg = status, errType, errMsg
 				MarkResponseCommitted(c)
 			}
-			errorPayload, _ := json.Marshal(gin.H{
-				"error": gin.H{
-					"type":    defaultErrType,
-					"message": defaultMsg,
-				},
-			})
-			if c != nil && c.Writer != nil && !c.Writer.Written() {
-				writeChatCompletionsError(c, defaultStatus, defaultErrType, defaultMsg)
-				clientOutputStarted = true
-			} else if c != nil && c.Writer != nil && !clientDisconnected {
-				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err != nil {
-					clientDisconnected = true
-					openAIBridgeAbort(c)
-					logger.L().Info("openai chat_completions stream: client disconnected while writing upstream error",
-						zap.String("request_id", requestID),
-					)
-				}
-			}
 			if !clientDisconnected {
-				c.Writer.Flush()
+				errorPayload, _ := json.Marshal(gin.H{
+					"error": gin.H{
+						"type":    defaultErrType,
+						"message": defaultMsg,
+					},
+				})
+				if c != nil && c.Writer != nil && !c.Writer.Written() {
+					writeChatCompletionsError(c, defaultStatus, defaultErrType, defaultMsg)
+					clientOutputStarted = true
+				} else if c != nil && c.Writer != nil {
+					if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err != nil {
+						clientDisconnected = true
+						openAIBridgeAbort(c)
+						logger.L().Info("openai chat_completions stream: client disconnected while writing upstream error",
+							zap.String("request_id", requestID),
+						)
+					}
+				}
+				if !clientDisconnected {
+					c.Writer.Flush()
+				}
 			}
 			streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
 			return true
@@ -1072,57 +1074,69 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
 		if !clientDisconnected {
-			for _, chunk := range chunks {
-				refusalDetector.ObserveChatChunk(chunk)
-				sse, err := apicompat.ChatChunkToSSE(chunk)
-				if err != nil {
-					logger.L().Warn("openai chat_completions stream: failed to marshal chunk",
-						zap.Error(err),
-						zap.String("request_id", requestID),
-					)
-					continue
+			wroteDownstream := false
+			flushPending := func() bool {
+				writeStreamHeaders()
+				for _, pending := range pendingSSE {
+					if _, err := fmt.Fprint(c.Writer, pending); err != nil {
+						clientDisconnected = true
+						openAIBridgeAbort(c)
+						logger.L().Info("openai chat_completions stream: client disconnected while flushing pending chunks",
+							zap.String("request_id", requestID),
+						)
+						return false
+					}
+					wroteDownstream = true
 				}
-				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
-					pendingSSE = append(pendingSSE, sse)
-					continue
-				}
-				if !clientOutputStarted {
-					writeStreamHeaders()
-					for _, pending := range pendingSSE {
-						if _, err := fmt.Fprint(c.Writer, pending); err != nil {
-							clientDisconnected = true
-							openAIBridgeAbort(c)
-							logger.L().Info("openai chat_completions stream: client disconnected while flushing pending chunks",
-								zap.String("request_id", requestID),
-							)
+				pendingSSE = pendingSSE[:0]
+				clientOutputStarted = true
+				return true
+			}
+			if !clientOutputStarted && len(pendingSSE) > 0 && refusalDetector.ShouldReleaseClientOutput() {
+				flushPending()
+			}
+			if !clientDisconnected {
+				for _, chunk := range chunks {
+					refusalDetector.ObserveChatChunk(chunk)
+					sse, err := apicompat.ChatChunkToSSE(chunk)
+					if err != nil {
+						logger.L().Warn("openai chat_completions stream: failed to marshal chunk",
+							zap.Error(err),
+							zap.String("request_id", requestID),
+						)
+						continue
+					}
+					if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+						pendingSSE = append(pendingSSE, sse)
+						continue
+					}
+					if !clientOutputStarted {
+						if !flushPending() {
 							break
 						}
 					}
-					pendingSSE = pendingSSE[:0]
-					clientOutputStarted = !clientDisconnected
-					if clientDisconnected {
+					if _, err := fmt.Fprint(c.Writer, sse); err != nil {
+						clientDisconnected = true
+						openAIBridgeAbort(c)
+						logger.L().Info("openai chat_completions stream: client disconnected, continuing to drain upstream for billing",
+							zap.String("request_id", requestID),
+						)
 						break
 					}
-				}
-				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-					clientDisconnected = true
-					openAIBridgeAbort(c)
-					logger.L().Info("openai chat_completions stream: client disconnected, continuing to drain upstream for billing",
-						zap.String("request_id", requestID),
-					)
-					break
+					wroteDownstream = true
 				}
 			}
-		}
-		if len(chunks) > 0 && !clientDisconnected && clientOutputStarted {
-			c.Writer.Flush()
+			if wroteDownstream && !clientDisconnected && clientOutputStarted {
+				c.Writer.Flush()
+				lastDownstreamWriteAt = time.Now()
+			}
 		}
 		return isTerminalEvent
 	}
 
 	finalizeStream := func() (*OpenAIForwardResult, error) {
 		if streamFailoverErr != nil {
-			if c == nil || c.Writer == nil || !c.Writer.Written() {
+			if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
 				return nil, streamFailoverErr
 			}
 			return resultWithUsage(), streamFailoverErr
@@ -1304,16 +1318,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}()
 	defer close(done)
 
-	var keepaliveTicker *time.Ticker
-	if keepaliveInterval > 0 {
-		keepaliveTicker = time.NewTicker(keepaliveInterval)
-		defer keepaliveTicker.Stop()
-	}
+	var keepaliveTimer *time.Timer
 	var keepaliveCh <-chan time.Time
-	if keepaliveTicker != nil {
-		keepaliveCh = keepaliveTicker.C
+	if keepaliveInterval > 0 {
+		keepaliveTimer = time.NewTimer(keepaliveInterval)
+		defer keepaliveTimer.Stop()
+		keepaliveCh = keepaliveTimer.C
 	}
-	lastDataAt := time.Now()
 	var parser openAICompatSSEFrameParser
 
 	for {
@@ -1341,7 +1352,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 				return resultWithUsage(), newOpenAIUpstreamStreamReadError(ev.err)
 			}
-			lastDataAt = time.Now()
 			line := ev.line
 			frame, ok := parser.AddLine(line)
 			if !ok {
@@ -1373,15 +1383,24 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if clientDisconnected {
 				continue
 			}
-			if refusalDetector.Enabled() && !clientOutputStarted {
+			if refusalDetector.Enabled() && !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+				keepaliveTimer.Reset(keepaliveInterval)
 				continue
 			}
-			if time.Since(lastDataAt) < keepaliveInterval {
+			if elapsed := time.Since(lastDownstreamWriteAt); elapsed < keepaliveInterval {
+				keepaliveTimer.Reset(keepaliveInterval - elapsed)
 				continue
 			}
-			// Send SSE comment as keepalive
-			writeStreamHeaders()
-			if _, err := fmt.Fprint(c.Writer, ":\n\n"); err != nil {
+			// Send SSE comment as keepalive. Keep account-specific response headers
+			// private until semantic output starts, and record keepalive bytes so
+			// pre-output failover checks ignore heartbeat-only writes.
+			if clientOutputStarted {
+				writeStreamHeaders()
+			} else {
+				setSSEHeaders(c)
+			}
+			n, err := fmt.Fprint(c.Writer, ":\n\n")
+			if err != nil {
 				logger.L().Info("openai chat_completions stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)
@@ -1389,20 +1408,44 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				openAIBridgeAbort(c)
 				continue
 			}
+			recordOpenAIStreamKeepaliveBytes(c, n)
 			c.Writer.Flush()
+			lastDownstreamWriteAt = time.Now()
+			keepaliveTimer.Reset(keepaliveInterval)
 		}
 	}
 }
 
 // writeChatCompletionsError writes an error response in OpenAI Chat Completions format.
+// Once the response is committed as SSE (keepalive comments went out), a bare JSON
+// body would be unreadable to the client's SSE parser, so write an SSE error frame instead.
 func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message string) {
+	writeChatCompletionsErrorWithCode(c, statusCode, errType, "", message)
+}
+
+func writeChatCompletionsErrorWithCode(c *gin.Context, statusCode int, errType, code, message string) {
+	if c == nil {
+		return
+	}
 	MarkResponseCommitted(c)
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
-	})
+	errObj := gin.H{
+		"type":    errType,
+		"message": message,
+	}
+	if code != "" {
+		errObj["code"] = code
+	}
+	if c.Writer != nil && c.Writer.Written() && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+		payload, err := json.Marshal(gin.H{"error": errObj})
+		if err != nil {
+			payload = []byte(`{"error":{"type":"upstream_error","message":"Upstream request failed"}}`)
+		}
+		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err == nil {
+			c.Writer.Flush()
+		}
+		return
+	}
+	c.JSON(statusCode, gin.H{"error": errObj})
 }
 
 // buildChatStreamErrorSSE builds one SSE data frame carrying an OpenAI chat
